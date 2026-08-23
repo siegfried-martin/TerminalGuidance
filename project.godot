@@ -17,6 +17,7 @@ config/features=PackedStringArray("4.7", "Forward Plus")
 
 Tuning="*res://scripts/autoload/tuning.gd"
 Bindings="*res://scripts/autoload/bindings.gd"
+DebugPanel="*res://scripts/debug/tuning_panel.gd"
 
 [debug]
 

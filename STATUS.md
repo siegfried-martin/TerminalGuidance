@@ -19,6 +19,8 @@ driven; no Godot editor GUI has been used at any point.
 | Godot 4.7.2 project, runs windowed and headless | working |
 | `tuning.cfg` hot reload (save the file, the running game changes) | working |
 | Tuning file is a `ConfigFile` with inline `;` comments on every value (ADR 0033) | working |
+| **F2 tuning panel**: live sliders for all 68 ranged values, tooltips, filter, save | working |
+| Comment-preserving save — five edits changed exactly five lines | working |
 | `Tuning` autoload with typed getters and loud missing-key errors | working |
 | Input bindings from `data/input_map.json` (no editor Input Map tab) | working |
 | Debug HUD with pluggable readout rows + tuning status line | working |
@@ -30,7 +32,7 @@ driven; no Godot editor GUI has been used at any point.
 | `make shot`: render frames to PNG from the CLI for visual verification | working |
 | `make apiref`: this exact build's 771-class reference for API grounding | working |
 | `DESIGN.md` — distilled thesis, Target Experience verbatim | written |
-| `decisions/` — 35 ADRs, indexed, each with a *What this forbids* section | written |
+| `decisions/` — 36 ADRs, indexed, each with a *What this forbids* section | written |
 | **Combat arena** (`scenes/arena.tscn`, now the main scene) | working |
 | Mothership autopilot: slow arc at standoff, nose on target | working |
 | Dumb target ship: drifts, turns at its patrol bounds | working |
@@ -106,6 +108,14 @@ They are the knobs most likely to be wrong.
   It now sizes itself from the viewport, with a test asserting non-zero size.
 - **`glow_intensity` was a constant in arena code** — a feel value in code, which
   the feel-parameter law forbids. Moved to `[arena]`.
+
+### How to tune now
+
+Press **F2** in game. Sliders and number boxes for every value, grouped by
+section, with a filter box and mouse-wheel scrolling. Hover any row for the long
+description. *Save to tuning.cfg* writes your session back to the file without
+disturbing a single comment; *Revert* throws it away. Editing the file in a text
+editor still hot-reloads, and disk wins over unsaved panel edits.
 
 ### Engagement envelope — record this
 

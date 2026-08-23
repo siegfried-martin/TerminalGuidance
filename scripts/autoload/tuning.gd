@@ -15,6 +15,8 @@ const PATH := "res://tuning.cfg"
 const POLL_INTERVAL_SEC := 0.25
 
 var _config := ConfigFile.new()
+var _schema: Array[Dictionary] = []
+var _dirty: Dictionary = {}
 var _missing: Dictionary = {}
 var _last_mtime: int = 0
 var _poll_accum: float = 0.0
@@ -41,6 +43,7 @@ func _process(delta: float) -> void:
 ## Re-read the file. Safe to call at any time; bound to F5 as well as the poll.
 func reload() -> void:
 	var mtime := FileAccess.get_modified_time(PATH)
+	var text := FileAccess.get_file_as_string(PATH)
 	# Parse into a throwaway first. A half-written file mid-save must not wipe
 	# tuning out from under a running session.
 	var candidate := ConfigFile.new()
@@ -50,9 +53,14 @@ func reload() -> void:
 		_last_mtime = mtime
 		return
 	_config = candidate
+	# The comments carry the documentation and the slider ranges, and ConfigFile
+	# discards them — so scan the text a second time for the debug panel.
+	_schema = TuningSchema.parse(text)
 	_last_mtime = mtime
 	_load_error = ""
 	_missing.clear()
+	# Anything edited in the panel is superseded by what is now on disk.
+	_dirty.clear()
 	_reload_count += 1
 	reloaded.emit()
 
@@ -110,6 +118,76 @@ func vec3(path: String) -> Vector3:
 
 func has(path: String) -> bool:
 	return _lookup_quiet(path) != null
+
+
+# --- Runtime editing, for the debug panel ------------------------------------
+
+## Change a value in memory and tell every listening system at once. The file on
+## disk is untouched until `save()`; `dirty_paths()` reports the difference.
+func set_value(path: String, value: Variant) -> void:
+	var split := path.split("/", false, 1)
+	if split.size() != 2:
+		push_error("Tuning: cannot set malformed path '%s'" % path)
+		return
+	if _config.get_value(split[0], split[1], null) == value:
+		return
+	_config.set_value(split[0], split[1], value)
+	_dirty[path] = value
+	reloaded.emit()
+
+
+## The stored value at `path`, whatever its type, or null if absent. For the
+## debug panel, which has to know the type before it can pick a widget.
+func get_raw(path: String) -> Variant:
+	return _lookup_quiet(path)
+
+
+## Every documented entry, in file order — section, key, label, tooltip, range.
+func schema() -> Array[Dictionary]:
+	return _schema
+
+
+func dirty_paths() -> PackedStringArray:
+	var out: PackedStringArray = []
+	for path: String in _dirty:
+		out.append(path)
+	out.sort()
+	return out
+
+
+func is_dirty(path: String) -> bool:
+	return _dirty.has(path)
+
+
+## Write edited values back into tuning.cfg, preserving every comment.
+##
+## Deliberately not ConfigFile.save(), which serialises values only and would
+## delete the documentation along with the slider ranges (ADR 0033).
+func save() -> Error:
+	if _dirty.is_empty():
+		return OK
+	var source := FileAccess.get_file_as_string(PATH)
+	if source.is_empty():
+		_fail("cannot read %s to save into" % PATH)
+		return ERR_FILE_CANT_READ
+	var updated := TuningWriter.apply(source, _dirty)
+	var file := FileAccess.open(PATH, FileAccess.WRITE)
+	if file == null:
+		_fail("cannot write %s (error %d)" % [PATH, FileAccess.get_open_error()])
+		return FileAccess.get_open_error()
+	file.store_string(updated)
+	file.close()
+	_dirty.clear()
+	# Keep the watcher from treating our own write as an external edit.
+	_last_mtime = FileAccess.get_modified_time(PATH)
+	return OK
+
+
+## Throw away in-memory edits and go back to what is on disk.
+func revert() -> void:
+	_dirty.clear()
+	_last_mtime = 0
+	reload()
 
 
 # --- Introspection, for the debug HUD and headless tests ---------------------

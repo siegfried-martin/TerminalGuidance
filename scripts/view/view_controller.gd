@@ -21,6 +21,21 @@ var _missile_camera: ChaseCamera
 var _piloted_missile: Missile
 
 
+func _ready() -> void:
+	# The tuning panel takes the pointer while it is open; hand it back after.
+	DebugPanel.toggled.connect(func(open: bool) -> void:
+		if not open:
+			_apply_mouse_mode())
+
+
+func _apply_mouse_mode() -> void:
+	if DebugPanel.is_open():
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		return
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if _view == View.MISSILE \
+		else Input.MOUSE_MODE_VISIBLE
+
+
 func setup(ship: Node3D, ship_camera: ChaseCamera, missile_camera: ChaseCamera) -> void:
 	_ship_camera = ship_camera
 	_missile_camera = missile_camera
@@ -40,7 +55,7 @@ func enter_missile_view(missile: Missile) -> void:
 	_missile_camera.current = true
 	_view = View.MISSILE
 	# The mouse is the missile's stick while riding; release it when we return.
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	_apply_mouse_mode()
 	view_changed.emit(_view)
 
 
@@ -58,12 +73,12 @@ func _enter_ship_view() -> void:
 	_ship_camera.snap()
 	_ship_camera.current = true
 	_view = View.SHIP
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	_apply_mouse_mode()
 	view_changed.emit(_view)
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if _view == View.MISSILE and event is InputEventMouseMotion \
+	if _view == View.MISSILE and not DebugPanel.is_open() and event is InputEventMouseMotion \
 			and _piloted_missile != null and is_instance_valid(_piloted_missile):
 		_piloted_missile.add_mouse_steer((event as InputEventMouseMotion).relative)
 
