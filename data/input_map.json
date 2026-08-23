@@ -3,6 +3,7 @@
 
   "actions": {
     "fire":           ["key:Space", "mouse:left", "joyaxis:trigger_right+"],
+    "detonate":       ["key:Space", "mouse:left", "joyaxis:trigger_right+"],
 
     "missile_left":   ["key:Left",  "joyaxis:right_x-"],
     "missile_right":  ["key:Right", "joyaxis:right_x+"],

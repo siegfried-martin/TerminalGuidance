@@ -80,5 +80,7 @@ The reasoning, including what the alternative was and why it lost.
 | [0031](0031-cli-visual-verification.md) | Visual changes are verified from the CLI before a human is asked to look |
 | [0032](0032-swept-segment-hit-testing.md) | Missile hits are swept-segment tests, not physics bodies |
 | [0033](0033-tuning-file-is-a-configfile.md) | The tuning file is a Godot ConfigFile, so feel values carry inline comments |
+| [0034](0034-autopilot-faces-velocity.md) | The combat autopilot faces its direction of travel, not the target |
+| [0035](0035-reticle-steering.md) | Missile steering is a reticle the missile turns towards |
 
-*Next number: 0034.*
+*Next number: 0036.*

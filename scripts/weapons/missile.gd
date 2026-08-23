@@ -3,9 +3,11 @@ extends Node3D
 ## A player-flown missile. Constant forward speed, direct screen-space steering,
 ## and a fuse that ends the flight whether or not the player got there.
 ##
-## ADR 0002 (fuse-as-range) and ADR 0003 (screen-space steering) govern this file.
-## The fuse is the range limit and the difficulty dial; the steering is direct,
-## not a flight model.
+## ADR 0002 (fuse-as-range), ADR 0003 (screen-space steering) and ADR 0035
+## (reticle steering) govern this file. The fuse is the range limit and the
+## difficulty dial. Input moves a *reticle* — an intended direction — and the
+## missile turns towards it at a bounded rate, so it has weight without becoming
+## a flight model the player has to model in their head.
 ##
 ## Floating origin (ADR 0020): all flight and hit-testing is done in the parent's
 ## frame via `position`, never in world space. The one value carried across frames
@@ -14,13 +16,14 @@ extends Node3D
 
 signal detonated(missile: Missile, reason: int, hit: bool)
 
-enum EndReason { FUSE_EXPIRED, IMPACT }
+enum EndReason { FUSE_EXPIRED, IMPACT, EARLY_DETONATE }
 
 var piloted: bool = false
 
 var _speed: float = 0.0
 var _fuse_left: float = 0.0
 var _previous_position: Vector3
+var _aim_basis: Basis = Basis.IDENTITY
 var _target: Node3D
 var _target_radius: float = 0.0
 var _finished: bool = false
@@ -77,6 +80,7 @@ func launch(launch_position: Vector3, launch_basis: Basis, ship_velocity: Vector
 		target: Node3D, target_radius: float) -> void:
 	position = launch_position
 	basis = launch_basis.orthonormalized()
+	_aim_basis = basis
 	_previous_position = launch_position
 	_target = target
 	_target_radius = target_radius
@@ -122,29 +126,38 @@ func _apply_steering(delta: float) -> void:
 		# Rescale past the deadzone so the first live input is not a step change.
 		stick = stick.normalized() * ((stick.length() - deadzone) / (1.0 - deadzone))
 
-	var max_step := deg_to_rad(Tuning.num("missile/turn_rate_deg_per_sec")) * delta
-
-	# Stick input is a rate; mouse input is a displacement. Both are capped by the
-	# same turn rate, so the two devices cannot differ in what they can ask for.
-	var step := Vector2(
-		-stick.x * Tuning.num("controls/stick_sensitivity") * max_step,
-		-stick.y * Tuning.num("controls/stick_sensitivity") * max_step,
-	)
-	step += Vector2(
-		-_pending_steer.x * deg_to_rad(Tuning.num("controls/mouse_sensitivity")),
-		-_pending_steer.y * deg_to_rad(Tuning.num("controls/mouse_sensitivity")),
-	)
+	# Step 1: input moves the reticle. The reticle is where the player wants the
+	# missile pointed, and it is not rate-limited — only the missile is.
+	var stick_step := deg_to_rad(Tuning.num("controls/stick_reticle_speed_deg_per_sec")) * delta
+	var yaw := -stick.x * stick_step - deg_to_rad(_pending_steer.x * Tuning.num("controls/mouse_sensitivity"))
+	var pitch := -stick.y * stick_step - deg_to_rad(_pending_steer.y * Tuning.num("controls/mouse_sensitivity"))
 	_pending_steer = Vector2.ZERO
+	_aim_basis = FlightGeometry.steer_basis(_aim_basis, yaw, pitch)
 
-	if step.length() > max_step:
-		step = step.normalized() * max_step
-	basis = FlightGeometry.steer_basis(basis, step.x, step.y)
+	# Step 2: hold the reticle inside a cone around the nose, so it can never be
+	# parked somewhere the missile has no chance of reaching.
+	var forward := -basis.z
+	var aim := FlightGeometry.clamp_to_cone(
+		-_aim_basis.z, forward, deg_to_rad(Tuning.num("missile/reticle_max_angle_deg")))
+	_aim_basis = FlightGeometry.basis_from_forward(aim)
+
+	# Step 3: the missile turns towards the reticle at its own bounded rate. This
+	# is the whole difference between "responsive" and "has mass".
+	var max_step := deg_to_rad(Tuning.num("missile/turn_rate_deg_per_sec")) * delta
+	basis = FlightGeometry.basis_from_forward(
+		FlightGeometry.turn_towards(forward, aim, max_step))
 
 
 ## Mouse motion arrives as events, not as a polled axis; the view controller feeds
 ## it here so the missile stays the only thing that decides how input becomes turn.
 func add_mouse_steer(relative: Vector2) -> void:
 	_pending_steer += relative
+
+
+## Player-triggered detonation. POC step 5 also brings splash damage; this is the
+## abort half of it, so a bad shot can be ended instead of watched.
+func detonate_early() -> void:
+	_finish(EndReason.EARLY_DETONATE, false)
 
 
 func _finish(reason: EndReason, hit: bool) -> void:
@@ -168,3 +181,21 @@ func speed() -> float:
 
 func distance_to_target() -> float:
 	return 0.0 if _target == null else position.distance_to(_target.position) - _target_radius
+
+
+## Where the reticle is pointing, in world space.
+##
+## `_aim_basis` is parent-relative, like `basis` and `position` — that is the
+## floating-origin rule (ADR 0020). Converting here rather than storing a world
+## direction keeps it valid across a recentre.
+func aim_direction() -> Vector3:
+	var parent := get_parent_node_3d()
+	var local_aim := -_aim_basis.z
+	if parent == null:
+		return local_aim.normalized()
+	return (parent.global_transform.basis * local_aim).normalized()
+
+
+## Angle in degrees between the nose and the reticle — the lag the player feels.
+func aim_offset_degrees() -> float:
+	return rad_to_deg((-basis.z).angle_to(-_aim_basis.z))

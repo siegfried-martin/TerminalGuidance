@@ -16,6 +16,7 @@ var target: Node3D
 var _velocity: Vector3 = Vector3.ZERO
 var _orbit_sign: float = 1.0
 var _hull: MeshInstance3D
+var _last_standoff: float = -1.0
 
 
 func _ready() -> void:
@@ -29,7 +30,17 @@ func _ready() -> void:
 	add_child(_hull)
 
 	_apply_tuning()
-	Tuning.reloaded.connect(_apply_tuning)
+	Tuning.reloaded.connect(_on_tuning_reloaded)
+
+
+func _on_tuning_reloaded() -> void:
+	_apply_tuning()
+	# Hot reload has to *show* the value that was typed. Left to the controller,
+	# a standoff edit takes tens of seconds to converge and reads as "the reload
+	# didn't work" — so a changed standoff repositions the ship immediately.
+	var standoff := Tuning.num("ship/standoff_distance")
+	if not is_equal_approx(standoff, _last_standoff):
+		snap_to_standoff()
 
 
 func _apply_tuning() -> void:
@@ -53,22 +64,55 @@ func _process(delta: float) -> void:
 	var radial := to_target / range_now
 
 	var standoff := Tuning.num("ship/standoff_distance")
+	_last_standoff = standoff
+
 	# Tangent of the arc. Near-vertical geometry would make this degenerate, so
 	# fall back to a different reference axis rather than producing a zero vector.
 	var reference := Vector3.UP if absf(radial.dot(Vector3.UP)) < 0.95 else Vector3.RIGHT
 	var tangent := radial.cross(reference).normalized() * _orbit_sign
 
-	# Close or back off proportionally to the standoff error, capped so the
-	# correction never overwhelms the arc and turns this into a pursuit.
-	var range_error := clampf((range_now - standoff) / maxf(standoff, 1.0), -1.0, 1.0)
-	var heading := (tangent + radial * range_error).normalized()
+	# Radial correction as an explicit speed, not as a share of one normalised
+	# heading. The earlier version blended tangent and radial and normalised the
+	# result, which meant the range authority collapsed towards zero exactly at
+	# the setpoint — a target drifting at a few m/s outran it and the held range
+	# wandered indefinitely.
+	var range_error := range_now - standoff
+	var hold_seconds := maxf(Tuning.num("ship/range_hold_seconds"), 0.01)
+	var hold_max := Tuning.num("ship/range_hold_max_speed")
+	var radial_speed := clampf(range_error / hold_seconds, -hold_max, hold_max)
 
-	var previous := position
-	position += heading * Tuning.num("ship/arc_speed") * delta
-	_velocity = (position - previous) / delta
+	_velocity = tangent * Tuning.num("ship/arc_speed") + radial * radial_speed
+	position += _velocity * delta
 
-	# Heading hold: nose on the target, every frame, computed fresh.
-	look_at(target.global_position, Vector3.UP)
+	# The nose follows the direction of travel, not the target. Firing along the
+	# ship's heading then launches the missile across the target rather than at
+	# it, so every shot needs a real turn (ADR 0034).
+	if _velocity.length_squared() > 0.0001:
+		look_at(global_position + _velocity, Vector3.UP)
+
+
+## Place the ship at exactly the tuned standoff along its current bearing.
+## Used for initial placement and after a standoff edit.
+func snap_to_standoff() -> void:
+	if target == null:
+		return
+	var to_target := target.position - position
+	if to_target.length() < 0.001:
+		return
+	var standoff := Tuning.num("ship/standoff_distance")
+	position = target.position - to_target.normalized() * standoff
+	_last_standoff = standoff
+
+	# Face along the arc, so the first frame is not a snap from an arbitrary basis.
+	var radial := (target.position - position).normalized()
+	var reference := Vector3.UP if absf(radial.dot(Vector3.UP)) < 0.95 else Vector3.RIGHT
+	var tangent := radial.cross(reference).normalized() * _orbit_sign
+	look_at(global_position + tangent, Vector3.UP)
+
+
+## Current distance to the commanded target, for the HUD and for tests.
+func range_to_target() -> float:
+	return 0.0 if target == null else position.distance_to(target.position)
 
 
 ## Where a missile leaves the ship, in the parent's frame.

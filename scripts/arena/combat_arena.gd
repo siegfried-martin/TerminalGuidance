@@ -21,6 +21,7 @@ var _ship: Mothership
 var _target: TargetShip
 var _views: ViewController
 var _hud: DebugHud
+var _overlay: FlightOverlay
 
 var _shots: int = 0
 var _hits: int = 0
@@ -45,8 +46,8 @@ func _build_environment() -> void:
 	env.background_mode = Environment.BG_COLOR
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.glow_enabled = true
-	env.glow_intensity = 0.4
+	env.glow_enabled = Tuning.flag("arena/glow_enabled")
+	env.glow_intensity = Tuning.num("arena/glow_intensity")
 
 	var world_env := WorldEnvironment.new()
 	world_env.name = "WorldEnvironment"
@@ -93,7 +94,8 @@ func _build_ships() -> void:
 	_ship.name = "Mothership"
 	_arena_root.add_child(_ship)
 	_ship.target = _target
-	_ship.position = Vector3(0.0, 0.0, Tuning.num("ship/standoff_distance"))
+	_ship.position = Vector3(0.0, 0.0, 1.0)   # a bearing; the standoff comes from tuning
+	_ship.snap_to_standoff()
 
 
 func _build_views() -> void:
@@ -111,6 +113,16 @@ func _build_views() -> void:
 	_views.name = "ViewController"
 	add_child(_views)
 	_views.setup(_ship, ship_camera, missile_camera)
+
+	_overlay = FlightOverlay.new()
+	_overlay.name = "FlightOverlay"
+	_overlay.target = _target
+	_overlay.missile_provider = func() -> Missile: return _views.piloted_missile()
+	var overlay_layer := CanvasLayer.new()
+	overlay_layer.name = "OverlayLayer"
+	overlay_layer.layer = 90   # under the debug HUD, which is 100
+	add_child(overlay_layer)
+	overlay_layer.add_child(_overlay)
 
 
 func _build_hud() -> void:
@@ -132,9 +144,15 @@ func _build_hud() -> void:
 	_hud.add_row("shots", func() -> String:
 		var rate := 0.0 if _shots == 0 else 100.0 * float(_hits) / float(_shots)
 		return "%d fired · %d hit · %.0f%%" % [_shots, _hits, rate])
+	_hud.add_row("aim off", func() -> String:
+		var missile := _views.piloted_missile()
+		return "—" if missile == null else "%.0f deg" % missile.aim_offset_degrees())
+	_hud.add_row("standoff", func() -> String:
+		return "%.0f m held / %.0f m tuned" % [
+			_ship.range_to_target(), Tuning.num("ship/standoff_distance")])
 	_hud.add_row("last", func() -> String: return _last_outcome)
 	_hud.add_row("keys", func() -> String:
-		return "Fire · mouse/stick steers the missile · F1 hud · F5 reload · Esc quit")
+		return "LMB/Space: fire, then detonate · mouse/stick aims · F1 hud · F5 reload · Esc quit")
 
 
 func _apply_tuning() -> void:
@@ -142,6 +160,8 @@ func _apply_tuning() -> void:
 	env.background_color = Tuning.color("arena/background_color")
 	env.ambient_light_color = Tuning.color("arena/background_color").lightened(0.35)
 	env.ambient_light_energy = Tuning.num("arena/ambient_energy")
+	env.glow_enabled = Tuning.flag("arena/glow_enabled")
+	env.glow_intensity = Tuning.num("arena/glow_intensity")
 
 	var key := get_node("KeyLight") as DirectionalLight3D
 	key.light_energy = Tuning.num("arena/key_light_energy")
@@ -154,12 +174,19 @@ func _apply_tuning() -> void:
 # --- firing ------------------------------------------------------------------
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("fire"):
+	# The same button fires and detonates; which one it means depends on the view.
+	# Riding a missile, the only thing left to decide is when it ends.
+	if _views.view() == ViewController.View.MISSILE:
+		if event.is_action_pressed("detonate"):
+			detonate_current()
+	elif event.is_action_pressed("fire"):
 		fire()
-	elif event.is_action_pressed("quit"):
+
+	if event.is_action_pressed("quit"):
 		get_tree().quit()
 	elif event.is_action_pressed("debug_toggle_hud"):
 		_hud.toggle()
+		_overlay.visible = _hud.visible
 	elif event.is_action_pressed("debug_reload_tuning"):
 		Tuning.reload()
 	elif event.is_action_pressed("debug_reverse_arc"):
@@ -184,10 +211,21 @@ func fire() -> Missile:
 	return missile
 
 
+## End the ride early. Returns true if there was a missile to end.
+func detonate_current() -> bool:
+	var missile := _views.piloted_missile()
+	if missile == null:
+		return false
+	missile.detonate_early()
+	return true
+
+
 func _on_missile_detonated(missile: Missile, reason: int, hit: bool) -> void:
 	if hit:
 		_hits += 1
 		_last_outcome = "HIT"
+	elif reason == Missile.EndReason.EARLY_DETONATE:
+		_last_outcome = "detonated at %.0f m" % missile.distance_to_target()
 	else:
 		_last_outcome = "fuse expired at %.0f m" % missile.distance_to_target()
 

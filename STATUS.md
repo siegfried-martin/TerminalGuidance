@@ -30,12 +30,15 @@ driven; no Godot editor GUI has been used at any point.
 | `make shot`: render frames to PNG from the CLI for visual verification | working |
 | `make apiref`: this exact build's 771-class reference for API grounding | working |
 | `DESIGN.md` — distilled thesis, Target Experience verbatim | written |
-| `decisions/` — 33 ADRs, indexed, each with a *What this forbids* section | written |
+| `decisions/` — 35 ADRs, indexed, each with a *What this forbids* section | written |
 | **Combat arena** (`scenes/arena.tscn`, now the main scene) | working |
 | Mothership autopilot: slow arc at standoff, nose on target | working |
 | Dumb target ship: drifts, turns at its patrol bounds | working |
 | Missile: launch along ship heading, constant speed, fuse | working |
-| Direct screen-space steering, mouse and right stick, roll locked out | working |
+| Reticle steering: input moves an intent marker, the missile turns toward it | working |
+| Autopilot faces its direction of travel; missiles launch across the target | working |
+| Flight overlay: reticle, nose-to-reticle lag line, screen-edge target arrow | working |
+| Early detonate on the fire button while riding, camera returns to the ship | working |
 | SHIP ↔ MISSILE camera state machine, hard cut, timed return | working |
 | Swept-segment hit test — no physics bodies anywhere (ADR 0032) | working |
 | Detonation flash, hit/miss readout, shot and hit counters | working |
@@ -46,7 +49,8 @@ driven; no Godot editor GUI has been used at any point.
 In build order, each with its own feel checkpoint — do not pull any of them
 forward, because adding one early destroys the reading on the one before it:
 
-- **Step 5** — boost/afterburner, early detonate, splash.
+- **Step 5** — boost/afterburner and splash damage. *Early detonate is already in*
+  (pulled forward by request); what remains of step 5 is boost and splash.
 - **Step 6** — turret mode and the missile cooldown. *This is the alternation the
   whole POC exists to test* (success criterion 2).
 - **Step 7** — blockers, enemy fire, ship HP.
@@ -85,6 +89,23 @@ They are the knobs most likely to be wrong.
   varies shot to shot, which is where the procedural variety comes from.
 - **`controls/mouse_sensitivity` 0.28 deg/px** versus the stick. Both are capped by
   the same turn rate so neither device can out-ask the other.
+
+### Fixed this session
+
+- **Autopilot could not hold its standoff.** The range correction was a normalised
+  blend of tangent and radial, so its authority collapsed at the setpoint and a
+  target drifting at 6 m/s outran it — the held range wandered indefinitely, and
+  after a `standoff_distance` edit the ship crawled toward the new value ever more
+  slowly. It read as "hot reload is broken"; hot reload was fine. Now the radial
+  correction is an explicit speed (`range_hold_seconds`, `range_hold_max_speed`),
+  and a standoff edit snaps the ship immediately so the typed value is visible at
+  once. Guarded by a 30-second simulated regression test.
+- **The flight overlay drew nothing.** A `Control` parented straight to a
+  `CanvasLayer` has no parent Control to resolve anchors against, so
+  `PRESET_FULL_RECT` left it at zero size and the edge-clamping maths degenerated.
+  It now sizes itself from the viewport, with a test asserting non-zero size.
+- **`glow_intensity` was a constant in arena code** — a feel value in code, which
+  the feel-parameter law forbids. Moved to `[arena]`.
 
 ### Engagement envelope — record this
 
