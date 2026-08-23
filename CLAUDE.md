@@ -39,10 +39,10 @@ would reach for by reflex are forbidden there deliberately.
 
 **No gameplay-feel constant may appear in code.** Every feel value — turn rates,
 fuse times, camera lag, boost curves, easing, cooldowns, interrupt frequency,
-cruise speeds, spool times, light angles, FOV — lives in `tuning.json` and is read
+cruise speeds, spool times, light angles, FOV — lives in `tuning.cfg` and is read
 through the `Tuning` autoload at the point of use.
 
-- Adding a feel parameter means: add it to `tuning.json`, read it via
+- Adding a feel parameter means: add it to `tuning.cfg`, read it via
   `Tuning.num()` / `vec3()` / `color()` / `flag()`, add it to
   `REQUIRED_TUNING_KEYS` in `tools/tests/test_runner.gd`, and surface it in the
   debug HUD if it is something the human will want to watch. Same change, not a
@@ -50,9 +50,13 @@ through the `Tuning` autoload at the point of use.
 - `Tuning` getters take **no default argument**, on purpose. A default is a feel
   constant hiding in code, and it makes a typo'd key behave plausibly. A missing
   key errors, turns the HUD's tuning line red, and fails `make check`.
-- Saving `tuning.json` hot-reloads it into the running game. Systems that cache a
+- Saving `tuning.cfg` hot-reloads it into the running game. Systems that cache a
   derived value must rebuild on the `Tuning.reloaded` signal (see
   `GrayBoxArena.rebuild()`).
+- `tuning.cfg` is a Godot `ConfigFile` (ADR 0033). Comments start with `;` and may
+  sit at the end of a value line; **`#` is not a comment character** and silently
+  corrupts the next key. Values are Godot literals — `Vector3(x, y, z)` is real,
+  colours are hex strings.
 - Infrastructure constants (poll intervals, buffer sizes, layer numbers) are not
   feel values and belong in code as `const`. If the human would ever want to nudge
   it while looking at the screen, it is a feel value.
@@ -147,15 +151,22 @@ protect is not implemented yet.
 
 ```
 project.godot          minimal; autoloads and window config only
-tuning.json            every feel value in the game
+tuning.cfg             every feel value in the game, with inline comments
 data/input_map.json    input bindings
-scenes/                .tscn shells only
+scenes/arena.tscn      main scene: the combat POC arena (shell only)
+scenes/sandbox.tscn    asset/harness scene with the debug fly-cam (shell only)
 scripts/autoload/      Tuning, Bindings
-scripts/sandbox/       the sandbox harness
-scripts/world/         arena and world construction
-scripts/debug/         HUD, debug camera
+scripts/arena/         the combat arena builder
+scripts/ships/         mothership, target ship
+scripts/weapons/       missile
+scripts/view/          camera/control state machine, chase camera
+scripts/world/         marker lattice, reference field
+scripts/effects/       detonation flash
+scripts/lib/           pure helpers (FlightGeometry) — no scene tree, unit tested
+scripts/sandbox/       the asset harness scene
+scripts/debug/         HUD, debug fly-cam
 assets/                models and textures (+ committed .import files)
-tools/                 asset generators, test harness
+tools/                 asset generators, test harness, screenshot harnesses
 docs/                  design and POC docs (source of truth for intent)
 .apiref/               generated, gitignored: this build's class reference
 ```

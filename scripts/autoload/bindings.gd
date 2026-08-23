@@ -70,6 +70,28 @@ func _parse_event(spec: String, action: String) -> InputEvent:
 			var mb := InputEventMouseButton.new()
 			mb.button_index = button
 			return mb
+		"joybutton":
+			var joy_button := _joy_button(parts[1])
+			if joy_button == JOY_BUTTON_INVALID:
+				_error("action '%s': unknown joypad button '%s'" % [action, parts[1]])
+				return null
+			var jb := InputEventJoypadButton.new()
+			jb.button_index = joy_button
+			return jb
+		"joyaxis":
+			# Trailing +/- selects the half of the axis the action listens to.
+			var sign_char := parts[1].right(1)
+			if sign_char != "+" and sign_char != "-":
+				_error("action '%s': joyaxis '%s' needs a trailing + or -" % [action, parts[1]])
+				return null
+			var axis := _joy_axis(parts[1].left(parts[1].length() - 1))
+			if axis == JOY_AXIS_INVALID:
+				_error("action '%s': unknown joypad axis '%s'" % [action, parts[1]])
+				return null
+			var jm := InputEventJoypadMotion.new()
+			jm.axis = axis
+			jm.axis_value = 1.0 if sign_char == "+" else -1.0
+			return jm
 	_error("action '%s': unknown event kind '%s'" % [action, parts[0]])
 	return null
 
@@ -82,6 +104,36 @@ func _mouse_button(name: String) -> MouseButton:
 		"wheel_up": return MOUSE_BUTTON_WHEEL_UP
 		"wheel_down": return MOUSE_BUTTON_WHEEL_DOWN
 	return MOUSE_BUTTON_NONE
+
+
+func _joy_button(name: String) -> JoyButton:
+	match name.to_lower():
+		"a", "cross": return JOY_BUTTON_A
+		"b", "circle": return JOY_BUTTON_B
+		"x", "square": return JOY_BUTTON_X
+		"y", "triangle": return JOY_BUTTON_Y
+		"lb", "l1": return JOY_BUTTON_LEFT_SHOULDER
+		"rb", "r1": return JOY_BUTTON_RIGHT_SHOULDER
+		"ls", "l3": return JOY_BUTTON_LEFT_STICK
+		"rs", "r3": return JOY_BUTTON_RIGHT_STICK
+		"back", "select": return JOY_BUTTON_BACK
+		"start": return JOY_BUTTON_START
+		"dpad_up": return JOY_BUTTON_DPAD_UP
+		"dpad_down": return JOY_BUTTON_DPAD_DOWN
+		"dpad_left": return JOY_BUTTON_DPAD_LEFT
+		"dpad_right": return JOY_BUTTON_DPAD_RIGHT
+	return JOY_BUTTON_INVALID
+
+
+func _joy_axis(name: String) -> JoyAxis:
+	match name.to_lower():
+		"left_x": return JOY_AXIS_LEFT_X
+		"left_y": return JOY_AXIS_LEFT_Y
+		"right_x": return JOY_AXIS_RIGHT_X
+		"right_y": return JOY_AXIS_RIGHT_Y
+		"trigger_left", "lt": return JOY_AXIS_TRIGGER_LEFT
+		"trigger_right", "rt": return JOY_AXIS_TRIGGER_RIGHT
+	return JOY_AXIS_INVALID
 
 
 func _error(msg: String) -> void:

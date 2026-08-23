@@ -2,7 +2,7 @@
 # The Godot editor is a viewer of last resort; nothing here requires it.
 
 GODOT ?= godot
-SCENE ?= res://scenes/sandbox.tscn
+SCENE ?= res://scenes/arena.tscn
 SHOTS ?= .shots
 
 .DEFAULT_GOAL := help
@@ -11,11 +11,18 @@ SHOTS ?= .shots
 help:  ## Show this help
 	@grep -E '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
 
-run:  ## Play the sandbox in a window
+run:  ## Play the combat arena in a window (SCENE=res://scenes/sandbox.tscn for the asset harness)
 	$(GODOT) --scene $(SCENE)
 
-check:  ## Headless gate: compiles, Godot-3 API lint, tuning keys, assets, scene build
-	@$(GODOT) --headless --scene res://tools/tests/test_runner.tscn
+check: import  ## Headless gate: compiles, Godot-3 API lint, tuning keys, assets, scene build
+	@# `timeout` is a watchdog, not a nicety: if the runner script itself fails to
+	@# parse, its scene root has no script, nothing calls quit(), and the engine
+	@# idles forever instead of failing. Depending on `import` keeps the global
+	@# class cache fresh so a newly added `class_name` resolves.
+	@timeout $${CHECK_TIMEOUT:-180} $(GODOT) --headless --scene res://tools/tests/test_runner.tscn; \
+		status=$$?; \
+		if [ $$status -eq 124 ]; then echo "  FAIL  check timed out after $${CHECK_TIMEOUT:-180}s"; fi; \
+		exit $$status
 
 import:  ## Re-import assets (run after adding or regenerating a file in assets/)
 	@$(GODOT) --headless --import >/dev/null && echo "assets imported"

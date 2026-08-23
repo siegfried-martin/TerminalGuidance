@@ -1,5 +1,5 @@
 extends Node
-## Loads `tuning.json` and hot-reloads it whenever the file changes on disk.
+## Loads `tuning.cfg` and hot-reloads it whenever the file changes on disk.
 ##
 ## The feel-parameter law (see CLAUDE.md): no gameplay-feel constant may appear
 ## in code. Read every feel value through this singleton, at the point of use.
@@ -10,11 +10,11 @@ extends Node
 
 signal reloaded
 
-const PATH := "res://tuning.json"
+const PATH := "res://tuning.cfg"
 ## Infrastructure constant, not a feel value: how often the file is stat'd.
 const POLL_INTERVAL_SEC := 0.25
 
-var _data: Dictionary = {}
+var _config := ConfigFile.new()
 var _missing: Dictionary = {}
 var _last_mtime: int = 0
 var _poll_accum: float = 0.0
@@ -41,18 +41,15 @@ func _process(delta: float) -> void:
 ## Re-read the file. Safe to call at any time; bound to F5 as well as the poll.
 func reload() -> void:
 	var mtime := FileAccess.get_modified_time(PATH)
-	var text := FileAccess.get_file_as_string(PATH)
-	if text.is_empty():
-		_fail("cannot read %s (error %d)" % [PATH, FileAccess.get_open_error()])
-		return
-	var parsed: Variant = JSON.parse_string(text)
-	if typeof(parsed) != TYPE_DICTIONARY:
-		# Keep the previous values. A half-written file mid-save must not wipe
-		# tuning out from under a running session.
-		_fail("%s is not valid JSON; keeping previous values" % PATH)
+	# Parse into a throwaway first. A half-written file mid-save must not wipe
+	# tuning out from under a running session.
+	var candidate := ConfigFile.new()
+	var err := candidate.load(PATH)
+	if err != OK:
+		_fail("%s failed to parse (error %d); keeping previous values" % [PATH, err])
 		_last_mtime = mtime
 		return
-	_data = parsed as Dictionary
+	_config = candidate
 	_last_mtime = mtime
 	_load_error = ""
 	_missing.clear()
@@ -90,21 +87,24 @@ func text(path: String) -> String:
 	return String(v) if typeof(v) == TYPE_STRING else ""
 
 
-## Reads "#rrggbb" / "#rrggbbaa" / a named color.
+## Reads a hex string: "#rrggbb" or "#rrggbbaa".
+##
+## Colours stay strings rather than ConfigFile's Color() literal, which needs four
+## float components — "#c9ccd2" is the form a human can read and edit.
 func color(path: String) -> Color:
-	var s := text(path)
-	if s.is_empty():
+	var value := text(path)
+	if value.is_empty():
 		return Color.MAGENTA  # loud on purpose
-	return Color(s)
+	return Color(value)
 
 
-## Reads a 3-element array [x, y, z].
+## Reads a Vector3(x, y, z) literal.
 func vec3(path: String) -> Vector3:
 	var v: Variant = _lookup(path)
-	if typeof(v) == TYPE_ARRAY and (v as Array).size() == 3:
-		var a := v as Array
-		return Vector3(float(a[0]), float(a[1]), float(a[2]))
-	_note_missing(path, "expected [x, y, z]")
+	if typeof(v) == TYPE_VECTOR3:
+		return v as Vector3
+	if v != null:
+		_note_missing(path, "expected Vector3(x, y, z), got %s" % type_string(typeof(v)))
 	return Vector3.ZERO
 
 
@@ -139,16 +139,16 @@ func _lookup(path: String) -> Variant:
 	return v
 
 
+## `path` is "section/key". A key may itself contain slashes — only the first
+## segment is the section — so "camera/ship/follow_distance" would look up key
+## "ship/follow_distance" in section [camera] if the file were ever nested deeper.
 func _lookup_quiet(path: String) -> Variant:
-	var node: Variant = _data
-	for part in path.split("/", false):
-		if typeof(node) != TYPE_DICTIONARY:
-			return null
-		var d := node as Dictionary
-		if not d.has(part):
-			return null
-		node = d[part]
-	return node
+	var split := path.split("/", false, 1)
+	if split.size() != 2:
+		return null
+	if not _config.has_section_key(split[0], split[1]):
+		return null
+	return _config.get_value(split[0], split[1])
 
 
 func _note_missing(path: String, why: String) -> void:

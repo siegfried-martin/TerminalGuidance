@@ -10,7 +10,7 @@ config_version=5
 
 config/name="Missile Rider"
 config/description="Combat POC. See docs/COMBAT_POC_IMPLEMENTATION.md"
-run/main_scene="res://scenes/sandbox.tscn"
+run/main_scene="res://scenes/arena.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 
 [autoload]
