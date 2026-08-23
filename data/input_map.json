@@ -1,0 +1,18 @@
+{
+  "_note": "Input bindings, applied to InputMap at startup by scripts/autoload/bindings.gd. Edit here, never in the Godot editor's Input Map tab — editor-authored actions land in project.godot and stop being reviewable. Event syntax: 'key:<name>' or 'mouse:<left|right|middle>'.",
+
+  "actions": {
+    "cam_forward":   ["key:W"],
+    "cam_back":      ["key:S"],
+    "cam_left":      ["key:A"],
+    "cam_right":     ["key:D"],
+    "cam_up":        ["key:E"],
+    "cam_down":      ["key:Q"],
+    "cam_boost":     ["key:Shift"],
+    "cam_look":      ["mouse:right"],
+
+    "debug_toggle_hud":     ["key:F1"],
+    "debug_reload_tuning":  ["key:F5"],
+    "quit":                 ["key:Escape"]
+  }
+}

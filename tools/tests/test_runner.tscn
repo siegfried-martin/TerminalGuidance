@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3]
+
+; Shell for the headless check harness. See tools/tests/test_runner.gd.
+
+[ext_resource type="Script" path="res://tools/tests/test_runner.gd" id="1"]
+
+[node name="TestRunner" type="Node"]
+script = ExtResource("1")
