@@ -2,6 +2,11 @@
 
 *Status: accepted · 2026-08-23 · made while bootstrapping the repo*
 
+> **File format note (2026-08-23):** the file is now `tuning.cfg`, a Godot
+> `ConfigFile`, not `tuning.json`. See ADR 0033. The decision below — one
+> hot-reloading file, no defaults on the getters — is unchanged; only the
+> serialisation is. Read "tuning.json" as "the tuning file" throughout.
+
 ## Decision
 
 All gameplay-feel values load from `tuning.json` through the `Tuning` autoload and

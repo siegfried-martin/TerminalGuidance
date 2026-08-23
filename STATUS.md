@@ -17,7 +17,8 @@ driven; no Godot editor GUI has been used at any point.
 | Thing | State |
 |---|---|
 | Godot 4.7.2 project, runs windowed and headless | working |
-| `tuning.json` hot reload (save the file, the running game changes) | working |
+| `tuning.cfg` hot reload (save the file, the running game changes) | working |
+| Tuning file is a `ConfigFile` with inline `;` comments on every value (ADR 0033) | working |
 | `Tuning` autoload with typed getters and loud missing-key errors | working |
 | Input bindings from `data/input_map.json` (no editor Input Map tab) | working |
 | Debug HUD with pluggable readout rows + tuning status line | working |
@@ -29,7 +30,7 @@ driven; no Godot editor GUI has been used at any point.
 | `make shot`: render frames to PNG from the CLI for visual verification | working |
 | `make apiref`: this exact build's 771-class reference for API grounding | working |
 | `DESIGN.md` — distilled thesis, Target Experience verbatim | written |
-| `decisions/` — 32 ADRs, indexed, each with a *What this forbids* section | written |
+| `decisions/` — 33 ADRs, indexed, each with a *What this forbids* section | written |
 | **Combat arena** (`scenes/arena.tscn`, now the main scene) | working |
 | Mothership autopilot: slow arc at standoff, nose on target | working |
 | Dumb target ship: drifts, turns at its patrol bounds | working |
@@ -55,7 +56,7 @@ forward, because adding one early destroys the reading on the one before it:
 ## Next
 
 **A human feel session, before any more code.** Step 4 is the first checkpoint and
-the answer gates everything after it. Fly it, turn the knobs in `tuning.json` while
+the answer gates everything after it. Fly it, turn the knobs in `tuning.cfg` while
 it runs, and answer success criterion 1: *does the developer grin during missile
 flight, in gray-box, with no art and no progression?*
 
@@ -109,6 +110,8 @@ the observed value here when it does.
 - `godot --check-only --script foo.gd` cannot see autoloads, so it reports
   "Identifier not found: Tuning" for most files. It is not a usable gate; the
   in-scene-tree test runner is.
+- `tuning.cfg` uses `;` for comments. `#` is **not** a comment character — it gets
+  parsed into the next key and corrupts the file without an obvious error.
 - Adding a new `class_name` needs `make import` before anything can reference it,
   or the script fails to parse with "Could not find type". `make check` depends on
   `import` for that reason, and carries a `timeout` watchdog — when the runner

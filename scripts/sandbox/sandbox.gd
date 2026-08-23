@@ -1,6 +1,6 @@
 extends Node3D
 ## The sandbox scene. Everything visible here is constructed in code from
-## tuning.json — the .tscn is an empty shell holding this script and nothing
+## tuning.cfg — the .tscn is an empty shell holding this script and nothing
 ## else. That is the project's scene policy: the editor is a viewer, and a
 ## scene diff should never be the place a design decision hides.
 ##

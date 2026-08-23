@@ -14,7 +14,7 @@ const SCRIPT_DIRS: Array[String] = ["res://scripts", "res://tools"]
 const GODOT3_DENYLIST := "res://tools/tests/godot3_denylist.json"
 
 ## Tuning keys the sandbox needs. Keeping the list here means a rename in
-## tuning.json fails the build instead of silently zeroing a feel value.
+## tuning.cfg fails the build instead of silently zeroing a feel value.
 const REQUIRED_TUNING_KEYS: Array[String] = [
 	"missile/base_speed", "missile/turn_rate_deg_per_sec", "missile/fuse_seconds",
 	"missile/velocity_inheritance",
@@ -59,6 +59,7 @@ var _checks: int = 0
 func _ready() -> void:
 	print("── missile rider: headless checks ──")
 	_test_tuning()
+	_test_tuning_file_hygiene()
 	_test_bindings()
 	_test_scripts_compile()
 	_test_no_godot3_api()
@@ -77,9 +78,36 @@ func _ready() -> void:
 # --- checks ------------------------------------------------------------------
 
 func _test_tuning() -> void:
-	_expect(Tuning.load_error().is_empty(), "tuning.json parses", Tuning.load_error())
+	_expect(Tuning.load_error().is_empty(), "tuning.cfg parses", Tuning.load_error())
 	for key in REQUIRED_TUNING_KEYS:
-		_expect(Tuning.has(key), "tuning key present: " + key, "missing from tuning.json")
+		_expect(Tuning.has(key), "tuning key present: " + key, "missing from tuning.cfg")
+
+
+## `#` is not a comment character in a ConfigFile — it is parsed into the next key
+## and corrupts the file with no obvious error (ADR 0033). It is legitimate inside
+## a quoted string, which is how hex colours are written. Catch the other case.
+func _test_tuning_file_hygiene() -> void:
+	var lines := FileAccess.get_file_as_string(Tuning.PATH).split("\n")
+	var offenders: PackedStringArray = []
+	for i in lines.size():
+		var outside := _outside_quotes(lines[i])
+		var comment_at := outside.find(";")
+		if comment_at >= 0:
+			outside = outside.substr(0, comment_at)
+		if outside.contains("#"):
+			offenders.append("line %d: %s" % [i + 1, lines[i].strip_edges()])
+	_expect(offenders.is_empty(),
+		"tuning.cfg uses ';' for comments, never '#'", ", ".join(offenders))
+
+
+## Everything on the line that is not inside double quotes.
+func _outside_quotes(line: String) -> String:
+	var parts := line.split("\"")
+	var out := ""
+	for i in parts.size():
+		if i % 2 == 0:
+			out += parts[i]
+	return out
 
 
 func _test_bindings() -> void:

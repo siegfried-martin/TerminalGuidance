@@ -5,7 +5,7 @@ extends Camera3D
 ##
 ## This is a debug tool, not the game's camera and not a flight model. The
 ## mothership and missile cameras in the POC are separate and will not inherit
-## from this. Its speeds still come from tuning.json, because anything the
+## from this. Its speeds still come from tuning.cfg, because anything the
 ## developer will want to nudge while looking at the screen belongs there.
 
 var _yaw: float = 0.0

@@ -87,7 +87,7 @@ func _update_status() -> void:
 		_status.text = "tuning: MISSING KEYS — " + ", ".join(missing)
 		_status.add_theme_color_override("font_color", _MISSING_COLOR)
 	else:
-		_status.text = "tuning: ok (%d loads) — edit tuning.json and save to hot-reload" % Tuning.reload_count()
+		_status.text = "tuning: ok (%d loads) — edit tuning.cfg and save to hot-reload" % Tuning.reload_count()
 		_status.add_theme_color_override("font_color", _OK_COLOR)
 
 

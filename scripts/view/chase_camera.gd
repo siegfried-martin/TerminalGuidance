@@ -4,7 +4,7 @@ extends Camera3D
 ## the missile view; the difference between them is entirely tuning values.
 ##
 ## Follow lag is the single most feel-critical value in the file and therefore
-## lives in tuning.json like everything else. The camera reads its own numbers
+## lives in tuning.cfg like everything else. The camera reads its own numbers
 ## through a key prefix so one class can serve both views.
 
 var subject: Node3D
