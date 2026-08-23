@@ -20,6 +20,7 @@
     "cam_look":      ["mouse:right"],
 
     "debug_toggle_hud":     ["key:F1"],
+    "debug_toggle_panel":   ["key:F2"],
     "debug_reload_tuning":  ["key:F5"],
     "debug_reverse_arc":    ["key:R"],
     "quit":                 ["key:Escape"]

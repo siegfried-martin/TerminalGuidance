@@ -174,6 +174,13 @@ func _apply_tuning() -> void:
 # --- firing ------------------------------------------------------------------
 
 func _unhandled_input(event: InputEvent) -> void:
+	# With the tuning panel open the pointer belongs to the UI, so a click in the
+	# game area must not also launch or detonate a missile.
+	if DebugPanel.is_open():
+		if event.is_action_pressed("quit"):
+			get_tree().quit()
+		return
+
 	# The same button fires and detonates; which one it means depends on the view.
 	# Riding a missile, the only thing left to decide is when it ends.
 	if _views.view() == ViewController.View.MISSILE:

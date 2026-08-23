@@ -57,6 +57,17 @@ through the `Tuning` autoload at the point of use.
   sit at the end of a value line; **`#` is not a comment character** and silently
   corrupts the next key. Values are Godot literals — `Vector3(x, y, z)` is real,
   colours are hex strings.
+- **Values are edited in-game with the F2 panel** (ADR 0036), and Save writes back
+  to `tuning.cfg` preserving every comment. The comments are the panel's labels,
+  tooltips and slider ranges:
+
+  ```ini
+  ;; Long-form description, shown as the tooltip. As many lines as it needs.
+  base_speed = 70.0        ; [20..400] m/s. Short label, shown on the row
+  ```
+
+  So **every new value needs a comment**, and a `[min..max]` marker if it should
+  get a slider. Adding the value and documenting it are one action, not two.
 - Infrastructure constants (poll intervals, buffer sizes, layer numbers) are not
   feel values and belong in code as `const`. If the human would ever want to nudge
   it while looking at the screen, it is a feel value.
@@ -162,9 +173,10 @@ scripts/weapons/       missile
 scripts/view/          camera/control state machine, chase camera
 scripts/world/         marker lattice, reference field
 scripts/effects/       detonation flash
-scripts/lib/           pure helpers (FlightGeometry) — no scene tree, unit tested
+scripts/lib/           pure helpers — no scene tree, no disk, unit tested:
+                       FlightGeometry, TuningSchema, TuningWriter
 scripts/sandbox/       the asset harness scene
-scripts/debug/         HUD, debug fly-cam
+scripts/debug/         HUD, debug fly-cam, the F2 tuning panel
 assets/                models and textures (+ committed .import files)
 tools/                 asset generators, test harness, screenshot harnesses
 docs/                  design and POC docs (source of truth for intent)

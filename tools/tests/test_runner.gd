@@ -56,7 +56,8 @@ const REQUIRED_ACTIONS: Array[String] = [
 	"fire", "detonate", "missile_left", "missile_right", "missile_up", "missile_down",
 	"cam_forward", "cam_back", "cam_left", "cam_right", "cam_up", "cam_down",
 	"cam_boost", "cam_look",
-	"debug_toggle_hud", "debug_reload_tuning", "debug_reverse_arc", "quit",
+	"debug_toggle_hud", "debug_toggle_panel", "debug_reload_tuning",
+	"debug_reverse_arc", "quit",
 ]
 
 var _failures: PackedStringArray = []
@@ -74,6 +75,9 @@ func _ready() -> void:
 	_test_flight_geometry()
 	_test_missile_flight()
 	_test_reticle_steering()
+	_test_tuning_schema()
+	_test_tuning_writer()
+	_test_debug_panel()
 	_test_autopilot_holds_standoff()
 	await _test_sandbox_builds()
 	await _test_arena_builds()
@@ -377,6 +381,126 @@ func _test_autopilot_holds_standoff() -> void:
 
 	ship.queue_free()
 	target.queue_free()
+
+
+const SAMPLE_CFG := """; banner comment, not documentation
+[missile]
+
+;; First line of the long description.
+;; Second line.
+base_speed = 90.0                  ; [20..400] m/s, the short label
+plain = 3                          ; no range on this one
+quoted = "a ; semicolon inside"    ; and a real comment after it
+bare = true
+"""
+
+
+func _test_tuning_schema() -> void:
+	var entries := TuningSchema.parse(SAMPLE_CFG)
+	_expect(entries.size() == 4, "schema finds every key", "found %d" % entries.size())
+	if entries.size() < 4:
+		return
+
+	var first := entries[0]
+	_expect(String(first["path"]) == "missile/base_speed", "schema builds section/key paths",
+		String(first["path"]))
+	_expect(String(first["long"]) == "First line of the long description.\nSecond line.",
+		"';;' lines become the long description", String(first["long"]))
+	_expect(String(first["short"]) == "m/s, the short label",
+		"the range marker is stripped out of the short label", String(first["short"]))
+	_expect(bool(first["has_range"]) and is_equal_approx(float(first["min"]), 20.0)
+			and is_equal_approx(float(first["max"]), 400.0),
+		"'[min..max]' parses into a slider range",
+		"%s %f..%f" % [first["has_range"], first["min"], first["max"]])
+
+	_expect(not bool(entries[1]["has_range"]), "a key with no range marker gets no slider",
+		"claimed a range")
+	_expect(String(entries[1]["long"]).is_empty(),
+		"a banner ';' comment is not treated as documentation", String(entries[1]["long"]))
+	_expect(String(entries[2]["short"]) == "and a real comment after it",
+		"a semicolon inside a quoted value is not a comment", String(entries[2]["short"]))
+	_expect(String(entries[3]["short"]).is_empty(), "a key with no comment parses",
+		String(entries[3]["short"]))
+
+	# Every value the game reads must be visible in the panel.
+	var known := {}
+	for entry in Tuning.schema():
+		known[String(entry["path"])] = true
+	var unlisted: PackedStringArray = []
+	for key in REQUIRED_TUNING_KEYS:
+		if not known.has(key):
+			unlisted.append(key)
+	_expect(unlisted.is_empty(), "every required tuning key appears in the panel schema",
+		", ".join(unlisted))
+
+
+func _test_tuning_writer() -> void:
+	var updated := TuningWriter.apply(SAMPLE_CFG, {
+		"missile/base_speed": 175.5,
+		"missile/plain": 9,
+		"missile/bare": false,
+	})
+
+	_expect(updated.contains("base_speed = 175.5"), "writer replaces the value",
+		"value not updated")
+	_expect(updated.contains("; [20..400] m/s, the short label"),
+		"writer keeps the inline comment and its range marker", "comment lost")
+	_expect(updated.contains(";; First line of the long description."),
+		"writer keeps the long description", "documentation lost")
+	_expect(updated.contains("; banner comment, not documentation"),
+		"writer keeps banner comments", "banner lost")
+	_expect(updated.contains("plain = 9") and not updated.contains("plain = 9.0"),
+		"an int stays an int", "int was written as a float")
+	_expect(updated.contains("bare = false"), "a bool round-trips", "bool not written")
+	_expect(updated.contains("quoted = \"a ; semicolon inside\""),
+		"an untouched line is byte-identical", "untouched line was rewritten")
+
+	# The result must still parse, with the right types.
+	var config := ConfigFile.new()
+	_expect(config.parse(updated) == OK, "the rewritten file still parses", "parse failed")
+	_expect(typeof(config.get_value("missile", "base_speed")) == TYPE_FLOAT,
+		"a float stays a float after a round-trip",
+		type_string(typeof(config.get_value("missile", "base_speed"))))
+	_expect(typeof(config.get_value("missile", "plain")) == TYPE_INT,
+		"an int stays an int after a round-trip",
+		type_string(typeof(config.get_value("missile", "plain"))))
+
+	# 90.0 -> 90 would silently change the type on the next load.
+	_expect(TuningWriter.format_float(90.0) == "90.0",
+		"a whole float keeps its decimal point", TuningWriter.format_float(90.0))
+	_expect(TuningWriter.format_value(Vector3(1.0, 2.5, -3.0)) == "Vector3(1.0, 2.5, -3.0)",
+		"a Vector3 round-trips as a literal", TuningWriter.format_value(Vector3(1.0, 2.5, -3.0)))
+
+	# Nothing dirty must mean nothing written.
+	_expect(TuningWriter.apply(SAMPLE_CFG, {}) == SAMPLE_CFG,
+		"no changes leaves the file untouched", "file was rewritten anyway")
+
+
+func _test_debug_panel() -> void:
+	_expect(DebugPanel != null, "the tuning panel autoload exists", "not registered")
+	_expect(not DebugPanel.is_open(), "the tuning panel starts closed", "opened itself")
+
+	DebugPanel.set_open(true)
+	_expect(DebugPanel.is_open(), "the tuning panel opens", "stayed closed")
+	var rows := DebugPanel.row_count()
+	_expect(rows >= Tuning.schema().size(),
+		"the panel builds a row for every documented value",
+		"%d rows for %d entries" % [rows, Tuning.schema().size()])
+	DebugPanel.set_open(false)
+	_expect(not DebugPanel.is_open(), "the tuning panel closes", "stayed open")
+
+	# Editing marks the file dirty without touching disk, and revert undoes it.
+	var before := Tuning.num("missile/base_speed")
+	Tuning.set_value("missile/base_speed", before + 11.0)
+	_expect(Tuning.is_dirty("missile/base_speed"), "an edit is tracked as unsaved",
+		"not marked dirty")
+	_expect(is_equal_approx(Tuning.num("missile/base_speed"), before + 11.0),
+		"an edit takes effect immediately", "%f" % Tuning.num("missile/base_speed"))
+	Tuning.revert()
+	_expect(is_equal_approx(Tuning.num("missile/base_speed"), before),
+		"revert restores the value from disk", "%f" % Tuning.num("missile/base_speed"))
+	_expect(Tuning.dirty_paths().is_empty(), "revert clears the unsaved list",
+		", ".join(Tuning.dirty_paths()))
 
 
 func _test_arena_builds() -> void:

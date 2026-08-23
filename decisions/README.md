@@ -82,5 +82,6 @@ The reasoning, including what the alternative was and why it lost.
 | [0033](0033-tuning-file-is-a-configfile.md) | The tuning file is a Godot ConfigFile, so feel values carry inline comments |
 | [0034](0034-autopilot-faces-velocity.md) | The combat autopilot faces its direction of travel, not the target |
 | [0035](0035-reticle-steering.md) | Missile steering is a reticle the missile turns towards |
+| [0036](0036-in-game-tuning-panel.md) | Tuning is edited in an in-game panel; the file stays the source of truth |
 
-*Next number: 0036.*
+*Next number: 0037.*
