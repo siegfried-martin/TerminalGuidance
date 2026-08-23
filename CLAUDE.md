@@ -149,13 +149,20 @@ protect is not implemented yet.
 project.godot          minimal; autoloads and window config only
 tuning.json            every feel value in the game
 data/input_map.json    input bindings
-scenes/                .tscn shells only
+scenes/arena.tscn      main scene: the combat POC arena (shell only)
+scenes/sandbox.tscn    asset/harness scene with the debug fly-cam (shell only)
 scripts/autoload/      Tuning, Bindings
-scripts/sandbox/       the sandbox harness
-scripts/world/         arena and world construction
-scripts/debug/         HUD, debug camera
+scripts/arena/         the combat arena builder
+scripts/ships/         mothership, target ship
+scripts/weapons/       missile
+scripts/view/          camera/control state machine, chase camera
+scripts/world/         marker lattice, reference field
+scripts/effects/       detonation flash
+scripts/lib/           pure helpers (FlightGeometry) — no scene tree, unit tested
+scripts/sandbox/       the asset harness scene
+scripts/debug/         HUD, debug fly-cam
 assets/                models and textures (+ committed .import files)
-tools/                 asset generators, test harness
+tools/                 asset generators, test harness, screenshot harnesses
 docs/                  design and POC docs (source of truth for intent)
 .apiref/               generated, gitignored: this build's class reference
 ```

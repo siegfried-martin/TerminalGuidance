@@ -16,20 +16,40 @@ const GODOT3_DENYLIST := "res://tools/tests/godot3_denylist.json"
 ## Tuning keys the sandbox needs. Keeping the list here means a rename in
 ## tuning.json fails the build instead of silently zeroing a feel value.
 const REQUIRED_TUNING_KEYS: Array[String] = [
+	"missile/base_speed", "missile/turn_rate_deg_per_sec", "missile/fuse_seconds",
+	"missile/velocity_inheritance",
+	"missile/body_length", "missile/body_width", "missile/body_color",
+	"missile/exhaust_length", "missile/exhaust_color",
+	"missile/flash_start_radius", "missile/flash_end_radius",
+	"missile/flash_seconds", "missile/flash_color", "missile/flash_color_dud",
+	"ship/arc_speed", "ship/standoff_distance", "ship/muzzle_offset", "ship/hull_scale",
+	"ship/hull_tint", "ship/metallic", "ship/roughness",
+	"enemy/radius", "enemy/drift_speed", "enemy/spin_deg_per_sec",
+	"enemy/patrol_half_extent", "enemy/hull_color", "enemy/hull_emission",
+	"camera/fov_base", "camera/return_delay_sec", "camera/missile_view_mode",
+	"camera/ship_follow_distance", "camera/ship_follow_height", "camera/ship_follow_lag",
+	"camera/ship_look_ahead",
+	"camera/missile_follow_distance", "camera/missile_follow_height",
+	"camera/missile_follow_lag", "camera/missile_look_ahead",
 	"camera/free_move_speed", "camera/free_boost_multiplier", "camera/free_look_sensitivity",
-	"camera/free_move_smoothing", "camera/fov_base",
-	"camera/start_position", "camera/start_look_at",
+	"camera/free_move_smoothing", "camera/start_position", "camera/start_look_at",
+	"controls/mouse_sensitivity", "controls/stick_sensitivity", "controls/deadzone",
 	"arena/marker_spacing", "arena/marker_count_per_axis", "arena/marker_size",
 	"arena/marker_color", "arena/background_color", "arena/ambient_energy",
 	"arena/key_light_energy", "arena/key_light_angles_deg",
 	"arena/fill_light_energy", "arena/fill_light_angles_deg",
+	"arena/rock_count", "arena/rock_inner_radius", "arena/rock_outer_radius",
+	"arena/rock_slab_half_height", "arena/rock_min_size", "arena/rock_max_size",
+	"arena/rock_color", "arena/rock_seed",
 	"probe/scale", "probe/spin_deg_per_sec", "probe/bob_amplitude", "probe/bob_period_sec",
 	"probe/hull_tint", "probe/metallic", "probe/roughness",
 ]
 
 const REQUIRED_ACTIONS: Array[String] = [
+	"fire", "missile_left", "missile_right", "missile_up", "missile_down",
 	"cam_forward", "cam_back", "cam_left", "cam_right", "cam_up", "cam_down",
-	"cam_boost", "cam_look", "debug_toggle_hud", "debug_reload_tuning", "quit",
+	"cam_boost", "cam_look",
+	"debug_toggle_hud", "debug_reload_tuning", "debug_reverse_arc", "quit",
 ]
 
 var _failures: PackedStringArray = []
@@ -43,7 +63,10 @@ func _ready() -> void:
 	_test_scripts_compile()
 	_test_no_godot3_api()
 	_test_assets()
+	_test_flight_geometry()
+	_test_missile_flight()
 	await _test_sandbox_builds()
+	await _test_arena_builds()
 
 	print("── %d checks, %d failed ──" % [_checks, _failures.size()])
 	for f in _failures:
@@ -123,6 +146,123 @@ func _test_assets() -> void:
 	_expect(tex != null, "hull_panels.png imports as a Texture2D", "import failed")
 	if tex != null:
 		_expect(tex.get_width() > 0 and tex.get_height() > 0, "hull texture has size", "0x0")
+
+
+func _test_flight_geometry() -> void:
+	_expect(FlightGeometry.segment_hits_sphere(
+			Vector3(0, 0, 0), Vector3(0, 0, 100), Vector3(0, 0, 50), 5.0),
+		"swept segment hits a sphere on its path", "missed a direct pass")
+	_expect(not FlightGeometry.segment_hits_sphere(
+			Vector3(0, 0, 0), Vector3(0, 0, 100), Vector3(40, 0, 50), 5.0),
+		"swept segment misses a sphere off its path", "false positive")
+	# The reason the test is swept and not per-point: a fast missile steps clean
+	# over a small target between frames.
+	_expect(FlightGeometry.segment_hits_sphere(
+			Vector3(0, 0, -10), Vector3(0, 0, 10), Vector3.ZERO, 2.0),
+		"swept segment catches a target it would tunnel past", "tunnelled")
+	_expect(not FlightGeometry.segment_hits_sphere(
+			Vector3(0, 0, 20), Vector3(0, 0, 40), Vector3.ZERO, 2.0),
+		"swept segment does not hit behind its start", "hit something behind it")
+
+	var steered := FlightGeometry.steer_basis(Basis.IDENTITY, deg_to_rad(30.0), 0.0)
+	_expect(absf(steered.x.dot(Vector3.UP)) < 0.0001,
+		"steering leaves roll at zero", "right vector picked up roll: %s" % steered.x)
+	var forward := -steered.z
+	_expect(forward.x < -0.001 and forward.z < 0.0,
+		"positive yaw turns the nose consistently", "forward=%s" % forward)
+	_expect(is_equal_approx(steered.determinant(), 1.0),
+		"steering keeps the basis orthonormal", "det=%f" % steered.determinant())
+
+
+func _test_missile_flight() -> void:
+	# Free-standing, stepped by hand: no scene tree, no frame timing, no waiting on
+	# a 5-second fuse. Deterministic because an unpiloted missile reads no input.
+	var target := Node3D.new()
+	target.position = Vector3(0, 0, -240)
+
+	var outcome := {"fired": false, "hit": false, "reason": -1}
+	var missile := Missile.new()
+	missile.detonated.connect(func(_m: Missile, reason: int, hit: bool) -> void:
+		outcome["fired"] = true
+		outcome["hit"] = hit
+		outcome["reason"] = reason)
+	missile.launch(Vector3.ZERO, Basis.IDENTITY, Vector3.ZERO, target, 9.0)
+
+	_expect(is_equal_approx(missile.fuse_remaining(), Tuning.num("missile/fuse_seconds")),
+		"missile fuse is armed from tuning", "%f" % missile.fuse_remaining())
+	_expect(is_equal_approx(missile.speed(), Tuning.num("missile/base_speed")),
+		"missile speed is base_speed at zero inheritance", "%f" % missile.speed())
+
+	var step := 1.0 / 60.0
+	for _i in 600:
+		if outcome["fired"]:
+			break
+		missile._process(step)
+
+	_expect(bool(outcome["fired"]), "a missile fired straight at the target resolves",
+		"still flying after 10 simulated seconds")
+	_expect(bool(outcome["hit"]), "…and it resolves as a hit",
+		"reason=%d" % int(outcome["reason"]))
+	_expect(int(outcome["reason"]) == Missile.EndReason.IMPACT,
+		"…for the impact reason", "reason=%d" % int(outcome["reason"]))
+	target.free()
+
+	# A missile pointed away must run its fuse out and report a miss.
+	var away_outcome := {"fired": false, "hit": true}
+	var away_target := Node3D.new()
+	away_target.position = Vector3(0, 0, -240)
+	var away := Missile.new()
+	away.detonated.connect(func(_m: Missile, _r: int, hit: bool) -> void:
+		away_outcome["fired"] = true
+		away_outcome["hit"] = hit)
+	away.launch(Vector3.ZERO, Basis.IDENTITY.rotated(Vector3.UP, PI), Vector3.ZERO,
+		away_target, 9.0)
+	for _i in 600:
+		if away_outcome["fired"]:
+			break
+		away._process(step)
+	_expect(bool(away_outcome["fired"]) and not bool(away_outcome["hit"]),
+		"a missile pointed away expires on its fuse", "did not miss cleanly")
+	away_target.free()
+
+
+func _test_arena_builds() -> void:
+	var packed := load("res://scenes/arena.tscn") as PackedScene
+	_expect(packed != null, "arena.tscn loads", "scene failed to load")
+	if packed == null:
+		return
+	var arena := packed.instantiate()
+	add_child(arena)
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	for path in ["WorldEnvironment", "KeyLight", "FillLight", "ArenaRoot",
+			"ArenaRoot/Lattice", "ArenaRoot/Rocks", "ArenaRoot/Target",
+			"ArenaRoot/Mothership", "ShipCamera", "MissileCamera",
+			"ViewController", "DebugHud"]:
+		_expect(arena.has_node(path), "arena builds node: " + path, "not constructed")
+
+	var views := arena.call("views") as ViewController
+	_expect(views != null and views.view_name() == "SHIP",
+		"arena starts in ship view", "view=%s" % (views.view_name() if views else "null"))
+
+	var ship := arena.call("ship") as Mothership
+	_expect(ship != null and ship.target != null,
+		"autopilot has a commanded target", "target not assigned")
+
+	var missile := arena.call("fire") as Missile
+	_expect(missile != null, "fire() launches a missile", "returned null")
+	_expect(int(arena.call("shots_fired")) == 1, "fire() counts the shot",
+		"shots=%d" % int(arena.call("shots_fired")))
+	if views != null:
+		_expect(views.view_name() == "MISSILE", "firing enters missile view",
+			"view=%s" % views.view_name())
+	_expect(arena.call("fire") == null,
+		"a second fire() is refused while riding", "launched two piloted missiles")
+
+	_expect(Tuning.missing_keys().is_empty(), "no tuning key was requested and missing",
+		", ".join(Tuning.missing_keys()))
+	arena.queue_free()
 
 
 func _test_sandbox_builds() -> void:

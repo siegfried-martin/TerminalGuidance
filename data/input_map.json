@@ -1,7 +1,14 @@
 {
-  "_note": "Input bindings, applied to InputMap at startup by scripts/autoload/bindings.gd. Edit here, never in the Godot editor's Input Map tab — editor-authored actions land in project.godot and stop being reviewable. Event syntax: 'key:<name>' or 'mouse:<left|right|middle>'.",
+  "_note": "Input bindings, applied to InputMap at startup by scripts/autoload/bindings.gd. Edit here, never in the Godot editor's Input Map tab — editor-authored actions land in project.godot and stop being reviewable (ADR 0027). Event syntax: 'key:<name>', 'mouse:<left|right|middle|wheel_up|wheel_down>', 'joybutton:<name>', 'joyaxis:<name><+|->'.",
 
   "actions": {
+    "fire":           ["key:Space", "mouse:left", "joyaxis:trigger_right+"],
+
+    "missile_left":   ["key:Left",  "joyaxis:right_x-"],
+    "missile_right":  ["key:Right", "joyaxis:right_x+"],
+    "missile_up":     ["key:Up",    "joyaxis:right_y-"],
+    "missile_down":   ["key:Down",  "joyaxis:right_y+"],
+
     "cam_forward":   ["key:W"],
     "cam_back":      ["key:S"],
     "cam_left":      ["key:A"],
@@ -13,6 +20,7 @@
 
     "debug_toggle_hud":     ["key:F1"],
     "debug_reload_tuning":  ["key:F5"],
+    "debug_reverse_arc":    ["key:R"],
     "quit":                 ["key:Escape"]
   }
 }
