@@ -3,8 +3,8 @@ extends Node3D
 ## A player-flown missile. Constant forward speed, direct screen-space steering,
 ## and a fuse that ends the flight whether or not the player got there.
 ##
-## ADR 0002 (fuse-as-range), ADR 0003 (screen-space steering) and ADR 0035
-## (reticle steering) govern this file. The fuse is the range limit and the
+## ADR 0002 (fuse-as-range), ADR 0003 (screen-space steering), ADR 0035 (reticle
+## steering) and ADR 0037 (side thrusters) govern this file. The fuse is the range limit and the
 ## difficulty dial. Input moves a *reticle* — an intended direction — and the
 ## missile turns towards it at a bounded rate, so it has weight without becoming
 ## a flight model the player has to model in their head.
@@ -16,7 +16,9 @@ extends Node3D
 
 signal detonated(missile: Missile, reason: int, hit: bool)
 
-enum EndReason { FUSE_EXPIRED, IMPACT, EARLY_DETONATE }
+## Appended to, never reordered — the headless gate and the arena's outcome text
+## both compare against these by name, but savegames and logs may not.
+enum EndReason { FUSE_EXPIRED, IMPACT, EARLY_DETONATE, ROCK_IMPACT }
 
 var piloted: bool = false
 
@@ -30,6 +32,14 @@ var _finished: bool = false
 var _pending_steer: Vector2 = Vector2.ZERO
 var _body: MeshInstance3D
 var _exhaust: MeshInstance3D
+var _boost_left: float = 0.0
+var _boosting: bool = false
+## Lateral slide in m/s, in the missile's own frame: x is right, y is up. Not a
+## velocity being integrated — a bounded offset that `_apply_strafe` decays.
+var _strafe: Vector2 = Vector2.ZERO
+## The obstacle field, or null for an arena without one. Held rather than looked
+## up so a missile fired into a torn-down arena cannot resurrect it.
+var _rocks: ReferenceField
 
 
 func _ready() -> void:
@@ -77,7 +87,7 @@ func _build_body() -> void:
 ## `launch_basis` is the firing ship's orientation — the missile leaves along the
 ## ship's current heading (POC scope item 3), not along an aim point.
 func launch(launch_position: Vector3, launch_basis: Basis, ship_velocity: Vector3,
-		target: Node3D, target_radius: float) -> void:
+		target: Node3D, target_radius: float, rocks: ReferenceField = null) -> void:
 	position = launch_position
 	basis = launch_basis.orthonormalized()
 	_aim_basis = basis
@@ -85,6 +95,9 @@ func launch(launch_position: Vector3, launch_basis: Basis, ship_velocity: Vector
 	_target = target
 	_target_radius = target_radius
 	_fuse_left = Tuning.num("missile/fuse_seconds")
+	_boost_left = Tuning.num("missile/boost_seconds")
+	_strafe = Vector2.ZERO
+	_rocks = rocks
 
 	# Velocity inheritance is a tunable that starts at zero (ADR 0005). Only the
 	# component along the missile's own heading is meaningful for a missile that
@@ -100,13 +113,26 @@ func _process(delta: float) -> void:
 
 	if piloted:
 		_apply_steering(delta)
+		_apply_boost(delta)
+		_apply_strafe(delta)
+	else:
+		# A missile that is no longer flown coasts straight and stops sliding, so
+		# the fuse-expiry case does not drift on the last frame of input.
+		_boosting = false
+		_strafe = _strafe.move_toward(Vector2.ZERO, _release_rate() * delta)
 
 	_previous_position = position
-	position += -basis.z * _speed * delta
+	position += velocity() * delta
 
+	# Target before rocks: a missile that reaches the target inside a rock field
+	# still scores, rather than being eaten a frame short of the kill.
 	if _target != null and FlightGeometry.segment_hits_sphere(
 			_previous_position, position, _target.position, _target_radius):
 		_finish(EndReason.IMPACT, true)
+		return
+
+	if _rocks != null and _rocks.hit_test(_previous_position, position) != Vector3.INF:
+		_finish(EndReason.ROCK_IMPACT, false)
 		return
 
 	_fuse_left -= delta
@@ -148,6 +174,55 @@ func _apply_steering(delta: float) -> void:
 		FlightGeometry.turn_towards(forward, aim, max_step))
 
 
+## Hold-to-boost, drawn from a reserve that empties. Not a toggle: releasing the
+## button ends it immediately, so a burst is something the player is continuously
+## choosing to spend rather than a mode they entered.
+func _apply_boost(delta: float) -> void:
+	_boosting = Input.is_action_pressed("boost") and _boost_left > 0.0
+	if _boosting:
+		_boost_left = maxf(_boost_left - delta, 0.0)
+		return
+	var regen := Tuning.num("missile/boost_regen_per_sec")
+	if regen > 0.0:
+		_boost_left = minf(
+			_boost_left + regen * delta, Tuning.num("missile/boost_seconds"))
+
+
+## Side thrusters. The stick asks for a lateral speed and the slide moves towards
+## it at one rate and back to zero at another, so "snappy on, slower off" is
+## expressible without the slide ever coasting past what is being asked for.
+func _apply_strafe(delta: float) -> void:
+	var axis := Vector2(
+		Input.get_axis("missile_strafe_left", "missile_strafe_right"),
+		Input.get_axis("missile_strafe_down", "missile_strafe_up"),
+	)
+	var deadzone := Tuning.num("controls/deadzone")
+	if axis.length() < deadzone:
+		axis = Vector2.ZERO
+	elif deadzone < 1.0:
+		axis = axis.normalized() * ((axis.length() - deadzone) / (1.0 - deadzone))
+	# Diagonals must not out-run the cardinals, or the corners become the only way
+	# to fly and the tuned strafe_speed stops meaning what it says.
+	if axis.length() > 1.0:
+		axis = axis.normalized()
+
+	var wanted := axis * Tuning.num("missile/strafe_speed")
+	var rate := _ramp_rate() if wanted.length() > _strafe.length() else _release_rate()
+	_strafe = _strafe.move_toward(wanted, rate * delta)
+
+
+## Metres per second per second. A zero tuned time means "this frame" — INF is the
+## honest rate for that, and `move_toward` clamps it to the target anyway.
+func _ramp_rate() -> float:
+	var seconds := Tuning.num("missile/strafe_ramp_seconds")
+	return INF if seconds <= 0.0 else Tuning.num("missile/strafe_speed") / seconds
+
+
+func _release_rate() -> float:
+	var seconds := Tuning.num("missile/strafe_release_seconds")
+	return INF if seconds <= 0.0 else Tuning.num("missile/strafe_speed") / seconds
+
+
 ## Mouse motion arrives as events, not as a polled axis; the view controller feeds
 ## it here so the missile stays the only thing that decides how input becomes turn.
 func add_mouse_steer(relative: Vector2) -> void:
@@ -175,8 +250,30 @@ func fuse_remaining() -> float:
 	return maxf(_fuse_left, 0.0)
 
 
+## Current forward speed, boost included. `_speed` stays the un-boosted figure it
+## was launched with, so the reserve emptying restores it exactly.
 func speed() -> float:
-	return _speed
+	return _speed * (Tuning.num("missile/boost_multiplier") if _boosting else 1.0)
+
+
+## Full travel this frame: forward, plus whatever the thrusters are adding. Public
+## because the hit test and the chase camera must agree on where the missile is
+## actually going, not just where its nose points.
+func velocity() -> Vector3:
+	return -basis.z * speed() + basis.x * _strafe.x + basis.y * _strafe.y
+
+
+func boost_remaining() -> float:
+	return maxf(_boost_left, 0.0)
+
+
+func is_boosting() -> bool:
+	return _boosting
+
+
+## Lateral slide in m/s, for the HUD.
+func strafe_rate() -> float:
+	return _strafe.length()
 
 
 func distance_to_target() -> float:

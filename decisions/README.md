@@ -83,5 +83,7 @@ The reasoning, including what the alternative was and why it lost.
 | [0034](0034-autopilot-faces-velocity.md) | The combat autopilot faces its direction of travel, not the target |
 | [0035](0035-reticle-steering.md) | Missile steering is a reticle the missile turns towards |
 | [0036](0036-in-game-tuning-panel.md) | Tuning is edited in an in-game panel; the file stays the source of truth |
+| [0037](0037-side-thrusters-bounded-slide.md) | Side thrusters are a bounded slide, not vector thrust |
+| [0038](0038-rocks-are-obstacles.md) | Reference rocks are obstacles, inside the engagement volume |
 
-*Next number: 0037.*
+*Next number: 0039.*

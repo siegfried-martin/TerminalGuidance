@@ -22,6 +22,8 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"missile/exhaust_length", "missile/exhaust_color",
 	"missile/flash_start_radius", "missile/flash_end_radius",
 	"missile/flash_seconds", "missile/flash_color", "missile/flash_color_dud",
+	"missile/boost_multiplier", "missile/boost_seconds", "missile/boost_regen_per_sec",
+	"missile/strafe_speed", "missile/strafe_ramp_seconds", "missile/strafe_release_seconds",
 	"ship/arc_speed", "ship/standoff_distance", "ship/muzzle_offset", "ship/hull_scale",
 	"ship/range_hold_seconds", "ship/range_hold_max_speed",
 	"ship/hull_tint", "ship/metallic", "ship/roughness",
@@ -48,12 +50,16 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"arena/rock_count", "arena/rock_inner_radius", "arena/rock_outer_radius",
 	"arena/rock_slab_half_height", "arena/rock_min_size", "arena/rock_max_size",
 	"arena/rock_color", "arena/rock_seed",
+	"arena/rock_collision", "arena/rock_hit_radius_scale",
 	"probe/scale", "probe/spin_deg_per_sec", "probe/bob_amplitude", "probe/bob_period_sec",
 	"probe/hull_tint", "probe/metallic", "probe/roughness",
 ]
 
 const REQUIRED_ACTIONS: Array[String] = [
-	"fire", "detonate", "missile_left", "missile_right", "missile_up", "missile_down",
+	"fire", "detonate", "boost",
+	"missile_left", "missile_right", "missile_up", "missile_down",
+	"missile_strafe_left", "missile_strafe_right",
+	"missile_strafe_up", "missile_strafe_down",
 	"cam_forward", "cam_back", "cam_left", "cam_right", "cam_up", "cam_down",
 	"cam_boost", "cam_look",
 	"debug_toggle_hud", "debug_toggle_panel", "debug_reload_tuning",
@@ -75,6 +81,7 @@ func _ready() -> void:
 	_test_flight_geometry()
 	_test_missile_flight()
 	_test_reticle_steering()
+	_test_reference_field()
 	_test_tuning_schema()
 	_test_tuning_writer()
 	_test_debug_panel()
@@ -393,6 +400,55 @@ plain = 3                          ; no range on this one
 quoted = "a ; semicolon inside"    ; and a real comment after it
 bare = true
 """
+
+
+## The rock field is the only thing in the arena a missile can collide with, and
+## it does so without a physics body (ADR 0032 mechanism, ADR 0038 placement). All
+## of that is plain geometry, so it is verifiable headlessly.
+func _test_reference_field() -> void:
+	var field := ReferenceField.new()
+	add_child(field)
+
+	_expect(field.rock_count() == Tuning.integer("arena/rock_count"),
+		"reference field builds every tuned rock",
+		"drew %d of %d" % [field.rock_count(), Tuning.integer("arena/rock_count")])
+	_expect(field.hittable_count() == field.rock_count(),
+		"every drawn rock is hittable while rock_collision is on",
+		"%d drawn, %d hittable" % [field.rock_count(), field.hittable_count()])
+
+	if field.rock_count() > 0:
+		var centre := field.rock_centre(0)
+		var radius := field.rock_radius(0)
+		_expect(radius > 0.0, "a rock has a positive hit radius", "radius=%f" % radius)
+
+		var above := centre + Vector3(0.0, radius * 4.0, 0.0)
+		var below := centre - Vector3(0.0, radius * 4.0, 0.0)
+		_expect(field.hit_test(above, below) != Vector3.INF,
+			"hit_test catches a segment through a rock", "passed straight through")
+
+		# The whole reason for a swept test: both endpoints sit clear of the rock,
+		# so a per-frame point check would report a clean miss (ADR 0032).
+		_expect(field.hit_test(above, below) == centre,
+			"hit_test reports which rock was hit", "wrong centre returned")
+
+		var far_away := centre + Vector3(0.0, radius * 50.0, 0.0)
+		_expect(field.hit_test(far_away, far_away + Vector3(0.0, 1.0, 0.0)) == Vector3.INF,
+			"hit_test lets a clear segment through", "false positive")
+
+	# rock_collision is the escape hatch back to the pre-ADR-0038 arena, so it has
+	# to actually disarm the field rather than merely hiding the readout.
+	Tuning.set_value("arena/rock_collision", false)
+	field.rebuild()
+	_expect(field.hittable_count() == 0,
+		"rock_collision = false disarms the field", "%d still hittable" % field.hittable_count())
+	_expect(field.hit_test(Vector3(-9000.0, 0.0, 0.0), Vector3(9000.0, 0.0, 0.0)) == Vector3.INF,
+		"rock_collision = false makes rocks pure scenery", "still collided")
+	Tuning.revert()
+	field.rebuild()
+	_expect(field.hittable_count() == field.rock_count(),
+		"reverting tuning re-arms the field", "revert left the field disarmed")
+
+	field.queue_free()
 
 
 func _test_tuning_schema() -> void:
