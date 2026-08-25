@@ -1,6 +1,7 @@
 # ADR 0032 — Missile hits are swept-segment tests, not physics bodies
 
 *Status: accepted · 2026-08-23 · made while building POC steps 3–4*
+*Placement clause superseded in part by ADR 0038 — the swept-segment decision below still stands; the rocks are no longer outside the engagement volume and are no longer visual-only.*
 
 ## Decision
 

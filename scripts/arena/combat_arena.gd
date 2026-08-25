@@ -5,9 +5,13 @@ extends Node3D
 ## behaviour, one dumb target, and the missile (launch, chase cam, steering,
 ## fuse). This is the first feel checkpoint: success criterion 1, the 8 seconds.
 ##
-## Deliberately absent, in build order: boost, early detonate and splash (step 5);
-## turret mode and the missile cooldown (step 6); blockers, enemy fire and ship HP
-## (step 7); the interrupt (step 8); death/respawn and the PiP toggle (step 9).
+## Step 5 has since landed in part: early detonate, boost, and side thrusters
+## (ADR 0037), plus rocks that kill a missile on contact (ADR 0038). Splash damage
+## is still outstanding, because it needs the target to have hit points.
+##
+## Deliberately absent, in build order: splash damage (step 5); turret mode and the
+## missile cooldown (step 6); blockers, enemy fire and ship HP (step 7); the
+## interrupt (step 8); death/respawn and the PiP toggle (step 9).
 ## Do not add them here ahead of their step — each one has a feel checkpoint
 ## attached to it and adding it early destroys the reading.
 ##
@@ -144,6 +148,17 @@ func _build_hud() -> void:
 	_hud.add_row("shots", func() -> String:
 		var rate := 0.0 if _shots == 0 else 100.0 * float(_hits) / float(_shots)
 		return "%d fired · %d hit · %.0f%%" % [_shots, _hits, rate])
+	_hud.add_row("boost", func() -> String:
+		var missile := _views.piloted_missile()
+		if missile == null:
+			return "—"
+		return "%.2f s left%s" % [
+			missile.boost_remaining(), "  ON" if missile.is_boosting() else ""])
+	_hud.add_row("slide", func() -> String:
+		var missile := _views.piloted_missile()
+		return "—" if missile == null else "%.0f m/s" % missile.strafe_rate())
+	_hud.add_row("rocks", func() -> String:
+		return "%d drawn · %d hittable" % [_rocks.rock_count(), _rocks.hittable_count()])
 	_hud.add_row("aim off", func() -> String:
 		var missile := _views.piloted_missile()
 		return "—" if missile == null else "%.0f deg" % missile.aim_offset_degrees())
@@ -152,7 +167,9 @@ func _build_hud() -> void:
 			_ship.range_to_target(), Tuning.num("ship/standoff_distance")])
 	_hud.add_row("last", func() -> String: return _last_outcome)
 	_hud.add_row("keys", func() -> String:
-		return "LMB/Space: fire, then detonate · mouse/stick aims · F1 hud · F5 reload · Esc quit")
+		if _views.view() == ViewController.View.MISSILE:
+			return "Space boost · WASD thrusters · mouse/stick aims · LMB/X detonate · F1 hud · F2 tune"
+		return "LMB/Space fire · F1 hud · F2 tune · F5 reload · R reverse arc · Esc quit")
 
 
 func _apply_tuning() -> void:
@@ -210,7 +227,7 @@ func fire() -> Missile:
 	missile.name = "Missile"
 	_arena_root.add_child(missile)
 	missile.launch(_ship.muzzle_position(), _ship.basis, _ship.velocity(),
-		_target, _target.radius)
+		_target, _target.radius, _rocks)
 	missile.detonated.connect(_on_missile_detonated)
 
 	_shots += 1
@@ -233,6 +250,8 @@ func _on_missile_detonated(missile: Missile, reason: int, hit: bool) -> void:
 		_last_outcome = "HIT"
 	elif reason == Missile.EndReason.EARLY_DETONATE:
 		_last_outcome = "detonated at %.0f m" % missile.distance_to_target()
+	elif reason == Missile.EndReason.ROCK_IMPACT:
+		_last_outcome = "hit a rock at %.0f m" % missile.distance_to_target()
 	else:
 		_last_outcome = "fuse expired at %.0f m" % missile.distance_to_target()
 
