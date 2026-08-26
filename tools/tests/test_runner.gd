@@ -82,6 +82,7 @@ func _ready() -> void:
 	_test_reticle_steering()
 	_test_reference_field()
 	_test_dodge_and_brake()
+	_test_overlay_projection_guard()
 	_test_tuning_schema()
 	_test_tuning_writer()
 	_test_debug_panel()
@@ -497,6 +498,29 @@ func _turn_over_half_second(braking: bool) -> float:
 	var turned := rad_to_deg((-missile.basis.z).angle_to(Vector3(0.0, 0.0, -1.0)))
 	missile.free()
 	return turned
+
+
+## Regression: `unproject_position` asserts for a point sitting on the camera's own
+## origin, which is true of the target on the first frame of every run — nodes are
+## built at their parent's origin and placed afterwards. The engine prints the
+## assert and carries on, so nothing fails; it just shouts once per launch.
+func _test_overlay_projection_guard() -> void:
+	var overlay := FlightOverlay.new()
+	add_child(overlay)
+	var camera := Camera3D.new()
+	add_child(camera)
+	camera.global_position = Vector3(12.0, -4.0, 30.0)
+
+	_expect(not overlay._projectable(camera, camera.global_position),
+		"the overlay refuses to project a point at the camera's own origin",
+		"would hit the p.d == 0 assert in camera_3d.cpp")
+	_expect(overlay._projectable(camera, camera.global_position + Vector3(0.0, 0.0, -25.0)),
+		"…and still projects a point in front of it", "guard is too greedy")
+	_expect(overlay._projectable(camera, camera.global_position + Vector3(0.0, 0.0, 25.0)),
+		"…and one behind it, which the caller handles separately", "guard is too greedy")
+
+	camera.free()
+	overlay.free()
 
 
 func _test_reference_field() -> void:

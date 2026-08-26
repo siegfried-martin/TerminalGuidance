@@ -53,6 +53,8 @@ func _draw_target_indicator(camera: Camera3D) -> void:
 	var margin := Tuning.num("hud/edge_margin")
 	var bounds := Rect2(Vector2(margin, margin), size - Vector2(margin, margin) * 2.0)
 
+	if not _projectable(camera, target.global_position):
+		return
 	var behind := camera.is_position_behind(target.global_position)
 	var point := camera.unproject_position(target.global_position)
 	if behind:
@@ -117,7 +119,7 @@ func _draw_reticle(camera: Camera3D) -> void:
 
 	var aim_point := missile.global_position \
 		+ missile.aim_direction() * Tuning.num("hud/reticle_distance")
-	if camera.is_position_behind(aim_point):
+	if camera.is_position_behind(aim_point) or not _projectable(camera, aim_point):
 		return
 
 	var point := camera.unproject_position(aim_point)
@@ -131,9 +133,25 @@ func _draw_reticle(camera: Camera3D) -> void:
 
 	# A line from the nose to the reticle makes the lag visible rather than just felt.
 	var nose := missile.global_position + (-missile.global_transform.basis.z) * Tuning.num("hud/reticle_distance")
-	if not camera.is_position_behind(nose):
+	if not camera.is_position_behind(nose) and _projectable(camera, nose):
 		draw_line(camera.unproject_position(nose), point,
 			Color(color, Tuning.num("hud/reticle_lag_line_alpha")), width)
+
+
+## Can `unproject_position` be asked about this point at all?
+##
+## It builds a `Plane` from the camera-local position and normalises it, and
+## `Plane::normalize()` zeroes the whole plane when the normal has zero length —
+## which is the `p.d == 0` assert in camera_3d.cpp. In other words it fails for
+## exactly one input: a point sitting on the camera's own origin.
+##
+## That happens on the first frame of every run. Nodes are constructed at their
+## parent's origin and only placed afterwards, so for one frame the chase camera
+## and the target are both at the arena origin and the indicator asks where the
+## camera is from where the camera is. There is no sensible screen position for a
+## point at the eye, so the answer is to draw nothing that frame.
+func _projectable(camera: Camera3D, world_point: Vector3) -> bool:
+	return not camera.global_position.is_equal_approx(world_point)
 
 
 func _draw_label(text: String, at: Vector2, color: Color) -> void:
