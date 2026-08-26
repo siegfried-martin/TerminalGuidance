@@ -41,7 +41,10 @@ var _reticle := ReticleSteering.new()
 func _ready() -> void:
 	_hull = MeshInstance3D.new()
 	_hull.name = "Hull"
-	_hull.mesh = load("res://assets/models/probe.obj")
+	# A capital-scale gunboat, not a fighter (ADR 0044). Authored at 1 unit = 1 m
+	# and 48 m long, so `ship/hull_scale` sits at 1.0 and every distance in the
+	# tuning file is in the same units as the mesh.
+	_hull.mesh = load("res://assets/models/carrier.obj")
 	var mat := StandardMaterial3D.new()
 	mat.albedo_texture = load("res://assets/textures/hull_panels.png")
 	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
@@ -121,14 +124,27 @@ func _fly_autopilot(delta: float) -> void:
 	var hold_max := Tuning.num("ship/range_hold_max_speed")
 	var radial_speed := clampf(range_error / hold_seconds, -hold_max, hold_max)
 
-	_velocity = tangent * Tuning.num("ship/arc_speed") + radial * radial_speed
+	# Clamped to the ship's own top speed. The autopilot may not fly the ship in a
+	# way the player could not: without this, `range_hold_max_speed` of 45 against a
+	# manual ceiling of 34 means handing control back produces a lurch the player
+	# has no way to produce themselves (ADR 0043).
+	_velocity = (tangent * Tuning.num("ship/arc_speed") + radial * radial_speed) \
+		.limit_length(manual_max_speed())
 	position += _velocity * delta
 
 	# The nose follows the direction of travel, not the target. Firing along the
 	# ship's heading then launches the missile across the target rather than at
 	# it, so every shot needs a real turn (ADR 0034).
+	#
+	# Turned at a bounded rate rather than snapped with `look_at`. A snap is
+	# invisible while the autopilot has been flying all along, but the frame the
+	# player hands the ship back is a frame where the nose is wherever *they* left
+	# it, and an instant re-point reads as the ship being yanked out of their hands.
 	if _velocity.length_squared() > 0.0001:
-		look_at(global_position + _velocity, Vector3.UP)
+		var turn := deg_to_rad(
+			Tuning.num("ship/autopilot_turn_rate_deg_per_sec")) * delta
+		basis = FlightGeometry.basis_from_forward(
+			FlightGeometry.turn_towards(-basis.z, _velocity.normalized(), turn))
 
 
 # --- manual flight -----------------------------------------------------------
@@ -189,7 +205,13 @@ func set_autopilot(on: bool) -> bool:
 	if on == autopilot:
 		return autopilot
 	autopilot = on
-	if not autopilot:
+	if autopilot:
+		# Adopt the current tuned standoff without acting on it. `_last_standoff` has
+		# been frozen since the player took over, so a standoff edit made during
+		# manual flight would otherwise fire `snap_to_standoff` — a teleport — at the
+		# next unrelated hot reload.
+		_last_standoff = Tuning.num("ship/standoff_distance")
+	else:
 		# Take over from where the autopilot left off rather than from a stop: the
 		# reticle starts on the nose, and the throttle starts at whatever speed the
 		# ship already had, so the handover is not a lurch.

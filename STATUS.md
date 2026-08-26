@@ -35,12 +35,12 @@ driven; no Godot editor GUI has been used at any point.
 | Gray-box arena: 7³ marker lattice via one MultiMesh, rebuilt on reload | working |
 | Debug fly-cam (RMB look, WASD/QE, Shift boost) | working |
 | Asset pipeline: `.obj` model + `.png` texture, generated → imported → rendered | working |
-| `make check`: 381 headless assertions, exit code gated | working |
+| `make check`: 403 headless assertions, exit code gated | working |
 | Godot-3 API linter over all scripts, data-driven denylist | working |
 | `make shot`: render frames to PNG from the CLI for visual verification | working |
 | `make apiref`: this exact build's 771-class reference for API grounding | working |
 | `DESIGN.md` — distilled thesis, Target Experience verbatim | written |
-| `decisions/` — 42 ADRs, indexed, each with a *What this forbids* section | written |
+| `decisions/` — 44 ADRs, indexed, each with a *What this forbids* section | written |
 | **Combat arena** (`scenes/arena.tscn`, now the main scene) | working |
 | Mothership autopilot: slow arc at standoff, nose on target | working |
 | Dumb target ship: drifts, turns at its patrol bounds | working |
@@ -62,6 +62,9 @@ driven; no Godot editor GUI has been used at any point.
 | Ship top speed clamped against `missile/base_speed` in code, not by comment | working |
 | **Target is a ship shape** — fuselage, nose, wings, fin, built from primitives | working |
 | **Destructible components**: 4 cylinders, darken then explode, respawn (ADR 0042) | working |
+| Target hit as the boxes it is drawn from; nearest part along the shot wins (ADR 0043) | working |
+| **Player ship is a 50 m gunboat** — crescent-winged capital hull (ADR 0044) | working |
+| Autopilot eases its nose instead of snapping, and cannot outrun manual flight | working |
 | F2 panel folds into one collapsible section per `[section]`, with counts | working |
 | `make shot SCENE=res://tools/shots/target_shot.tscn` — captures the target close up | working |
 
@@ -98,14 +101,17 @@ not one at a time:
 4. **Rocks as obstacles**, now that they bite at their drawn silhouette rather than
    at 0.55 of it. They are meaningfully more solid than they were last session, and
    the tuned rock counts and sizes were chosen against the old, forgiving shape.
-5. **Manual flight against autopilot.** The interesting question is not whether
+5. **The ship's new scale.** 50 m of hull at a 203 m standoff, with the camera 62 m
+   back. Every camera and speed value was retuned around it and none of them has
+   been felt. This is the one most likely to be wrong.
+6. **Manual flight against autopilot.** The interesting question is not whether
    flying the ship is fun on its own — it is whether *choosing* to fly it changes
    how a fight goes, or whether the autopilot's arc is simply better and manual
    flight is a novelty. Watch what standoff you actually choose when you own it.
-6. **Target practice.** Components against a single hit sphere. Does aiming at a
+7. **Target practice.** Components against a single hit sphere. Does aiming at a
    small thing on the target beat hitting the target? `enemy/component_count = 0`
    restores the old behaviour, so the two can be felt back to back in one session.
-7. **Whether the far-field speed reference is missed** now the rocks came inside.
+8. **Whether the far-field speed reference is missed** now the rocks came inside.
    If it is, the fix is a second sparse non-colliding layer (ADR 0038), not moving
    these back out.
 
@@ -184,14 +190,22 @@ They are the knobs most likely to be wrong.
   silhouette is the same thing that fixes the hit test. `rock_hit_radius_scale`
   is back to 1.0. ADR 0032's mechanism rule is untouched: still no physics body,
   still swept segments, now against `segment_hits_ellipsoid`.
-- **The target carries destructible components** (ADR 0042), tested *before* the
-  hull sphere so an aimed shot is credited to the thing it was aimed at. Two hits
-  each: darken, then explode. They respawn, because otherwise a practice run is
-  over in a handful of shots and the loop cannot be felt twice.
-- **The target is a ship shape now** — fuselage, nose cone, wings, fin. Not
-  decoration: a cube gives the eye nothing to aim at, so "did I aim, or did I
-  merely arrive?" has no observable answer, and that is the question target
-  practice exists to settle.
+- **The target carries destructible components** (ADR 0042). Two hits each:
+  darken, then explode. They respawn, because otherwise a practice run is over in a
+  handful of shots and the loop cannot be felt twice.
+- **The target is hit as its parts, nearest-first** (ADR 0043, superseding ADR
+  0042's hull clauses). See *Fixed this session* — this started as a bug and became
+  a rule: **test order cannot substitute for geometry**, and a volume that encloses
+  another makes it unreachable however the tests are ordered.
+- **The autopilot may not fly the ship in a way the player could not** (ADR 0043).
+  It is clamped to the ship's own top speed and turns its nose at a bounded rate.
+  Both of those were free while the autopilot was the only thing flying; manual
+  flight is what made them observable.
+- **Ships are capital-scale gunboats; the engagement is naval, not a dogfight**
+  (ADR 0044). The player's hull is 50 m stem to wingtip now — a thick faceted core
+  with forward-swept crescent wings, the *StarCraft* reading of "carrier" rather
+  than the flat-decked US Navy one. The old `probe.obj` was a 5 m dart, and a dart
+  implies a dogfight, which is the wrong game to be reading feel verdicts against.
 - **The F2 panel folds.** One collapsible section per `[section]`, collapsed by
   default, each header carrying its value count; `+`/`−` expand and collapse
   everything; the filter reaches into collapsed sections and restores the fold
@@ -203,6 +217,36 @@ They are the knobs most likely to be wrong.
 
 ### Fixed this session
 
+- **No component was ever hittable.** Reported as "I didn't see any enemy ship
+  component ever get hit — my aim can't be that bad." The aim was fine. Every
+  component sat inside the hull's 9 m sphere, so the sphere always resolved first,
+  four metres before the nearest component — the "components are tested first" rule
+  in ADR 0042 never came into play. Worse, that ADR's own gate asserted the
+  *opposite* invariant ("components sit within the hull's hit sphere") and passed.
+  The hull is now hit as the boxes it is drawn from, components are mounted proud
+  of it, and the nearest shape along the shot wins (ADR 0043). The gate checks the
+  geometric property — every component's outermost point outside every hull box —
+  instead of the ordering, which was never the thing that mattered.
+  **Expect hits to be harder now.** The old sphere was far more forgiving than the
+  12 m hull it wrapped. If the target feels unfairly small, grow it with
+  `enemy/hull_*` rather than re-inflating a sphere around it.
+- **Handing the ship back to the autopilot yanked it.** The autopilot re-pointed
+  its nose with `look_at`, which snapped through whatever angle the player had left
+  it at, on the first frame; and it station-kept at up to 45 m/s against a manual
+  ceiling of 34, so it could also move the ship faster than the player ever could.
+  Both were invisible while the autopilot was the only thing flying. It now turns
+  at `ship/autopilot_turn_rate_deg_per_sec` and is clamped to the ship's own top
+  speed. A stale `_last_standoff` could also fire a `snap_to_standoff` teleport
+  after a standoff edit made during manual flight; the handover now adopts the
+  current value.
+- **The strafe summed past the speed ceiling.** Caught in a screenshot reading
+  `36 m/s of 34`: the lateral thruster was added on top of a full throttle. The
+  clamp is on the whole velocity vector now, so the speed hierarchy cannot be
+  broken by holding two keys.
+- **The target's art was bigger than its hit sphere** — a 26 m hull inside a 9 m
+  sphere, which is the same art-vs-hitbox gap that got the rocks rebuilt, freshly
+  reintroduced in the same session. Moot now that the hull is hit as its parts, but
+  it is why the hull proportions are what they are.
 - **Autopilot could not hold its standoff.** The range correction was a normalised
   blend of tangent and radial, so its authority collapsed at the setpoint and a
   target drifting at 6 m/s outran it — the held range wandered indefinitely, and
@@ -217,6 +261,16 @@ They are the knobs most likely to be wrong.
   It now sizes itself from the viewport, with a test asserting non-zero size.
 - **`glow_intensity` was a constant in arena code** — a feel value in code, which
   the feel-parameter law forbids. Moved to `[arena]`.
+
+### Known inconsistency
+
+The **enemy target is still a 12 m fighter silhouette** — fuselage, nose cone,
+wings, fin — which predates ADR 0044 and now contradicts it. If the engagement is
+naval, the thing being engaged should read as a gunboat too. Left alone
+deliberately rather than changed in the same pass; it is a known inconsistency, not
+a considered contrast. Changing it is cheap: the hull is built from tuning values
+in `TargetShip._build_hull`, and the hit volumes are registered beside each drawn
+part, so the shape and the hit test move together.
 
 ### How to tune now
 

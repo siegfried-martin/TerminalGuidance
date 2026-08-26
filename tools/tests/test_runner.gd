@@ -31,6 +31,7 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"ship/autopilot_on_start", "ship/manual_accel_seconds", "ship/manual_brake_seconds",
 	"ship/manual_max_speed", "ship/manual_speed_ceiling_fraction",
 	"ship/manual_turn_rate_deg_per_sec", "ship/manual_reticle_max_angle_deg",
+	"ship/autopilot_turn_rate_deg_per_sec",
 	"ship/manual_strafe_speed",
 	"enemy/radius", "enemy/drift_speed", "enemy/spin_deg_per_sec",
 	"enemy/patrol_half_extent", "enemy/hull_color", "enemy/hull_emission",
@@ -201,12 +202,28 @@ func _test_no_godot3_api() -> void:
 
 
 func _test_assets() -> void:
-	var mesh := load("res://assets/models/probe.obj") as Mesh
-	_expect(mesh != null, "probe.obj imports as a Mesh", "import failed — run `make import`")
-	if mesh != null:
-		_expect(mesh.get_surface_count() > 0, "probe.obj has surfaces", "0 surfaces")
+	for model in ["probe", "carrier"]:
+		var mesh := load("res://assets/models/%s.obj" % model) as Mesh
+		_expect(mesh != null, "%s.obj imports as a Mesh" % model,
+			"import failed — run `make import`")
+		if mesh == null:
+			continue
+		_expect(mesh.get_surface_count() > 0, "%s.obj has surfaces" % model, "0 surfaces")
 		var aabb := mesh.get_aabb()
-		_expect(aabb.size.length() > 0.1, "probe.obj has non-degenerate bounds", str(aabb))
+		_expect(aabb.size.length() > 0.1, "%s.obj has non-degenerate bounds" % model, str(aabb))
+
+	# The carrier is authored at 1 unit = 1 metre (ADR 0044), so the mesh and every
+	# distance in tuning.cfg are in the same units. A generator change that silently
+	# rescaled it would put the chase camera inside the hull.
+	var carrier := load("res://assets/models/carrier.obj") as Mesh
+	if carrier != null:
+		var length := carrier.get_aabb().size.z
+		_expect(length > 40.0 and length < 60.0,
+			"the carrier hull is a capital-scale 50 m, not a fighter",
+			"%.1f m stem to stern" % length)
+		_expect(carrier.get_aabb().size.x > 30.0,
+			"…and wider than it is tall, across the crescent",
+			"%.1f m span" % carrier.get_aabb().size.x)
 
 	var tex := load("res://assets/textures/hull_panels.png") as Texture2D
 	_expect(tex != null, "hull_panels.png imports as a Texture2D", "import failed")
@@ -253,6 +270,51 @@ func _test_flight_geometry() -> void:
 	_expect(not FlightGeometry.segment_hits_ellipsoid(
 			Vector3(0, 0, 40), Vector3(0, 0, 80), Vector3.ZERO, Basis.IDENTITY, stretched),
 		"a segment entirely past an ellipsoid misses it", "hit something behind it")
+
+	# Entry parameters. A target made of several hittable parts needs to know which
+	# part the segment reaches *first*, and that is not a question a boolean answers
+	# (ADR 0043).
+	var entry := FlightGeometry.segment_sphere_entry(
+		Vector3(0, 0, -100), Vector3(0, 0, 100), Vector3.ZERO, 10.0)
+	_expect(is_equal_approx(entry, 0.45),
+		"segment_sphere_entry reports where the segment enters, not just whether",
+		"t=%f, expected 0.45" % entry)
+	_expect(is_equal_approx(FlightGeometry.segment_sphere_entry(
+			Vector3.ZERO, Vector3(0, 0, 100), Vector3.ZERO, 10.0), 0.0),
+		"…and reports 0 for a segment that starts inside", "did not clamp to zero")
+	_expect(FlightGeometry.segment_sphere_entry(
+			Vector3(0, 40, -100), Vector3(0, 40, 100), Vector3.ZERO, 10.0) < 0.0,
+		"…and -1 for a clean miss", "false positive")
+
+	# The ordering property the target ship depends on: a nearer sphere must return
+	# a smaller t than a further one along the same segment.
+	var near_t := FlightGeometry.segment_sphere_entry(
+		Vector3(0, 0, -100), Vector3(0, 0, 100), Vector3(0, 0, -40), 5.0)
+	var far_t := FlightGeometry.segment_sphere_entry(
+		Vector3(0, 0, -100), Vector3(0, 0, 100), Vector3(0, 0, 20), 5.0)
+	_expect(near_t >= 0.0 and far_t >= 0.0 and near_t < far_t,
+		"the nearer of two spheres on one segment reports the smaller entry",
+		"near=%f far=%f" % [near_t, far_t])
+
+	var box_t := FlightGeometry.segment_box_entry(
+		Vector3(0, 0, -100), Vector3(0, 0, 100), Vector3.ZERO,
+		Basis.IDENTITY, Vector3(4.0, 4.0, 10.0))
+	_expect(is_equal_approx(box_t, 0.45),
+		"segment_box_entry finds the near face of an oriented box", "t=%f" % box_t)
+	_expect(FlightGeometry.segment_box_entry(
+			Vector3(20, 0, -100), Vector3(20, 0, 100), Vector3.ZERO,
+			Basis.IDENTITY, Vector3(4.0, 4.0, 10.0)) < 0.0,
+		"…and misses a box it passes beside", "false positive")
+	# A quarter turn about Y swaps the box's long axis, so a segment that missed
+	# down one side now runs into it.
+	_expect(FlightGeometry.segment_box_entry(
+			Vector3(20, 0, -100), Vector3(20, 0, 100), Vector3.ZERO,
+			Basis.from_euler(Vector3(0.0, PI * 0.5, 0.0)), Vector3(4.0, 4.0, 30.0)) >= 0.0,
+		"…and respects the box's orientation", "rotation was ignored")
+	_expect(FlightGeometry.segment_box_entry(
+			Vector3(0, 0, 40), Vector3(0, 0, 80), Vector3.ZERO,
+			Basis.IDENTITY, Vector3(4.0, 4.0, 10.0)) < 0.0,
+		"…and does not hit a box entirely behind the segment", "hit something behind it")
 
 	var cone := FlightGeometry.clamp_to_cone(
 		Vector3(1, 0, 0), Vector3(0, 0, -1), deg_to_rad(30.0))
@@ -652,10 +714,29 @@ func _test_manual_flight() -> void:
 		"…but it keeps coasting rather than stopping dead", "the ship froze")
 	ship.piloted = true
 
-	# And handing back to the autopilot restores the arc.
+	# Handing back must not yank the ship out of the player's hands. The autopilot
+	# used to `look_at` its direction of travel, which snapped the nose through
+	# whatever angle the player had left it at, on the first frame.
+	var handover_nose := -ship.basis.z
 	ship.set_autopilot(true)
+	ship._process(step)
+	var swing := rad_to_deg(handover_nose.angle_to(-ship.basis.z))
+	var allowed := Tuning.num("ship/autopilot_turn_rate_deg_per_sec") * step + 0.001
+	_expect(swing <= allowed,
+		"handing back to the autopilot turns the nose, it does not snap it",
+		"swung %.1f deg in one frame against a budget of %.3f" % [swing, allowed])
+
+	# And the autopilot may not fly the ship faster than the player can.
+	var ceiling := ship.manual_max_speed()
+	var fastest := 0.0
 	var standoff := Tuning.num("ship/standoff_distance")
 	for _i in 1800:
+		ship._process(step)
+		fastest = maxf(fastest, ship.speed())
+	_expect(fastest <= ceiling + 0.001,
+		"the autopilot stays inside the ship's own top speed",
+		"reached %.1f m/s against a ceiling of %.1f" % [fastest, ceiling])
+	for _i in 600:
 		ship._process(step)
 	_expect(absf(ship.range_to_target() - standoff) < standoff * 0.25,
 		"the autopilot recovers standoff after a manual excursion",
@@ -681,14 +762,16 @@ func _test_target_components() -> void:
 	_expect(enemy.components_alive() == expected,
 		"components start intact", "%d alive" % enemy.components_alive())
 
-	# Components must be inside the hull's own hit sphere, or the hull would catch
-	# every shot first and the component would be unreachable.
-	var reach := 0.0
+	# THE invariant, and the one the first version got backwards. A component has to
+	# stand PROUD of the hull along its own mounting direction. Inside it, the hull
+	# is what a segment reaches first and the component is unaimable — which is
+	# exactly what shipped: every component sat inside a 9 m hull sphere and none of
+	# them was ever hit (ADR 0043).
 	for i in enemy.component_count():
-		reach = maxf(reach, enemy.component_position(i).length())
-	_expect(reach < enemy.radius + Tuning.num("enemy/component_hit_radius"),
-		"components sit within the hull's hit sphere, so shots can reach them",
-		"furthest component is %.1f m out, hull sphere is %.1f m" % [reach, enemy.radius])
+		var exposure := enemy.component_exposure(i)
+		_expect(exposure > 0.0,
+			"component %d stands proud of the hull, so a shot can reach it" % i,
+			"buried %.2f m inside it — unaimable however the tests are ordered" % -exposure)
 
 	var damaged := {"count": 0, "destroyed": 0}
 	enemy.component_damaged.connect(func(_i: int, _p: Vector3, destroyed: bool) -> void:
@@ -698,15 +781,39 @@ func _test_target_components() -> void:
 
 	var centre := enemy.component_position(0)
 	var radius := Tuning.num("enemy/component_hit_radius")
-	var above := centre + Vector3(0.0, radius * 4.0, 0.0)
-	var below := centre - Vector3(0.0, radius * 4.0, 0.0)
-	_expect(enemy.hit_test(above, below) == 0,
-		"a swept segment through a component finds it",
-		"got %d" % enemy.hit_test(above, below))
+	# Fired straight down the component's own mounting direction, from outside the
+	# ship: the shot a player lining one up would actually take.
+	var approach := Vector3(centre.x, centre.y, 0.0).normalized()
+	var from := centre + approach * enemy.bound_radius() * 3.0
+	var through := centre - approach * radius * 0.5
 
-	var clear_of_it := centre + Vector3(0.0, radius * 40.0, 0.0)
-	_expect(enemy.hit_test(clear_of_it, clear_of_it + Vector3(0.0, 1.0, 0.0)) == -1,
-		"a segment nowhere near one reports no component", "false positive")
+	var aimed := enemy.hit_test(from, through)
+	_expect(bool(aimed["hit"]), "a shot aimed at a component hits the ship at all",
+		"passed clean through")
+	_expect(int(aimed["component"]) == 0,
+		"…and is credited to the component, not the hull it is bolted to",
+		"credited to %d — the hull is resolving first" % int(aimed["component"]))
+
+	# The hull is still hittable where there is no component: down the spine, from
+	# dead astern.
+	var astern := enemy.position + Vector3(0.0, 0.0, Tuning.num("enemy/hull_length"))
+	var hull_shot := enemy.hit_test(astern, enemy.position)
+	_expect(bool(hull_shot["hit"]) and int(hull_shot["component"]) == -1,
+		"a shot down the spine still hits the hull",
+		"hit=%s component=%d" % [hull_shot["hit"], int(hull_shot["component"])])
+
+	var clear_of_it := centre + approach * enemy.bound_radius() * 40.0
+	_expect(not bool(enemy.hit_test(clear_of_it,
+			clear_of_it + approach).get("hit")),
+		"a segment nowhere near the ship reports no hit", "false positive")
+
+	# The broad-phase sphere is derived, so it has to actually contain the nose —
+	# a bound a metre short would make the tip silently unhittable.
+	var nose_tip := Vector3(0.0, 0.0,
+		-(Tuning.num("enemy/hull_length") * 0.5 + Tuning.num("enemy/nose_length")))
+	_expect(enemy.bound_radius() >= nose_tip.length(),
+		"the derived bound contains the nose tip",
+		"bound %.1f m against a tip at %.1f m" % [enemy.bound_radius(), nose_tip.length()])
 
 	var needed := Tuning.integer("enemy/component_hits_to_destroy")
 	for hit in needed - 1:
@@ -722,9 +829,11 @@ func _test_target_components() -> void:
 		"one signal per hit, and exactly one of them destroying",
 		"%d signals, %d destroying" % [damaged["count"], damaged["destroyed"]])
 
-	# A destroyed component is not a target any more, and cannot be hit again.
-	_expect(enemy.hit_test(above, below) == -1,
-		"a destroyed component stops being hittable", "still catching shots")
+	# A destroyed component is not a target any more. The shot still lands — on the
+	# hull behind where it used to be.
+	var after := enemy.hit_test(from, through)
+	_expect(int(after["component"]) != 0,
+		"a destroyed component stops catching shots", "still credited with hits")
 	_expect(not enemy.damage_component(0),
 		"…and cannot be damaged again", "took another hit")
 

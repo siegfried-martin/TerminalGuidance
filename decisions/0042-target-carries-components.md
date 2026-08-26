@@ -1,6 +1,13 @@
 # ADR 0042 — The target carries destructible components, and they are tested before the hull
 
-*Status: accepted · 2026-08-26 · a feel experiment the human asked for: "I want to see if something akin to target practice is better"*
+*Status: accepted, hull clauses superseded by ADR 0043 · 2026-08-26 · a feel experiment the human asked for: "I want to see if something akin to target practice is better"*
+
+> **Superseded in part by ADR 0043.** The hull is no longer a single sphere, and
+> components no longer sit inside `enemy/radius` — they must stand proud of the
+> hull, and the nearest shape along the shot wins rather than components being
+> tested first. As written below, no component was ever reachable. Everything else
+> here — what components are, why they exist, two hits, respawn, no flash on the
+> darkening hit — stands.
 
 ## Decision
 

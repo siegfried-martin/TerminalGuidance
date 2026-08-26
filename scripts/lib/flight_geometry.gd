@@ -37,6 +37,64 @@ static func segment_hits_ellipsoid(a: Vector3, b: Vector3, center: Vector3,
 	return segment_distance_to_point(local_a, local_b, Vector3.ZERO) <= 1.0
 
 
+## Where along the swept segment a→b does it first enter the sphere? Returns the
+## parameter t in 0..1, or -1 for a clean miss. t = 0 means it started inside.
+##
+## `segment_hits_sphere` answers *whether*; this answers *where*, which is what a
+## target made of several hittable parts needs — the part the segment reaches
+## first is the one that was aimed at, and "first" is not a question a boolean can
+## answer (ADR 0043).
+static func segment_sphere_entry(a: Vector3, b: Vector3, center: Vector3, radius: float) -> float:
+	var direction := b - a
+	var offset := a - center
+	var length_sq := direction.length_squared()
+	if length_sq < 0.000001:
+		return 0.0 if offset.length() <= radius else -1.0
+	var outside := offset.length_squared() - radius * radius
+	if outside <= 0.0:
+		return 0.0
+	var half_b := offset.dot(direction)
+	var discriminant := half_b * half_b - length_sq * outside
+	if discriminant < 0.0:
+		return -1.0
+	var t := (-half_b - sqrt(discriminant)) / length_sq
+	return t if t >= 0.0 and t <= 1.0 else -1.0
+
+
+## Same question for an oriented box: the slab method, which is exact rather than
+## an approximation, and gives the entry parameter for free.
+##
+## `orientation` must be orthonormal; its inverse is taken as its transpose.
+static func segment_box_entry(a: Vector3, b: Vector3, center: Vector3,
+		orientation: Basis, half_extents: Vector3) -> float:
+	var to_local := orientation.transposed()
+	var local_a := to_local * (a - center)
+	var direction := to_local * (b - a)
+	var t_min := 0.0
+	var t_max := 1.0
+	for axis in 3:
+		var half: float = half_extents[axis]
+		var origin: float = local_a[axis]
+		var step: float = direction[axis]
+		if absf(step) < 0.000001:
+			# Parallel to this pair of faces: either between them for the whole
+			# segment, or outside them for the whole segment.
+			if origin < -half or origin > half:
+				return -1.0
+			continue
+		var near := (-half - origin) / step
+		var far := (half - origin) / step
+		if near > far:
+			var swap := near
+			near = far
+			far = swap
+		t_min = maxf(t_min, near)
+		t_max = minf(t_max, far)
+		if t_min > t_max:
+			return -1.0
+	return t_min
+
+
 ## Shortest distance from `point` to the segment a→b.
 static func segment_distance_to_point(a: Vector3, b: Vector3, point: Vector3) -> float:
 	var ab := b - a

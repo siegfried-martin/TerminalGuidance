@@ -152,19 +152,21 @@ func _process(delta: float) -> void:
 
 ## Did this frame's travel reach the target?
 ##
-## Components are asked first, so a shot that could be credited to either the hull
-## sphere or a component on it goes to the component — the thing the player was
-## aiming at (ADR 0042). A plain Node3D target has no components and falls straight
-## through to the hull sphere, which is what the headless flight test uses.
+## A TargetShip answers with whichever of its parts the segment reaches first, hull
+## or component (ADR 0043). A plain Node3D target has no parts and falls through to
+## a single sphere, which is what the headless flight test uses.
 func _hit_target() -> bool:
 	if _target == null:
 		return false
 	var enemy := _target as TargetShip
 	if enemy != null:
-		var part := enemy.hit_test(_previous_position, position)
+		var result := enemy.hit_test(_previous_position, position)
+		if not bool(result["hit"]):
+			return false
+		var part := int(result["component"])
 		if part >= 0:
 			enemy.damage_component(part)
-			return true
+		return true
 	return FlightGeometry.segment_hits_sphere(
 		_previous_position, position, _target.position, _target_radius)
 

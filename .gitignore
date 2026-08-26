@@ -19,3 +19,6 @@ mono_crash.*.json
 # Local tooling output
 .shots/
 .apiref/
+
+# Python bytecode from the asset generators
+__pycache__/
