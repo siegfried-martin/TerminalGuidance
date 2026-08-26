@@ -17,6 +17,26 @@ static func segment_hits_sphere(a: Vector3, b: Vector3, center: Vector3, radius:
 	return segment_distance_to_point(a, b, center) <= radius
 
 
+## Does the swept segment a→b enter the ellipsoid at `center`, oriented by the
+## orthonormal `orientation` and with semi-axes `radii`?
+##
+## Solved by mapping into the ellipsoid's own frame and dividing out the radii,
+## which turns it into the unit-sphere test above. That map is affine, so it
+## preserves whether the segment and the surface intersect — the answer is exact,
+## not an approximation, even though distances inside the mapped frame are not
+## real metres.
+##
+## `orientation` must be orthonormal; its inverse is taken as its transpose.
+static func segment_hits_ellipsoid(a: Vector3, b: Vector3, center: Vector3,
+		orientation: Basis, radii: Vector3) -> bool:
+	if radii.x <= 0.0 or radii.y <= 0.0 or radii.z <= 0.0:
+		return false
+	var to_local := orientation.transposed()
+	var local_a := (to_local * (a - center)) / radii
+	var local_b := (to_local * (b - center)) / radii
+	return segment_distance_to_point(local_a, local_b, Vector3.ZERO) <= 1.0
+
+
 ## Shortest distance from `point` to the segment a→b.
 static func segment_distance_to_point(a: Vector3, b: Vector3, point: Vector3) -> float:
 	var ab := b - a

@@ -28,8 +28,18 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"ship/arc_speed", "ship/standoff_distance", "ship/muzzle_offset", "ship/hull_scale",
 	"ship/range_hold_seconds", "ship/range_hold_max_speed",
 	"ship/hull_tint", "ship/metallic", "ship/roughness",
+	"ship/autopilot_on_start", "ship/manual_accel_seconds", "ship/manual_brake_seconds",
+	"ship/manual_max_speed", "ship/manual_speed_ceiling_fraction",
+	"ship/manual_turn_rate_deg_per_sec", "ship/manual_reticle_max_angle_deg",
+	"ship/manual_strafe_speed",
 	"enemy/radius", "enemy/drift_speed", "enemy/spin_deg_per_sec",
 	"enemy/patrol_half_extent", "enemy/hull_color", "enemy/hull_emission",
+	"enemy/hull_length", "enemy/hull_width", "enemy/hull_height", "enemy/nose_length",
+	"enemy/wing_span", "enemy/wing_chord", "enemy/wing_thickness", "enemy/fin_height",
+	"enemy/component_count", "enemy/component_hits_to_destroy",
+	"enemy/component_radius", "enemy/component_length", "enemy/component_mount_radius",
+	"enemy/component_hit_radius", "enemy/component_damaged_darken",
+	"enemy/component_respawn_seconds", "enemy/component_color", "enemy/component_emission",
 	"camera/fov_base", "camera/return_delay_sec", "camera/missile_view_mode",
 	"camera/ship_follow_distance", "camera/ship_follow_height", "camera/ship_follow_lag",
 	"camera/ship_look_ahead",
@@ -52,13 +62,18 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"arena/rock_slab_half_height", "arena/rock_min_size", "arena/rock_max_size",
 	"arena/rock_color", "arena/rock_seed",
 	"arena/rock_collision", "arena/rock_hit_radius_scale",
+	"arena/rock_lobe_min", "arena/rock_lobe_max",
+	"arena/rock_lobe_size_min", "arena/rock_lobe_size_max",
+	"arena/rock_lobe_offset_min", "arena/rock_lobe_offset_max",
+	"arena/rock_elongation",
 	"probe/scale", "probe/spin_deg_per_sec", "probe/bob_amplitude", "probe/bob_period_sec",
 	"probe/hull_tint", "probe/metallic", "probe/roughness",
 ]
 
 const REQUIRED_ACTIONS: Array[String] = [
 	"fire", "detonate", "boost", "brake", "dodge_left", "dodge_right",
-	"missile_left", "missile_right", "missile_up", "missile_down",
+	"aim_left", "aim_right", "aim_up", "aim_down",
+	"throttle_up", "throttle_down", "strafe_left", "strafe_right", "toggle_autopilot",
 	"cam_forward", "cam_back", "cam_left", "cam_right", "cam_up", "cam_down",
 	"cam_boost", "cam_look",
 	"debug_toggle_hud", "debug_toggle_panel", "debug_reload_tuning",
@@ -82,6 +97,8 @@ func _ready() -> void:
 	_test_reticle_steering()
 	_test_reference_field()
 	_test_dodge_and_brake()
+	_test_manual_flight()
+	_test_target_components()
 	_test_overlay_projection_guard()
 	_test_tuning_schema()
 	_test_tuning_writer()
@@ -212,6 +229,30 @@ func _test_flight_geometry() -> void:
 	_expect(not FlightGeometry.segment_hits_sphere(
 			Vector3(0, 0, 20), Vector3(0, 0, 40), Vector3.ZERO, 2.0),
 		"swept segment does not hit behind its start", "hit something behind it")
+
+	# Ellipsoids, the primitive a rock is built from (ADR 0041). A long thin one
+	# must be hittable down its length and missable across its waist at the same
+	# distance — which is the whole reason a single radius was not enough.
+	var stretched := Vector3(3.0, 12.0, 3.0)
+	_expect(FlightGeometry.segment_hits_ellipsoid(
+			Vector3(0, 20, -30), Vector3(0, 20, 30), Vector3(0, 20, 0),
+			Basis.IDENTITY, stretched),
+		"a segment through an ellipsoid's centre hits it", "missed a direct pass")
+	_expect(FlightGeometry.segment_hits_ellipsoid(
+			Vector3(0, 9, -30), Vector3(0, 9, 30), Vector3.ZERO, Basis.IDENTITY, stretched),
+		"…and one along its long axis, inside it", "missed the tall part")
+	_expect(not FlightGeometry.segment_hits_ellipsoid(
+			Vector3(9, 0, -30), Vector3(9, 0, 30), Vector3.ZERO, Basis.IDENTITY, stretched),
+		"…and misses at the same distance across its short axis",
+		"an ellipsoid that behaves like a sphere is not an ellipsoid")
+	# Rotating the ellipsoid by a quarter turn swaps which of those two is true.
+	var turned := Basis.from_euler(Vector3(0.0, 0.0, PI * 0.5))
+	_expect(FlightGeometry.segment_hits_ellipsoid(
+			Vector3(9, 0, -30), Vector3(9, 0, 30), Vector3.ZERO, turned, stretched),
+		"the ellipsoid's orientation is respected", "rotation was ignored")
+	_expect(not FlightGeometry.segment_hits_ellipsoid(
+			Vector3(0, 0, 40), Vector3(0, 0, 80), Vector3.ZERO, Basis.IDENTITY, stretched),
+		"a segment entirely past an ellipsoid misses it", "hit something behind it")
 
 	var cone := FlightGeometry.clamp_to_cone(
 		Vector3(1, 0, 0), Vector3(0, 0, -1), deg_to_rad(30.0))
@@ -487,17 +528,218 @@ func _turn_over_half_second(braking: bool) -> float:
 	var missile := Missile.new()
 	missile.launch(Vector3.ZERO, Basis.IDENTITY, Vector3.ZERO, null, 0.0)
 	missile.piloted = true
-	Input.action_press("missile_left")
+	Input.action_press("aim_left")
 	if braking:
 		Input.action_press("brake")
 	for _i in 30:
 		missile._process(1.0 / 60.0)
-	Input.action_release("missile_left")
+	Input.action_release("aim_left")
 	if braking:
 		Input.action_release("brake")
 	var turned := rad_to_deg((-missile.basis.z).angle_to(Vector3(0.0, 0.0, -1.0)))
 	missile.free()
 	return turned
+
+
+## Manual flight (ADR 0040). Driven through real `Input` actions, which work
+## headlessly, so this exercises the same path a hand on the keyboard does.
+func _test_manual_flight() -> void:
+	var target := Node3D.new()
+	add_child(target)
+	var ship := Mothership.new()
+	add_child(ship)
+	ship.set_process(false)   # stepped by hand below
+	ship.target = target
+	ship.position = Vector3(0.0, 0.0, 1.0)
+	ship.snap_to_standoff()
+
+	_expect(ship.autopilot == Tuning.flag("ship/autopilot_on_start"),
+		"the ship starts in the tuned mode", "started in %s" % ship.mode_name())
+
+	# The speed hierarchy is structural, not advisory (CLAUDE.md): whatever the
+	# ship's own top speed says, it may not reach a missile's.
+	var missile_speed := Tuning.num("missile/base_speed")
+	_expect(ship.manual_max_speed() < missile_speed,
+		"a manually flown ship cannot reach missile speed",
+		"ship %.1f m/s vs missile %.1f m/s" % [ship.manual_max_speed(), missile_speed])
+
+	Tuning.set_value("ship/manual_max_speed", missile_speed * 10.0)
+	_expect(ship.manual_max_speed() < missile_speed,
+		"…even when the ship's own tuning is raised past it",
+		"clamp let %.1f m/s through" % ship.manual_max_speed())
+	Tuning.revert()
+
+	ship.set_autopilot(false)
+	_expect(not ship.autopilot, "the ship hands over to manual", "stayed on autopilot")
+
+	var step := 1.0 / 60.0
+	# Throttle is held state, not a burst: it climbs while W is down and STAYS
+	# where it was left. That is the whole difference from the missile's boost.
+	Input.action_press("throttle_up")
+	for _i in 30:
+		ship._process(step)
+	Input.action_release("throttle_up")
+	var half_second := ship.throttle()
+	_expect(half_second > 0.0, "throttle climbs while accelerate is held",
+		"throttle stayed at %.2f" % half_second)
+
+	for _i in 30:
+		ship._process(step)
+	_expect(is_equal_approx(ship.throttle(), half_second),
+		"throttle holds its position when released — it is a lever, not a burst",
+		"drifted from %.3f to %.3f" % [half_second, ship.throttle()])
+
+	Input.action_press("throttle_down")
+	for _i in 600:
+		ship._process(step)
+	Input.action_release("throttle_down")
+	_expect(is_equal_approx(ship.throttle(), 0.0),
+		"the brake runs the throttle all the way to zero", "%.3f left" % ship.throttle())
+
+	# Full travel of the lever must take about the tuned number of seconds.
+	Input.action_press("throttle_up")
+	var frames := 0
+	while ship.throttle() < 1.0 and frames < 6000:
+		ship._process(step)
+		frames += 1
+	Input.action_release("throttle_up")
+	var took := float(frames) * step
+	var tuned := Tuning.num("ship/manual_accel_seconds")
+	_expect(absf(took - tuned) < maxf(tuned * 0.1, 2.0 * step),
+		"zero to full throttle takes ship/manual_accel_seconds",
+		"took %.2f s, tuned %.2f s" % [took, tuned])
+
+	var flat_out := ship.position
+	ship._process(step)
+	_expect(is_equal_approx(ship.position.distance_to(flat_out), ship.manual_max_speed() * step),
+		"full throttle flies at the clamped top speed",
+		"moved %.3f m in a frame" % ship.position.distance_to(flat_out))
+
+	# Lateral thrusters are held on the ship, unlike the missile's one-press dodge.
+	var before_strafe := ship.position
+	Input.action_press("strafe_right")
+	ship._process(step)
+	Input.action_release("strafe_right")
+	var sideways := (ship.position - before_strafe).dot(ship.basis.x)
+	_expect(sideways > 0.0, "a held thruster moves the ship sideways",
+		"moved %.4f m along its own right" % sideways)
+
+	# Thrusting sideways at full throttle must not sum past the ceiling: the
+	# hierarchy has to hold against two keys held together, not just against an
+	# edit to one number.
+	Input.action_press("throttle_up")
+	Input.action_press("strafe_right")
+	for _i in 10:
+		ship._process(step)
+	Input.action_release("throttle_up")
+	Input.action_release("strafe_right")
+	_expect(ship.speed() <= ship.manual_max_speed() + 0.001,
+		"a thruster held at full throttle does not sum past the top speed",
+		"%.2f m/s against a ceiling of %.2f" % [ship.speed(), ship.manual_max_speed()])
+
+	# Riding a missile must not also fly the ship. Both read W.
+	ship.piloted = false
+	var coast_throttle := ship.throttle()
+	var coast_from := ship.position
+	Input.action_press("throttle_down")
+	for _i in 60:
+		ship._process(step)
+	Input.action_release("throttle_down")
+	_expect(is_equal_approx(ship.throttle(), coast_throttle),
+		"an unpiloted ship ignores input — W and S do not fly two vehicles at once",
+		"throttle moved to %.3f while riding a missile" % ship.throttle())
+	_expect(ship.position.distance_to(coast_from) > 0.0,
+		"…but it keeps coasting rather than stopping dead", "the ship froze")
+	ship.piloted = true
+
+	# And handing back to the autopilot restores the arc.
+	ship.set_autopilot(true)
+	var standoff := Tuning.num("ship/standoff_distance")
+	for _i in 1800:
+		ship._process(step)
+	_expect(absf(ship.range_to_target() - standoff) < standoff * 0.25,
+		"the autopilot recovers standoff after a manual excursion",
+		"%.0f m held against %.0f m tuned" % [ship.range_to_target(), standoff])
+
+	ship.queue_free()
+	target.queue_free()
+
+
+## Destructible components on the target (ADR 0042).
+func _test_target_components() -> void:
+	var enemy := TargetShip.new()
+	add_child(enemy)
+	enemy.set_process(false)
+
+	var expected := Tuning.integer("enemy/component_count")
+	_expect(enemy.component_count() == expected,
+		"the target builds every tuned component",
+		"built %d of %d" % [enemy.component_count(), expected])
+	if enemy.component_count() == 0:
+		enemy.queue_free()
+		return
+	_expect(enemy.components_alive() == expected,
+		"components start intact", "%d alive" % enemy.components_alive())
+
+	# Components must be inside the hull's own hit sphere, or the hull would catch
+	# every shot first and the component would be unreachable.
+	var reach := 0.0
+	for i in enemy.component_count():
+		reach = maxf(reach, enemy.component_position(i).length())
+	_expect(reach < enemy.radius + Tuning.num("enemy/component_hit_radius"),
+		"components sit within the hull's hit sphere, so shots can reach them",
+		"furthest component is %.1f m out, hull sphere is %.1f m" % [reach, enemy.radius])
+
+	var damaged := {"count": 0, "destroyed": 0}
+	enemy.component_damaged.connect(func(_i: int, _p: Vector3, destroyed: bool) -> void:
+		damaged["count"] += 1
+		if destroyed:
+			damaged["destroyed"] += 1)
+
+	var centre := enemy.component_position(0)
+	var radius := Tuning.num("enemy/component_hit_radius")
+	var above := centre + Vector3(0.0, radius * 4.0, 0.0)
+	var below := centre - Vector3(0.0, radius * 4.0, 0.0)
+	_expect(enemy.hit_test(above, below) == 0,
+		"a swept segment through a component finds it",
+		"got %d" % enemy.hit_test(above, below))
+
+	var clear_of_it := centre + Vector3(0.0, radius * 40.0, 0.0)
+	_expect(enemy.hit_test(clear_of_it, clear_of_it + Vector3(0.0, 1.0, 0.0)) == -1,
+		"a segment nowhere near one reports no component", "false positive")
+
+	var needed := Tuning.integer("enemy/component_hits_to_destroy")
+	for hit in needed - 1:
+		_expect(not enemy.damage_component(0),
+			"hit %d of %d damages without destroying" % [hit + 1, needed],
+			"destroyed early")
+		_expect(enemy.is_component_alive(0), "…and it is still alive", "already gone")
+	_expect(enemy.damage_component(0), "the last hit destroys it", "survived the full count")
+	_expect(not enemy.is_component_alive(0), "…and it reads as destroyed", "still alive")
+	_expect(enemy.components_alive() == expected - 1,
+		"the alive count drops", "%d alive" % enemy.components_alive())
+	_expect(int(damaged["count"]) == needed and int(damaged["destroyed"]) == 1,
+		"one signal per hit, and exactly one of them destroying",
+		"%d signals, %d destroying" % [damaged["count"], damaged["destroyed"]])
+
+	# A destroyed component is not a target any more, and cannot be hit again.
+	_expect(enemy.hit_test(above, below) == -1,
+		"a destroyed component stops being hittable", "still catching shots")
+	_expect(not enemy.damage_component(0),
+		"…and cannot be damaged again", "took another hit")
+
+	# It comes back, so a practice run does not run out of things to shoot.
+	var window := Tuning.num("enemy/component_respawn_seconds")
+	if window > 0.0:
+		for _i in int(ceil(window * 60.0)) + 4:
+			enemy._tick_respawns(1.0 / 60.0)
+		_expect(enemy.is_component_alive(0),
+			"a destroyed component returns after component_respawn_seconds",
+			"still gone after %.1f s" % window)
+		_expect(enemy.component_hits(0) == 0,
+			"…undamaged", "came back with %d hits on it" % enemy.component_hits(0))
+
+	enemy.queue_free()
 
 
 ## Regression: `unproject_position` asserts for a point sitting on the camera's own
@@ -534,6 +776,13 @@ func _test_reference_field() -> void:
 		"every drawn rock is hittable while rock_collision is on",
 		"%d drawn, %d hittable" % [field.rock_count(), field.hittable_count()])
 
+	_expect(field.lobe_count() >= field.rock_count() * Tuning.integer("arena/rock_lobe_min"),
+		"every rock is built from at least rock_lobe_min ellipsoids",
+		"%d lobes across %d rocks" % [field.lobe_count(), field.rock_count()])
+	_expect(field.lobe_count() <= field.rock_count() * Tuning.integer("arena/rock_lobe_max"),
+		"…and no more than rock_lobe_max",
+		"%d lobes across %d rocks" % [field.lobe_count(), field.rock_count()])
+
 	if field.rock_count() > 0:
 		var centre := field.rock_centre(0)
 		var radius := field.rock_radius(0)
@@ -545,9 +794,13 @@ func _test_reference_field() -> void:
 			"hit_test catches a segment through a rock", "passed straight through")
 
 		# The whole reason for a swept test: both endpoints sit clear of the rock,
-		# so a per-frame point check would report a clean miss (ADR 0032).
-		_expect(field.hit_test(above, below) == centre,
-			"hit_test reports which rock was hit", "wrong centre returned")
+		# so a per-frame point check would report a clean miss (ADR 0032). What
+		# comes back is the LOBE that was hit — the flash belongs where the missile
+		# actually struck, not at the cluster's notional centre.
+		var struck := field.hit_test(above, below)
+		_expect(struck.distance_to(centre) <= radius,
+			"hit_test reports the lobe that was hit, inside the rock it belongs to",
+			"returned %s for a rock centred on %s" % [struck, centre])
 
 		var far_away := centre + Vector3(0.0, radius * 50.0, 0.0)
 		_expect(field.hit_test(far_away, far_away + Vector3(0.0, 1.0, 0.0)) == Vector3.INF,
@@ -660,6 +913,34 @@ func _test_debug_panel() -> void:
 	_expect(rows >= Tuning.schema().size(),
 		"the panel builds a row for every documented value",
 		"%d rows for %d entries" % [rows, Tuning.schema().size()])
+
+	# One collapsible section per [section] in the file, so the list is navigable
+	# rather than one two-hundred-row scroll.
+	var expected_sections := {}
+	for entry in Tuning.schema():
+		expected_sections[String(entry["section"])] = true
+	_expect(DebugPanel.section_count() == expected_sections.size(),
+		"the panel builds one collapsible section per tuning section",
+		"%d sections for %d in the file" % [
+			DebugPanel.section_count(), expected_sections.size()])
+	_expect(DebugPanel.open_section_count() == 0,
+		"sections start collapsed", "%d opened themselves" % DebugPanel.open_section_count())
+	DebugPanel.set_section_open("missile", true)
+	_expect(DebugPanel.open_section_count() == 1,
+		"a section opens on demand", "%d open" % DebugPanel.open_section_count())
+	# A filter has to reach into collapsed sections, or it hides its own results.
+	DebugPanel.set_filter("standoff")
+	_expect(DebugPanel.visible_row_count() > 0,
+		"filtering finds values inside collapsed sections",
+		"the filter matched nothing it could show")
+	_expect(DebugPanel.visible_row_count() < rows,
+		"…and hides the rest", "%d of %d rows still shown" % [
+			DebugPanel.visible_row_count(), rows])
+	DebugPanel.set_filter("")
+	_expect(DebugPanel.open_section_count() == 1,
+		"clearing the filter restores the human's fold state",
+		"%d open after clearing" % DebugPanel.open_section_count())
+	DebugPanel.set_section_open("missile", false)
 	DebugPanel.set_open(false)
 	_expect(not DebugPanel.is_open(), "the tuning panel closes", "stayed open")
 
@@ -689,6 +970,8 @@ func _test_arena_builds() -> void:
 
 	for path in ["WorldEnvironment", "KeyLight", "FillLight", "ArenaRoot",
 			"ArenaRoot/Lattice", "ArenaRoot/Rocks", "ArenaRoot/Target",
+			"ArenaRoot/Target/Parts", "ArenaRoot/Target/Parts/Fuselage",
+			"ArenaRoot/Target/Parts/Nose", "ArenaRoot/Target/Components",
 			"ArenaRoot/Mothership", "ShipCamera", "MissileCamera",
 			"ViewController", "DebugHud"]:
 		_expect(arena.has_node(path), "arena builds node: " + path, "not constructed")

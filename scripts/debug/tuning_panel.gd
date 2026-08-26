@@ -24,7 +24,11 @@ var _status: Label
 var _save_button: Button
 var _controls: Dictionary = {}          ## path -> the widget showing it
 var _row_nodes: Dictionary = {}         ## path -> the row Control, for filtering
-var _section_headers: Array[Dictionary] = []
+## One entry per [section]: {"section": String, "header": Button, "body": VBoxContainer}
+var _sections: Array[Dictionary] = []
+## section -> expanded. Survives a repopulate, so a reload does not fold up the
+## section being worked on.
+var _section_open: Dictionary = {}
 var _suppress_refresh := false
 
 
@@ -61,11 +65,26 @@ func _build() -> void:
 	title.add_theme_color_override("font_color", Color(0.62, 0.74, 0.86))
 	column.add_child(title)
 
+	# Filter and the two fold-everything buttons share a row: they are the same
+	# job — getting to one value out of two hundred without scrolling past the
+	# other hundred and ninety-nine.
+	var find_row := HBoxContainer.new()
+	find_row.add_theme_constant_override("separation", 4)
+	column.add_child(find_row)
+
 	_filter = LineEdit.new()
 	_filter.placeholder_text = "filter…"
 	_filter.add_theme_font_size_override("font_size", 13)
+	_filter.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_filter.text_changed.connect(_apply_filter)
-	column.add_child(_filter)
+	find_row.add_child(_filter)
+
+	var expand := _make_button("+", func() -> void: _set_all_sections(true))
+	expand.tooltip_text = "Expand every section"
+	find_row.add_child(expand)
+	var collapse := _make_button("−", func() -> void: _set_all_sections(false))
+	collapse.tooltip_text = "Collapse every section"
+	find_row.add_child(collapse)
 
 	# ScrollContainer gives mouse-wheel scrolling for free, which the list needs.
 	var scroll := ScrollContainer.new()
@@ -118,29 +137,69 @@ func _populate() -> void:
 		child.queue_free()
 	_controls.clear()
 	_row_nodes.clear()
-	_section_headers.clear()
+	_sections.clear()
 
 	var section := ""
+	var body: VBoxContainer = null
 	for entry in Tuning.schema():
-		if String(entry["section"]) != section:
+		if String(entry["section"]) != section or body == null:
 			section = String(entry["section"])
-			_rows.add_child(_make_section_header(section))
+			body = _add_section(section)
 		var row := _make_row(entry)
 		if row != null:
-			_rows.add_child(row)
+			body.add_child(row)
 			_row_nodes[String(entry["path"])] = row
+	_apply_filter(_filter.text)
 	_refresh_status()
 
 
-func _make_section_header(section: String) -> Control:
-	var label := Label.new()
-	label.text = "[%s]" % section
-	label.add_theme_font_size_override("font_size", 13)
-	label.add_theme_color_override("font_color", Color(0.98, 0.72, 0.38))
-	label.custom_minimum_size.y = 26
-	label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
-	_section_headers.append({"section": section, "node": label})
-	return label
+## A section is a toggle button plus the box its rows live in. Collapsed by
+## default: two hundred sliders in one list is a scroll hunt, which is the thing
+## the human asked to be rid of. The open set is remembered across a repopulate.
+func _add_section(section: String) -> VBoxContainer:
+	var header := Button.new()
+	header.toggle_mode = true
+	header.flat = true
+	header.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	header.add_theme_font_size_override("font_size", 13)
+	header.add_theme_color_override("font_color", Color(0.98, 0.72, 0.38))
+	header.add_theme_color_override("font_pressed_color", Color(0.98, 0.72, 0.38))
+	header.add_theme_color_override("font_hover_color", Color(1.0, 0.85, 0.6))
+	header.custom_minimum_size.y = 26
+	_rows.add_child(header)
+
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override("separation", 5)
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_rows.add_child(body)
+
+	var open := bool(_section_open.get(section, false))
+	header.button_pressed = open
+	header.toggled.connect(func(pressed: bool) -> void:
+		_section_open[section] = pressed
+		_apply_filter(_filter.text))
+
+	_sections.append({"section": section, "header": header, "body": body})
+	_paint_header(header, section, open)
+	body.visible = open
+	return body
+
+
+## The arrow and the count both live in the header text, so a collapsed section
+## still says how much is inside it.
+func _paint_header(header: Button, section: String, open: bool) -> void:
+	var total := 0
+	for path: String in _row_nodes:
+		if path.begins_with(section + "/"):
+			total += 1
+	header.text = "%s  [%s]   %d" % ["▾" if open else "▸", section, total]
+
+
+func _set_all_sections(open: bool) -> void:
+	for entry in _sections:
+		_section_open[String(entry["section"])] = open
+		(entry["header"] as Button).set_pressed_no_signal(open)
+	_apply_filter(_filter.text)
 
 
 func _make_row(entry: Dictionary) -> Control:
@@ -320,19 +379,36 @@ func _commit(path: String, value: Variant) -> void:
 
 # --- filtering ---------------------------------------------------------------
 
+## Filtering and folding are one operation, because a match inside a collapsed
+## section has to be reachable: typing in the filter forces the sections that
+## matched open, and clearing it returns every section to the fold state the human
+## chose. A filter that quietly hid its own results would be worse than no filter.
 func _apply_filter(text: String) -> void:
 	var needle := text.strip_edges().to_lower()
-	var visible_sections := {}
+	var matched := {}
 	for path: String in _row_nodes:
 		var row := _row_nodes[path] as Control
 		var shown := needle.is_empty() or path.to_lower().contains(needle) \
 			or row.tooltip_text.to_lower().contains(needle)
 		row.visible = shown
-		if shown:
-			visible_sections[path.split("/")[0]] = true
-	for header in _section_headers:
-		(header["node"] as Control).visible = \
-			needle.is_empty() or visible_sections.has(header["section"])
+		if shown and not needle.is_empty():
+			matched[path.split("/")[0]] = true
+
+	for entry in _sections:
+		var section := String(entry["section"])
+		var header := entry["header"] as Button
+		var body := entry["body"] as Control
+		if needle.is_empty():
+			var open := bool(_section_open.get(section, false))
+			header.visible = true
+			header.set_pressed_no_signal(open)
+			body.visible = open
+			_paint_header(header, section, open)
+		else:
+			var hit := matched.has(section)
+			header.visible = hit
+			body.visible = hit
+			_paint_header(header, section, hit)
 
 
 # --- state -------------------------------------------------------------------
@@ -404,3 +480,42 @@ func is_open() -> bool:
 ## Number of value rows currently built, for the headless gate.
 func row_count() -> int:
 	return _row_nodes.size()
+
+
+# --- readouts and handles for the headless gate ------------------------------
+# The panel is the instrument the whole tuning session runs through, so its
+# folding and filtering are worth a test rather than a look.
+
+func section_count() -> int:
+	return _sections.size()
+
+
+func open_section_count() -> int:
+	var open := 0
+	for entry in _sections:
+		if (entry["body"] as Control).visible:
+			open += 1
+	return open
+
+
+func set_section_open(section: String, open: bool) -> void:
+	_section_open[section] = open
+	for entry in _sections:
+		if String(entry["section"]) == section:
+			(entry["header"] as Button).set_pressed_no_signal(open)
+	_apply_filter(_filter.text)
+
+
+func set_filter(text: String) -> void:
+	_filter.text = text
+	_apply_filter(text)
+
+
+## Rows that are currently reachable: shown, and inside an expanded section.
+func visible_row_count() -> int:
+	var shown := 0
+	for path: String in _row_nodes:
+		var row := _row_nodes[path] as Control
+		if row.visible and row.get_parent() != null and (row.get_parent() as Control).visible:
+			shown += 1
+	return shown

@@ -45,6 +45,23 @@ Manual ship flight, exploration and cruise feel, progression cadence, the overwo
 
 Manual ship flight, cruise mode, fuel, planets, landing, system boundaries, the disc volume, inter-system travel, upgrades, factions, economy, crew/NPCs, ship builder, ship interior or walkability, multiple enemies, enemy AI beyond "drift slowly + emit blockers + shoot + occasionally launch", menus, save/load, sound design, any art beyond primitive meshes, multiplayer, the overworld.
 
+### Scope amendment — 2026-08-26
+
+Two things below have been overtaken by the human's direction and are now built.
+The rest of the scope and all three success criteria are unchanged.
+
+- **Manual ship flight is in.** It appears under "Explicitly out of scope" below,
+  and the Scope Note that follows always said that absence was a deferral rather
+  than a decision. The human lifted the deferral. See ADR 0040 for the shape it
+  took. The autopilot is untouched and still runs by default; ADR 0013 still bounds
+  it.
+- **The target carries destructible components** (ADR 0042), which front-runs part
+  of step 9's hit feedback. The target ship itself still has no hit points, does not
+  die and does not respawn — **step 9 is not started.**
+
+Nothing else has moved. Turret mode and the missile cooldown (step 6) remain the
+next step and remain the alternation the whole POC exists to test.
+
 ### Scope Note — manual ship flight
 
 **Manual flight exists in the design, and is now more central than it was.** The player flies the mothership in first or close third person for exploration, for positioning before a fight, and for the entirety of travel — there is no travel mode, so manual flight is the exploration verb. Autopilot is a delegation the player elects; at the travel scale it is a heading hold and nothing more.
