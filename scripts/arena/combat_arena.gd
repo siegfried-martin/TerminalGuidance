@@ -5,9 +5,9 @@ extends Node3D
 ## behaviour, one dumb target, and the missile (launch, chase cam, steering,
 ## fuse). This is the first feel checkpoint: success criterion 1, the 8 seconds.
 ##
-## Step 5 has since landed in part: early detonate, boost, and side thrusters
-## (ADR 0037), plus rocks that kill a missile on contact (ADR 0038). Splash damage
-## is still outstanding, because it needs the target to have hit points.
+## Step 5 has since landed in part: early detonate, boost, brake and a cooldown
+## dodge (ADR 0039), plus rocks that kill a missile on contact (ADR 0038). Splash
+## damage is still outstanding, because it needs the target to have hit points.
 ##
 ## Deliberately absent, in build order: splash damage (step 5); turret mode and the
 ## missile cooldown (step 6); blockers, enemy fire and ship HP (step 7); the
@@ -152,11 +152,20 @@ func _build_hud() -> void:
 		var missile := _views.piloted_missile()
 		if missile == null:
 			return "—"
-		return "%.2f s left%s" % [
-			missile.boost_remaining(), "  ON" if missile.is_boosting() else ""])
-	_hud.add_row("slide", func() -> String:
+		var state := ""
+		if missile.is_boosting():
+			state = "  BOOST"
+		elif missile.is_braking():
+			state = "  BRAKE"
+		return "%.2f s left%s" % [missile.boost_remaining(), state])
+	_hud.add_row("dodge", func() -> String:
 		var missile := _views.piloted_missile()
-		return "—" if missile == null else "%.0f m/s" % missile.strafe_rate())
+		if missile == null:
+			return "—"
+		if missile.is_dodging():
+			return "DODGING"
+		var cooldown := missile.dodge_cooldown_remaining()
+		return "ready" if cooldown <= 0.0 else "%.2f s" % cooldown)
 	_hud.add_row("rocks", func() -> String:
 		return "%d drawn · %d hittable" % [_rocks.rock_count(), _rocks.hittable_count()])
 	_hud.add_row("aim off", func() -> String:
@@ -168,7 +177,7 @@ func _build_hud() -> void:
 	_hud.add_row("last", func() -> String: return _last_outcome)
 	_hud.add_row("keys", func() -> String:
 		if _views.view() == ViewController.View.MISSILE:
-			return "Space boost · WASD thrusters · mouse/stick aims · LMB/X detonate · F1 hud · F2 tune"
+			return "W boost · S brake · A/D dodge · mouse/stick aims · Space/LMB detonate · F1 hud · F2 tune"
 		return "LMB/Space fire · F1 hud · F2 tune · F5 reload · R reverse arc · Esc quit")
 
 

@@ -1,6 +1,11 @@
 # ADR 0037 — Side thrusters are a bounded slide, not vector thrust
 
-*Status: accepted · 2026-08-25 · asked for during the first tuning-panel session, and checked against ADR 0003 before building*
+*Status: superseded by ADR 0039 · 2026-08-25 · asked for during the first tuning-panel session, and checked against ADR 0003 before building*
+
+> **Superseded by [ADR 0039](0039-dodge-brake-boost.md).** The held, ramped slide
+> described below was flown for one session and replaced by a discrete dodge on a
+> cooldown, left/right only. The reasoning here is kept because it is the record of
+> why the alternative lost, and because its boost half survives unchanged.
 
 ## Decision
 

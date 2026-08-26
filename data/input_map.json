@@ -1,22 +1,21 @@
 {
   "_note": "Input bindings, applied to InputMap at startup by scripts/autoload/bindings.gd. Edit here, never in the Godot editor's Input Map tab — editor-authored actions land in project.godot and stop being reviewable (ADR 0027). Event syntax: 'key:<name>', 'mouse:<left|right|middle|wheel_up|wheel_down>', 'joybutton:<name>', 'joyaxis:<name><+|->'.",
 
-  "_note_missile": "Riding a missile, Space is boost (held) and detonate moves to LMB/X, so a rider never shares a button between the two verbs (ADR 0037). WASD strafe also carries the sandbox fly-cam's cam_* actions, but the fly-cam only exists in sandbox.tscn and the missile only in arena.tscn, so the two never poll in the same scene.",
+  "_note_missile": "Riding a missile: W boost (held), S brake (held), A/D dodge (one press, on a cooldown), Space or LMB detonate (ADR 0039). WASD also carries the sandbox fly-cam's cam_* actions, but the fly-cam only exists in sandbox.tscn and the missile only in arena.tscn, so the two never poll in the same scene.",
 
   "actions": {
     "fire":           ["key:Space", "mouse:left", "joyaxis:trigger_right+"],
-    "detonate":       ["mouse:left", "key:X", "joybutton:b"],
-    "boost":          ["key:Space", "joyaxis:trigger_right+"],
+    "detonate":       ["key:Space", "mouse:left", "key:X", "joybutton:b"],
+    "boost":          ["key:W", "joyaxis:trigger_right+"],
+    "brake":          ["key:S", "joyaxis:trigger_left+"],
 
     "missile_left":   ["key:Left",  "joyaxis:right_x-"],
     "missile_right":  ["key:Right", "joyaxis:right_x+"],
     "missile_up":     ["key:Up",    "joyaxis:right_y-"],
     "missile_down":   ["key:Down",  "joyaxis:right_y+"],
 
-    "missile_strafe_left":  ["key:A", "joyaxis:left_x-"],
-    "missile_strafe_right": ["key:D", "joyaxis:left_x+"],
-    "missile_strafe_up":    ["key:W", "joyaxis:left_y-"],
-    "missile_strafe_down":  ["key:S", "joyaxis:left_y+"],
+    "dodge_left":     ["key:A", "joybutton:lb"],
+    "dodge_right":    ["key:D", "joybutton:rb"],
 
     "cam_forward":   ["key:W"],
     "cam_back":      ["key:S"],

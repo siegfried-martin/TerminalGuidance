@@ -1,6 +1,6 @@
 # STATUS
 
-*Updated 2026-08-25.*
+*Updated 2026-08-26.*
 
 ## Where the build is
 
@@ -28,12 +28,12 @@ driven; no Godot editor GUI has been used at any point.
 | Gray-box arena: 7³ marker lattice via one MultiMesh, rebuilt on reload | working |
 | Debug fly-cam (RMB look, WASD/QE, Shift boost) | working |
 | Asset pipeline: `.obj` model + `.png` texture, generated → imported → rendered | working |
-| `make check`: 275 headless assertions, exit code gated | working |
+| `make check`: 287 headless assertions, exit code gated | working |
 | Godot-3 API linter over all scripts, data-driven denylist | working |
 | `make shot`: render frames to PNG from the CLI for visual verification | working |
 | `make apiref`: this exact build's 771-class reference for API grounding | working |
 | `DESIGN.md` — distilled thesis, Target Experience verbatim | written |
-| `decisions/` — 38 ADRs, indexed, each with a *What this forbids* section | written |
+| `decisions/` — 39 ADRs, indexed, each with a *What this forbids* section | written |
 | **Combat arena** (`scenes/arena.tscn`, now the main scene) | working |
 | Mothership autopilot: slow arc at standoff, nose on target | working |
 | Dumb target ship: drifts, turns at its patrol bounds | working |
@@ -46,10 +46,10 @@ driven; no Godot editor GUI has been used at any point.
 | Swept-segment hit test — no physics bodies anywhere (ADR 0032) | working |
 | Detonation flash, hit/miss readout, shot and hit counters | working |
 | `make shot SCENE=res://tools/shots/missile_view_shot.tscn` — captures the ride | working |
-| **Boost**: held on Space, from a reserve that does not refill in flight | working |
-| **Side thrusters**: WASD lateral slide, no momentum past the key (ADR 0037) | working |
+| **Boost**: held on W, from a reserve that does not refill in flight | working |
+| **Brake**: held on S, trades speed for turn rate, overrides boost (ADR 0039) | working |
+| **Dodge**: A/D, one press, one displacement, then a cooldown (ADR 0039) | working |
 | **Rocks kill missiles**: 260 obstacles inside the fight, swept-sphere (ADR 0038) | working |
-| Detonate moved to LMB/X so a rider never shares a button with boost | working |
 
 ### Deliberately not built yet
 
@@ -75,13 +75,15 @@ gray-box, with no art and no progression?*
 The session now has four new things to judge, and they interact — read them
 together, not one at a time:
 
-1. **Boost** — is 1.9x for 1.8 s a spend worth making, or is the reserve so small
-   it is never worth the thumb?
-2. **Thrusters** — does the slide read as a dodge, or as the missile being loose?
-   `strafe_ramp_seconds` / `strafe_release_seconds` are the two ends of that.
-3. **Rocks as obstacles** — 260 of them from 60 m out. This is the first thing in
-   the POC that can kill a missile that was otherwise on target.
-4. **Whether the far-field speed reference is missed** now the rocks came inside.
+1. **Boost** — is 1.9x a spend worth making, or is the reserve so small it is
+   never worth the thumb?
+2. **Dodge** — 22 m over 0.28 s on a 1.1 s cooldown. Is one press enough to clear
+   a rock, and is the cooldown long enough that spending it is a decision?
+3. **Brake** — the speed/agility trade. 0.55x speed for 1.8x turn. This is the one
+   verb with no reserve: it pays in range, because the fuse is a timer.
+4. **Rocks as obstacles** — the first thing in the POC that can kill a missile that
+   was otherwise on target.
+5. **Whether the far-field speed reference is missed** now the rocks came inside.
    If it is, the fix is a second sparse non-colliding layer (ADR 0038), not moving
    these back out.
 
@@ -100,9 +102,12 @@ They are the knobs most likely to be wrong.
   tank per missile, so boost is a route decision rather than a held button. If it
   is always right to burn it immediately, the reserve is too small or the
   multiplier too shy.
-- **`missile/strafe_speed` 18 m/s, ramp 0.08 s, release 0.12 s.** Snappy-on,
-  slower-off. Both ends may go to zero for an instant lane-snap. This is the pair
-  that decides whether thrusters read as Arwing or as slop.
+- **`missile/dodge_distance` 22 m over `dodge_seconds` 0.28, cooldown 1.1 s.** The
+  displacement eases out, so most of it lands in the first few frames. Cooldown
+  under `dodge_seconds` degenerates back into a held strafe — the thing ADR 0039
+  removed.
+- **`missile/brake_speed_multiplier` 0.55 and `brake_turn_multiplier` 1.8.** How
+  sharp the speed/agility trade is. Brake pays in range and nothing else.
 - **`arena/rock_inner_radius` 60 m with `rock_count` 260 and sizes 8–46 m.** Note
   the scale: a 46 m rock 60 m from arena centre is enormous next to a 200 m
   standoff, so the near rocks are large. `rock_hit_radius_scale` 0.55 forgives the
@@ -124,10 +129,15 @@ They are the knobs most likely to be wrong.
 
 ### Decided this session
 
-- **Side thrusters do not supersede ADR 0003** (ADR 0037). The slide is bounded and
-  decays to zero on release, so no momentum outlives the input — which is what 0003
-  actually objects to. True thrusters with damping remain available as a later
-  supersede.
+- **The held slide lost to a cooldown dodge** (ADR 0039, superseding ADR 0037)
+  after one session of flying it. A held lateral axis makes the missile something
+  you position rather than aim, and it competed with the reticle for the same
+  intent. Left/right only; no vertical dodge.
+- **Brake is the new verb worth watching.** It makes speed-versus-agility a live
+  trade during a flight, and it needs no reserve because flying slower already
+  costs range under a fuse timer (ADR 0002).
+- **Boost moved to W and detonate took Space back**, since the conflict that
+  displaced it to LMB/X in the first place is gone.
 - **Rocks became obstacles** (ADR 0038), superseding only ADR 0032's *placement*
   clause. The swept-segment mechanism is untouched and there is still no physics
   body anywhere in the arena. `arena/rock_collision = false` restores the old arena.

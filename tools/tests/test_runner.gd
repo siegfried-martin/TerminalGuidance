@@ -23,7 +23,8 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"missile/flash_start_radius", "missile/flash_end_radius",
 	"missile/flash_seconds", "missile/flash_color", "missile/flash_color_dud",
 	"missile/boost_multiplier", "missile/boost_seconds", "missile/boost_regen_per_sec",
-	"missile/strafe_speed", "missile/strafe_ramp_seconds", "missile/strafe_release_seconds",
+	"missile/dodge_distance", "missile/dodge_seconds", "missile/dodge_cooldown_seconds",
+	"missile/brake_speed_multiplier", "missile/brake_turn_multiplier",
 	"ship/arc_speed", "ship/standoff_distance", "ship/muzzle_offset", "ship/hull_scale",
 	"ship/range_hold_seconds", "ship/range_hold_max_speed",
 	"ship/hull_tint", "ship/metallic", "ship/roughness",
@@ -56,10 +57,8 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 ]
 
 const REQUIRED_ACTIONS: Array[String] = [
-	"fire", "detonate", "boost",
+	"fire", "detonate", "boost", "brake", "dodge_left", "dodge_right",
 	"missile_left", "missile_right", "missile_up", "missile_down",
-	"missile_strafe_left", "missile_strafe_right",
-	"missile_strafe_up", "missile_strafe_down",
 	"cam_forward", "cam_back", "cam_left", "cam_right", "cam_up", "cam_down",
 	"cam_boost", "cam_look",
 	"debug_toggle_hud", "debug_toggle_panel", "debug_reload_tuning",
@@ -82,6 +81,7 @@ func _ready() -> void:
 	_test_missile_flight()
 	_test_reticle_steering()
 	_test_reference_field()
+	_test_dodge_and_brake()
 	_test_tuning_schema()
 	_test_tuning_writer()
 	_test_debug_panel()
@@ -405,6 +405,100 @@ bare = true
 ## The rock field is the only thing in the arena a missile can collide with, and
 ## it does so without a physics body (ADR 0032 mechanism, ADR 0038 placement). All
 ## of that is plain geometry, so it is verifiable headlessly.
+## Dodge and brake are the two verbs that read input every frame, so unlike the
+## rest of the flight path they cannot be tested by stepping a dumb missile. Godot
+## honours `Input.action_press` headlessly, which is enough to drive them for real.
+func _test_dodge_and_brake() -> void:
+	var step := 1.0 / 60.0
+	var distance := Tuning.num("missile/dodge_distance")
+	var duration := Tuning.num("missile/dodge_seconds")
+
+	var missile := Missile.new()
+	missile.launch(Vector3.ZERO, Basis.IDENTITY, Vector3.ZERO, null, 0.0)
+	missile.piloted = true
+
+	_expect(missile.dodge_cooldown_remaining() <= 0.0,
+		"a fresh missile can dodge immediately", "launched on cooldown")
+
+	Input.action_press("dodge_right")
+	missile._process(step)
+	Input.action_release("dodge_right")
+	_expect(missile.is_dodging(), "a press starts a dodge", "nothing started")
+
+	for _i in int(ceil(duration / step)) + 2:
+		missile._process(step)
+
+	# The eased profile is integrated with a left Riemann sum at 60 Hz, so it lands
+	# a few percent long. The contract is "about dodge_distance to the right", not
+	# an exact integral — a tighter bound here would be testing the step size.
+	var moved := missile.position.x
+	_expect(absf(moved - distance) < distance * 0.15,
+		"one press displaces the missile by about dodge_distance",
+		"moved %.1f m, tuned %.1f m" % [moved, distance])
+	_expect(not missile.is_dodging(), "the dodge ends on its own", "still dodging")
+	_expect(missile.dodge_cooldown_remaining() > 0.0,
+		"a dodge leaves a cooldown behind", "dodge was free")
+
+	# Mashing must not stack: the cooldown is the whole reason this is a decision.
+	var before := missile.position.x
+	Input.action_press("dodge_left")
+	missile._process(step)
+	Input.action_release("dodge_left")
+	for _i in 4:
+		missile._process(step)
+	_expect(is_equal_approx(missile.position.x, before),
+		"a dodge on cooldown is refused", "moved %.2f m anyway" % (missile.position.x - before))
+
+	# --- brake -----------------------------------------------------------------
+	Input.action_press("brake")
+	missile._process(step)
+	_expect(missile.is_braking(), "brake engages while held", "not braking")
+	_expect(is_equal_approx(missile.speed(),
+			Tuning.num("missile/base_speed") * Tuning.num("missile/brake_speed_multiplier")),
+		"brake scales speed by brake_speed_multiplier", "%.1f m/s" % missile.speed())
+
+	Input.action_press("boost")
+	missile._process(step)
+	_expect(not missile.is_boosting(), "brake overrides boost while both are held",
+		"boosted through the brake")
+	Input.action_release("brake")
+	missile._process(step)
+	_expect(missile.is_boosting(), "boost resumes when the brake releases", "stayed off")
+	Input.action_release("boost")
+	missile._process(step)
+	_expect(not missile.is_braking() and not missile.is_boosting(),
+		"releasing both returns the missile to base speed", "a modifier stuck on")
+	missile.free()
+
+	# Brake's actual point: it buys turn rate. Two identical missiles given the same
+	# steering input, one braking, must not turn the same amount.
+	var free_turn := _turn_over_half_second(false)
+	var braked_turn := _turn_over_half_second(true)
+	_expect(braked_turn > free_turn * 1.2,
+		"brake widens the turn rate",
+		"braked %.1f deg vs free %.1f deg" % [braked_turn, free_turn])
+
+
+## Degrees the nose swings in half a second of full left stick, with or without the
+## brake held. Separate loops because both missiles would otherwise read the same
+## global Input state in the same frame.
+func _turn_over_half_second(braking: bool) -> float:
+	var missile := Missile.new()
+	missile.launch(Vector3.ZERO, Basis.IDENTITY, Vector3.ZERO, null, 0.0)
+	missile.piloted = true
+	Input.action_press("missile_left")
+	if braking:
+		Input.action_press("brake")
+	for _i in 30:
+		missile._process(1.0 / 60.0)
+	Input.action_release("missile_left")
+	if braking:
+		Input.action_release("brake")
+	var turned := rad_to_deg((-missile.basis.z).angle_to(Vector3(0.0, 0.0, -1.0)))
+	missile.free()
+	return turned
+
+
 func _test_reference_field() -> void:
 	var field := ReferenceField.new()
 	add_child(field)

@@ -4,7 +4,7 @@ extends Node3D
 ## and a fuse that ends the flight whether or not the player got there.
 ##
 ## ADR 0002 (fuse-as-range), ADR 0003 (screen-space steering), ADR 0035 (reticle
-## steering) and ADR 0037 (side thrusters) govern this file. The fuse is the range limit and the
+## steering) and ADR 0039 (dodge, brake, boost) govern this file. The fuse is the range limit and the
 ## difficulty dial. Input moves a *reticle* — an intended direction — and the
 ## missile turns towards it at a bounded rate, so it has weight without becoming
 ## a flight model the player has to model in their head.
@@ -34,9 +34,12 @@ var _body: MeshInstance3D
 var _exhaust: MeshInstance3D
 var _boost_left: float = 0.0
 var _boosting: bool = false
-## Lateral slide in m/s, in the missile's own frame: x is right, y is up. Not a
-## velocity being integrated — a bounded offset that `_apply_strafe` decays.
-var _strafe: Vector2 = Vector2.ZERO
+var _braking: bool = false
+## Seconds left in the current dodge, and which way it is going (-1 left, +1 right).
+## A dodge is a displacement being played out, not a velocity being integrated.
+var _dodge_left: float = 0.0
+var _dodge_dir: float = 0.0
+var _dodge_cooldown: float = 0.0
 ## The obstacle field, or null for an arena without one. Held rather than looked
 ## up so a missile fired into a torn-down arena cannot resurrect it.
 var _rocks: ReferenceField
@@ -96,7 +99,10 @@ func launch(launch_position: Vector3, launch_basis: Basis, ship_velocity: Vector
 	_target_radius = target_radius
 	_fuse_left = Tuning.num("missile/fuse_seconds")
 	_boost_left = Tuning.num("missile/boost_seconds")
-	_strafe = Vector2.ZERO
+	_dodge_left = 0.0
+	_dodge_dir = 0.0
+	_dodge_cooldown = 0.0
+	_braking = false
 	_rocks = rocks
 
 	# Velocity inheritance is a tunable that starts at zero (ADR 0005). Only the
@@ -112,14 +118,18 @@ func _process(delta: float) -> void:
 		return
 
 	if piloted:
+		# Brake first: it gates boost and widens the turn rate, so both of the
+		# things below have to see this frame's value, not last frame's.
+		_braking = Input.is_action_pressed("brake")
+		_apply_dodge(delta)
 		_apply_steering(delta)
 		_apply_boost(delta)
-		_apply_strafe(delta)
 	else:
-		# A missile that is no longer flown coasts straight and stops sliding, so
-		# the fuse-expiry case does not drift on the last frame of input.
+		# A missile that is no longer flown coasts straight: no boost, no brake, and
+		# any dodge in flight is abandoned rather than played out unattended.
 		_boosting = false
-		_strafe = _strafe.move_toward(Vector2.ZERO, _release_rate() * delta)
+		_braking = false
+		_dodge_left = 0.0
 
 	_previous_position = position
 	position += velocity() * delta
@@ -169,7 +179,10 @@ func _apply_steering(delta: float) -> void:
 
 	# Step 3: the missile turns towards the reticle at its own bounded rate. This
 	# is the whole difference between "responsive" and "has mass".
-	var max_step := deg_to_rad(Tuning.num("missile/turn_rate_deg_per_sec")) * delta
+	var turn_rate := Tuning.num("missile/turn_rate_deg_per_sec")
+	if _braking:
+		turn_rate *= Tuning.num("missile/brake_turn_multiplier")
+	var max_step := deg_to_rad(turn_rate) * delta
 	basis = FlightGeometry.basis_from_forward(
 		FlightGeometry.turn_towards(forward, aim, max_step))
 
@@ -178,7 +191,9 @@ func _apply_steering(delta: float) -> void:
 ## button ends it immediately, so a burst is something the player is continuously
 ## choosing to spend rather than a mode they entered.
 func _apply_boost(delta: float) -> void:
-	_boosting = Input.is_action_pressed("boost") and _boost_left > 0.0
+	# Brake beats boost while both are held: the verb that recovers control wins
+	# over the one that commits to a line.
+	_boosting = Input.is_action_pressed("boost") and _boost_left > 0.0 and not _braking
 	if _boosting:
 		_boost_left = maxf(_boost_left - delta, 0.0)
 		return
@@ -188,39 +203,49 @@ func _apply_boost(delta: float) -> void:
 			_boost_left + regen * delta, Tuning.num("missile/boost_seconds"))
 
 
-## Side thrusters. The stick asks for a lateral speed and the slide moves towards
-## it at one rate and back to zero at another, so "snappy on, slower off" is
-## expressible without the slide ever coasting past what is being asked for.
-func _apply_strafe(delta: float) -> void:
-	var axis := Vector2(
-		Input.get_axis("missile_strafe_left", "missile_strafe_right"),
-		Input.get_axis("missile_strafe_down", "missile_strafe_up"),
-	)
-	var deadzone := Tuning.num("controls/deadzone")
-	if axis.length() < deadzone:
-		axis = Vector2.ZERO
-	elif deadzone < 1.0:
-		axis = axis.normalized() * ((axis.length() - deadzone) / (1.0 - deadzone))
-	# Diagonals must not out-run the cardinals, or the corners become the only way
-	# to fly and the tuned strafe_speed stops meaning what it says.
-	if axis.length() > 1.0:
-		axis = axis.normalized()
+## One press, one sideways displacement, then a cooldown. Not a held slide: the
+## button starts a dodge and is then irrelevant until the cooldown clears, which is
+## what makes each one a decision rather than a lane change (ADR 0039).
+##
+## A dodge already under way wins over a new press, so mashing cannot stack them.
+func _apply_dodge(delta: float) -> void:
+	_dodge_cooldown = maxf(_dodge_cooldown - delta, 0.0)
+	if _dodge_left > 0.0:
+		_dodge_left = maxf(_dodge_left - delta, 0.0)
+		return
+	if _dodge_cooldown > 0.0:
+		return
 
-	var wanted := axis * Tuning.num("missile/strafe_speed")
-	var rate := _ramp_rate() if wanted.length() > _strafe.length() else _release_rate()
-	_strafe = _strafe.move_toward(wanted, rate * delta)
+	var direction := 0.0
+	if Input.is_action_just_pressed("dodge_right"):
+		direction = 1.0
+	elif Input.is_action_just_pressed("dodge_left"):
+		direction = -1.0
+	if direction == 0.0:
+		return
+
+	_dodge_dir = direction
+	_dodge_left = Tuning.num("missile/dodge_seconds")
+	# Cooldown runs from the press, not from the end of the slide, so a cooldown
+	# shorter than dodge_seconds degenerates back into a held strafe. The tuning
+	# comment says to keep it above; nothing enforces it, because a human wanting
+	# to see that degenerate case is a legitimate thing to want.
+	_dodge_cooldown = Tuning.num("missile/dodge_cooldown_seconds")
 
 
-## Metres per second per second. A zero tuned time means "this frame" — INF is the
-## honest rate for that, and `move_toward` clamps it to the target anyway.
-func _ramp_rate() -> float:
-	var seconds := Tuning.num("missile/strafe_ramp_seconds")
-	return INF if seconds <= 0.0 else Tuning.num("missile/strafe_speed") / seconds
-
-
-func _release_rate() -> float:
-	var seconds := Tuning.num("missile/strafe_release_seconds")
-	return INF if seconds <= 0.0 else Tuning.num("missile/strafe_speed") / seconds
+## Sideways metres per second contributed by a dodge in progress.
+##
+## The profile eases out — it starts at 2·distance/duration and falls linearly to
+## zero — so it integrates to exactly `dodge_distance` while putting most of the
+## movement in the first few frames. A flat profile covers the same ground and
+## reads as a drift, which is the thing this replaced.
+func _dodge_velocity() -> Vector3:
+	var duration := Tuning.num("missile/dodge_seconds")
+	if _dodge_left <= 0.0 or duration <= 0.0:
+		return Vector3.ZERO
+	var remaining := _dodge_left / duration          # 1 at the start, 0 at the end
+	var peak := 2.0 * Tuning.num("missile/dodge_distance") / duration
+	return basis.x * (_dodge_dir * peak * remaining)
 
 
 ## Mouse motion arrives as events, not as a polled axis; the view controller feeds
@@ -250,17 +275,21 @@ func fuse_remaining() -> float:
 	return maxf(_fuse_left, 0.0)
 
 
-## Current forward speed, boost included. `_speed` stays the un-boosted figure it
-## was launched with, so the reserve emptying restores it exactly.
+## Current forward speed, boost and brake included. `_speed` stays the figure it
+## launched with, so a reserve emptying or a brake release restores it exactly.
 func speed() -> float:
-	return _speed * (Tuning.num("missile/boost_multiplier") if _boosting else 1.0)
+	if _braking:
+		return _speed * Tuning.num("missile/brake_speed_multiplier")
+	if _boosting:
+		return _speed * Tuning.num("missile/boost_multiplier")
+	return _speed
 
 
 ## Full travel this frame: forward, plus whatever the thrusters are adding. Public
 ## because the hit test and the chase camera must agree on where the missile is
 ## actually going, not just where its nose points.
 func velocity() -> Vector3:
-	return -basis.z * speed() + basis.x * _strafe.x + basis.y * _strafe.y
+	return -basis.z * speed() + _dodge_velocity()
 
 
 func boost_remaining() -> float:
@@ -271,9 +300,17 @@ func is_boosting() -> bool:
 	return _boosting
 
 
-## Lateral slide in m/s, for the HUD.
-func strafe_rate() -> float:
-	return _strafe.length()
+func is_braking() -> bool:
+	return _braking
+
+
+## Seconds until another dodge is available; zero means ready.
+func dodge_cooldown_remaining() -> float:
+	return maxf(_dodge_cooldown, 0.0)
+
+
+func is_dodging() -> bool:
+	return _dodge_left > 0.0
 
 
 func distance_to_target() -> float:
