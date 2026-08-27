@@ -118,19 +118,34 @@ obtainable without a code change.
 - `enemy/interrupt_interval_seconds = 0` → no incoming missiles at all
 - `enemy/blocker_chance = 0` → no enemy countermeasures
 - `turret/loadout_*` → a loadout can be set to `"none"`
-- `ship/hp` → large enough to ignore
+- `ship/invulnerable = true` → hits register and are counted, but never hurt
 
 That gives back step 6 in isolation (turret + cooldown only), then step 7, then
 step 8, by editing three values while the game runs.
 
-### 3. Ship HP is implied but was not specified
+### 3. The player is invincible for this build — deliberately
 
-An enemy missile that reaches the player has to do *something*. POC scope item 9
-includes "Ship has an HP number", so this is in scope rather than an addition.
+Human direction, 2026-08-27:
 
-**Decision taken:** the ship gets an HP number and a HUD row. Damage degrades
-nothing yet and there is **no death and no respawn** — that is step 9. If HP hits
-zero it clamps and says so.
+> "For the first version of testing I'm not worried about my ship getting hurt by
+> missiles, I just need to test the pacing, so it makes more sense to be invincible
+> while I test. Yes eventually they will deal damage."
+
+This is the right call and it sharpens the reading. The question step 8 asks is
+*"does being pulled to the turret disrupt the rhythm?"* — and that is answerable
+without a consequence for failing. Adding damage now would mix a **pacing** signal
+with a **difficulty** signal and neither could be read cleanly.
+
+**But a hit must still be legible**, or a failed intercept is indistinguishable
+from one that never arrived and there is nothing to pace against. So:
+
+- `ship/invulnerable = true` — the default for this build. HP never drops.
+- The ship still **has** an HP number and still **registers** hits: the HUD counts
+  hits taken, and an impact produces a flash. Feedback without consequence.
+- Turning damage on later is then a single tuning flip, not a build. The plumbing
+  is proven by the pacing test itself.
+
+There is still **no death and no respawn** — that is step 9 regardless.
 
 ### 4. Ambiguities resolved, flagged for correction
 
@@ -209,7 +224,7 @@ hitscan beam is the same test with a very long segment.
 | `scripts/ships/target_ship.gd` | Deploys blockers on missile approach; damage pool instead of hit count |
 | `scripts/weapons/missile.gd` | Dies to flares |
 | `data/input_map.json` | `turret_mode`, `fire_primary`, `fire_secondary`, `loadout_1`, `loadout_2` |
-| `tuning.cfg` | New `[turret]` section; `[enemy]` gains blockers and the interrupt; `[ship]` gains `hp` |
+| `tuning.cfg` | New `[turret]` section; `[enemy]` gains blockers and the interrupt; `[ship]` gains `hp` and `invulnerable` |
 | `tools/tests/test_runner.gd` | Required keys and actions, plus the behavioural tests below |
 
 ### Build stages — each ends with `make check` green
@@ -223,8 +238,8 @@ hitscan beam is the same test with a very long segment.
    to them. Closes the blocker half of step 7.
 5. **The missile cooldown.** 10 s. This is what makes step 6's checkpoint
    answerable at all.
-6. **The interrupt.** Enemy guided missile, imperfect accuracy, the alert, ship
-   HP, turret intercept. Steps 7 and 8.
+6. **The interrupt.** Enemy guided missile, imperfect accuracy, the alert, the
+   hit counter, turret intercept. Steps 7 and 8. Invulnerable by default.
 7. **Docs.** ADRs, `STATUS.md`, `make shot` frames.
 
 ### Tests worth having
@@ -243,6 +258,8 @@ Behavioural, driven through real `Input` actions headlessly — the pattern
 - The interrupt fires on its interval, the alert raises, and the incoming missile
   is destroyable by every weapon that should be able to destroy it.
 - With `interrupt_interval_seconds = 0`, no missile is ever launched at the player.
+- With `ship/invulnerable = true`, a hit on the player is counted and signalled but
+  costs no HP; with it false, HP drops. The pacing build ships with it true.
 
 ---
 
@@ -252,6 +269,7 @@ In build order, and still deliberately absent:
 
 - **Step 9** — target ship death and respawn, the picture-in-picture camera
   toggle, and the 30-minute verdict session against all three criteria.
-- Ship destruction. HP is a number that goes down and clamps at zero.
+- Ship destruction, and in this build ship *damage* at all — `ship/invulnerable`
+  defaults true. Hits are counted and shown; they cost nothing.
 - Crew, stations, ladders, interiors — Pillar 6 territory, not the POC.
 - Anything from `ROADMAP.md` beyond the combat bet.
