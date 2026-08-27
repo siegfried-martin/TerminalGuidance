@@ -15,9 +15,14 @@ extends Node3D
 ## target (ADR 0042), which front-runs part of step 9's hit feedback. The target
 ## ship itself still has no hit points and never dies — that is still step 9.
 ##
-## Deliberately absent, in build order: splash damage (step 5); turret mode and the
-## missile cooldown (step 6); blockers, enemy fire and ship HP (step 7); the
-## interrupt (step 8); death/respawn and the PiP toggle (step 9).
+## Step 6 has begun: the gun station exists, `G` mans it, and it carries the
+## loadout state. Its weapons are stage 2 of docs/TURRET_MODE_IMPLEMENTATION.md
+## and are deliberately absent rather than stubbed, so the aim and the camera can
+## be felt on their own first.
+##
+## Deliberately absent, in build order: splash damage (step 5); the turret's
+## weapons and the missile cooldown (step 6); blockers, enemy fire and ship HP
+## (step 7); the interrupt (step 8); death/respawn and the PiP toggle (step 9).
 ## Do not add them here ahead of their step — each one has a feel checkpoint
 ## attached to it and adding it early destroys the reading.
 ##
@@ -29,6 +34,7 @@ var _lattice: GrayBoxArena
 var _rocks: ReferenceField
 var _ship: Mothership
 var _target: TargetShip
+var _turret: Turret
 var _views: ViewController
 var _hud: DebugHud
 var _overlay: FlightOverlay
@@ -120,15 +126,30 @@ func _build_views() -> void:
 	missile_camera.far = 20000.0
 	add_child(missile_camera)
 
+	var turret_camera := ChaseCamera.new()
+	turret_camera.name = "TurretCamera"
+	turret_camera.far = 20000.0
+	add_child(turret_camera)
+
+	# The station lives in arena space, not on the ship, so the hull can rotate
+	# under it without dragging the aim around (ADR 0020 and Turret's header).
+	# Added after the Mothership so it reads a mount point the ship has already
+	# moved this frame rather than one frame of stale position.
+	_turret = Turret.new()
+	_turret.name = "Turret"
+	_turret.ship = _ship
+	_arena_root.add_child(_turret)
+
 	_views = ViewController.new()
 	_views.name = "ViewController"
 	add_child(_views)
-	_views.setup(_ship, ship_camera, missile_camera)
+	_views.setup(_ship, ship_camera, missile_camera, _turret, turret_camera)
 
 	_overlay = FlightOverlay.new()
 	_overlay.name = "FlightOverlay"
 	_overlay.target = _target
 	_overlay.missile_provider = func() -> Missile: return _views.piloted_missile()
+	_overlay.turret_provider = func() -> Turret: return _turret
 	var overlay_layer := CanvasLayer.new()
 	overlay_layer.name = "OverlayLayer"
 	overlay_layer.layer = 90   # under the debug HUD, which is 100
@@ -181,6 +202,15 @@ func _build_hud() -> void:
 			return "AUTOPILOT  ·  %.0f m/s" % _ship.speed()
 		return "MANUAL  ·  throttle %3.0f%%  ·  %.0f m/s of %.0f" % [
 			_ship.throttle() * 100.0, _ship.speed(), _ship.manual_max_speed()])
+	_hud.add_row("turret", func() -> String:
+		return "%s  ·  loadout %d  ·  L %s / R %s" % [
+			"MANNED" if _turret.active else "unmanned",
+			_turret.loadout(),
+			Turret.weapon_label(_turret.primary()),
+			Turret.weapon_label(_turret.secondary())])
+	_hud.add_row("gun aim", func() -> String:
+		return "%+.0f deg bearing  ·  %+.0f deg elevation" % [
+			_turret.azimuth_degrees(), _turret.elevation_degrees()])
 	_hud.add_row("components", func() -> String:
 		var total := _target.component_count()
 		if total == 0:
@@ -199,11 +229,14 @@ func _build_hud() -> void:
 			_ship.range_to_target(), Tuning.num("ship/standoff_distance")])
 	_hud.add_row("last", func() -> String: return _last_outcome)
 	_hud.add_row("keys", func() -> String:
-		if _views.view() == ViewController.View.MISSILE:
-			return "W boost · S brake · A/D dodge · mouse/stick aims · Space/LMB detonate · F1 hud · F2 tune"
+		match _views.view():
+			ViewController.View.MISSILE:
+				return "W boost · S brake · A/D dodge · mouse/stick aims · Space/LMB detonate · F1 hud · F2 tune"
+			ViewController.View.TURRET:
+				return "mouse/stick aims · 1/2 loadout · G back to the helm · F1 hud · F2 tune · Esc quit"
 		if _ship.autopilot:
-			return "LMB/Space fire · T fly manually · R reverse arc · F1 hud · F2 tune · F5 reload · Esc quit"
-		return "W/S throttle · A/D thrusters · mouse steers · LMB/Space fire · T autopilot · F1 hud · F2 tune")
+			return "LMB/Space fire · G man the guns · T fly manually · R reverse arc · F1 hud · F2 tune · F5 reload"
+		return "W/S throttle · A/D thrusters · mouse steers · LMB/Space fire · G guns · T autopilot · F1 hud · F2 tune")
 
 
 func _apply_tuning() -> void:
@@ -232,13 +265,23 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_tree().quit()
 		return
 
-	# The same button fires and detonates; which one it means depends on the view.
-	# Riding a missile, the only thing left to decide is when it ends.
-	if _views.view() == ViewController.View.MISSILE:
-		if event.is_action_pressed("detonate"):
-			detonate_current()
-	elif event.is_action_pressed("fire"):
-		fire()
+	# The same button fires, detonates and shoots; which one it means depends on
+	# the view. Riding a missile, the only thing left to decide is when it ends.
+	# A missile is launched from the helm only — there is no turret-to-missile
+	# edge in the state machine, because taking it would put the player on two
+	# things at once for the frame it takes to leave.
+	match _views.view():
+		ViewController.View.MISSILE:
+			if event.is_action_pressed("detonate"):
+				detonate_current()
+		ViewController.View.SHIP:
+			if event.is_action_pressed("fire"):
+				fire()
+		ViewController.View.TURRET:
+			# The four weapons are stage 2 of docs/TURRET_MODE_IMPLEMENTATION.md.
+			# Until then the buttons are bound and do nothing, on purpose: the aim
+			# and the camera are meant to be felt on their own first.
+			pass
 
 	if event.is_action_pressed("quit"):
 		get_tree().quit()
@@ -249,6 +292,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		Tuning.reload()
 	elif event.is_action_pressed("debug_reverse_arc"):
 		_ship.reverse_arc()
+	elif event.is_action_pressed("turret_mode"):
+		_views.toggle_turret()
+	elif event.is_action_pressed("loadout_1"):
+		_turret.set_loadout(1)
+	elif event.is_action_pressed("loadout_2"):
+		_turret.set_loadout(2)
 	elif event.is_action_pressed("toggle_autopilot"):
 		_ship.set_autopilot(not _ship.autopilot)
 		# Manual flight steers with the mouse, so handing the ship over changes who
@@ -260,6 +309,11 @@ func _unhandled_input(event: InputEvent) -> void:
 ## that falls out of riding, and is not a cooldown. Cooldown is step 6.
 func fire() -> Missile:
 	if _views.piloted_missile() != null:
+		return null
+	# A missile is launched from the helm. There is no turret-to-missile edge in
+	# the state machine, and the gate lives here rather than in the input handler
+	# so it holds however fire() is reached — including from the headless gate.
+	if _views.view() == ViewController.View.TURRET:
 		return null
 
 	var missile := Missile.new()
@@ -347,3 +401,7 @@ func target() -> TargetShip:
 
 func views() -> ViewController:
 	return _views
+
+
+func turret() -> Turret:
+	return _turret

@@ -94,5 +94,6 @@ The reasoning, including what the alternative was and why it lost.
 | [0045](0045-shared-horizon-no-roll.md) | Every vehicle shares one horizon; nothing accumulates roll |
 | [0046](0046-two-playstyles-one-gradient.md) | Two supported playstyles, and the economy leans toward the gunboat |
 | [0047](0047-advanced-verbs-are-tiered.md) | Brake and boost are missile-tier equipment, not baseline verbs |
+| [0048](0048-turret-is-a-peer-station.md) | The gun station is a peer of the helm, and its aim is 1:1 in the arena frame |
 
-*Next number: 0048.*
+*Next number: 0049.*

@@ -1,11 +1,14 @@
 class_name FlightOverlay
 extends Control
-## Screen-space flight instruments: where the target is, and where the reticle is.
+## Screen-space instruments: where the target is, where the reticle is, and where
+## the gun is pointed.
 ##
-## Both exist because the ship no longer points at the target (ADR 0034) and the
-## missile no longer goes instantly where the stick says (ADR 0035). Without the
-## indicator the player cannot find the target after launch; without the reticle
-## they cannot see the turn they have asked for and have not got yet.
+## The first two exist because the ship no longer points at the target (ADR 0034)
+## and the missile no longer goes instantly where the stick says (ADR 0035).
+## Without the indicator the player cannot find the target after launch; without
+## the reticle they cannot see the turn they have asked for and have not got yet.
+## The crosshair is the turret's, and means something different from both — see
+## `_draw_crosshair`.
 ##
 ## Drawn against whichever camera is current, so it follows the view state machine
 ## without needing to know about it.
@@ -13,6 +16,8 @@ extends Control
 var target: Node3D
 ## Returns the missile currently being flown, or null.
 var missile_provider: Callable = func() -> Missile: return null
+## Returns the gun station while it is manned, or null.
+var turret_provider: Callable = func() -> Turret: return null
 
 
 func _ready() -> void:
@@ -40,6 +45,7 @@ func _draw() -> void:
 		return
 	_draw_target_indicator(camera)
 	_draw_reticle(camera)
+	_draw_crosshair(camera)
 
 
 # --- target indicator --------------------------------------------------------
@@ -136,6 +142,30 @@ func _draw_reticle(camera: Camera3D) -> void:
 	if not camera.is_position_behind(nose) and _projectable(camera, nose):
 		draw_line(camera.unproject_position(nose), point,
 			Color(color, Tuning.num("hud/reticle_lag_line_alpha")), width)
+
+
+## The gun's crosshair. Deliberately a different shape from the missile reticle:
+## the reticle is a request the missile has not caught up with yet (ADR 0035),
+## while this is where the shot goes, now. Two instruments that mean different
+## things must not look alike.
+func _draw_crosshair(camera: Camera3D) -> void:
+	var turret: Turret = turret_provider.call()
+	if turret == null or not is_instance_valid(turret) or not turret.active:
+		return
+
+	var aim_point := turret.global_position \
+		+ turret.aim_direction() * Tuning.num("hud/turret_reticle_distance")
+	if camera.is_position_behind(aim_point) or not _projectable(camera, aim_point):
+		return
+
+	var point := camera.unproject_position(aim_point)
+	var radius := Tuning.num("hud/turret_reticle_size")
+	var width := Tuning.num("hud/line_width")
+	var color := Tuning.color("hud/turret_reticle_color")
+
+	for direction: Vector2 in [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]:
+		draw_line(point + direction * radius * 0.4, point + direction * radius, color, width)
+	draw_rect(Rect2(point - Vector2.ONE * width, Vector2.ONE * width * 2.0), color)
 
 
 ## Can `unproject_position` be asked about this point at all?
