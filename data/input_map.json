@@ -1,21 +1,29 @@
 {
   "_note": "Input bindings, applied to InputMap at startup by scripts/autoload/bindings.gd. Edit here, never in the Godot editor's Input Map tab — editor-authored actions land in project.godot and stop being reviewable (ADR 0027). Event syntax: 'key:<name>', 'mouse:<left|right|middle|wheel_up|wheel_down>', 'joybutton:<name>', 'joyaxis:<name><+|->'.",
 
-  "_note_missile": "Riding a missile: W boost (held), S brake (held), A/D dodge (one press, on a cooldown), Space or LMB detonate (ADR 0039). WASD also carries the sandbox fly-cam's cam_* actions, but the fly-cam only exists in sandbox.tscn and the missile only in arena.tscn, so the two never poll in the same scene.",
+  "_note_wasd": "W/A/S/D mean different things depending on what is being flown, so they are bound to several actions at once and each vehicle polls only its own. Riding a missile: W boost (held), S brake (held), A/D dodge (one press, on a cooldown) — ADR 0039. Flying the ship: W throttle up, S throttle down, both held and both persistent, A/D lateral thrusters — ADR 0040. The two never poll in the same frame because the ship stops reading input the moment a missile is launched. The cam_* actions are the sandbox fly-cam's and the fly-cam only exists in sandbox.tscn.",
+
+  "_note_aim": "aim_* is the reticle, shared by the missile and by manual ship flight. It was called missile_* until manual flight landed.",
 
   "actions": {
     "fire":           ["key:Space", "mouse:left", "joyaxis:trigger_right+"],
     "detonate":       ["key:Space", "mouse:left", "key:X", "joybutton:b"],
+
+    "aim_left":       ["key:Left",  "joyaxis:right_x-"],
+    "aim_right":      ["key:Right", "joyaxis:right_x+"],
+    "aim_up":         ["key:Up",    "joyaxis:right_y-"],
+    "aim_down":       ["key:Down",  "joyaxis:right_y+"],
+
     "boost":          ["key:W", "joyaxis:trigger_right+"],
     "brake":          ["key:S", "joyaxis:trigger_left+"],
-
-    "missile_left":   ["key:Left",  "joyaxis:right_x-"],
-    "missile_right":  ["key:Right", "joyaxis:right_x+"],
-    "missile_up":     ["key:Up",    "joyaxis:right_y-"],
-    "missile_down":   ["key:Down",  "joyaxis:right_y+"],
-
     "dodge_left":     ["key:A", "joybutton:lb"],
     "dodge_right":    ["key:D", "joybutton:rb"],
+
+    "throttle_up":    ["key:W", "joyaxis:trigger_right+"],
+    "throttle_down":  ["key:S", "joyaxis:trigger_left+"],
+    "strafe_left":    ["key:A", "joybutton:lb"],
+    "strafe_right":   ["key:D", "joybutton:rb"],
+    "toggle_autopilot": ["key:T", "joybutton:y"],
 
     "cam_forward":   ["key:W"],
     "cam_back":      ["key:S"],

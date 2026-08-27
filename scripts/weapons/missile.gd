@@ -25,11 +25,12 @@ var piloted: bool = false
 var _speed: float = 0.0
 var _fuse_left: float = 0.0
 var _previous_position: Vector3
-var _aim_basis: Basis = Basis.IDENTITY
+## The reticle instrument, shared with the mothership's manual flight (ADR 0040).
+## The missile's numbers are its own; only the model is common.
+var _reticle := ReticleSteering.new()
 var _target: Node3D
 var _target_radius: float = 0.0
 var _finished: bool = false
-var _pending_steer: Vector2 = Vector2.ZERO
 var _body: MeshInstance3D
 var _exhaust: MeshInstance3D
 var _boost_left: float = 0.0
@@ -93,7 +94,7 @@ func launch(launch_position: Vector3, launch_basis: Basis, ship_velocity: Vector
 		target: Node3D, target_radius: float, rocks: ReferenceField = null) -> void:
 	position = launch_position
 	basis = launch_basis.orthonormalized()
-	_aim_basis = basis
+	_reticle.reset(basis)
 	_previous_position = launch_position
 	_target = target
 	_target_radius = target_radius
@@ -136,8 +137,7 @@ func _process(delta: float) -> void:
 
 	# Target before rocks: a missile that reaches the target inside a rock field
 	# still scores, rather than being eaten a frame short of the kill.
-	if _target != null and FlightGeometry.segment_hits_sphere(
-			_previous_position, position, _target.position, _target_radius):
+	if _hit_target():
 		_finish(EndReason.IMPACT, true)
 		return
 
@@ -150,41 +150,44 @@ func _process(delta: float) -> void:
 		_finish(EndReason.FUSE_EXPIRED, false)
 
 
+## Did this frame's travel reach the target?
+##
+## A TargetShip answers with whichever of its parts the segment reaches first, hull
+## or component (ADR 0043). A plain Node3D target has no parts and falls through to
+## a single sphere, which is what the headless flight test uses.
+func _hit_target() -> bool:
+	if _target == null:
+		return false
+	var enemy := _target as TargetShip
+	if enemy != null:
+		var result := enemy.hit_test(_previous_position, position)
+		if not bool(result["hit"]):
+			return false
+		var part := int(result["component"])
+		if part >= 0:
+			enemy.damage_component(part)
+		return true
+	return FlightGeometry.segment_hits_sphere(
+		_previous_position, position, _target.position, _target_radius)
+
+
 func _apply_steering(delta: float) -> void:
-	var stick := Vector2(
-		Input.get_axis("missile_left", "missile_right"),
-		Input.get_axis("missile_up", "missile_down"),
-	)
-	var deadzone := Tuning.num("controls/deadzone")
-	if stick.length() < deadzone:
-		stick = Vector2.ZERO
-	elif deadzone < 1.0:
-		# Rescale past the deadzone so the first live input is not a step change.
-		stick = stick.normalized() * ((stick.length() - deadzone) / (1.0 - deadzone))
+	var stick := ReticleSteering.apply_deadzone(Vector2(
+		Input.get_axis("aim_left", "aim_right"),
+		Input.get_axis("aim_up", "aim_down"),
+	), Tuning.num("controls/deadzone"))
 
-	# Step 1: input moves the reticle. The reticle is where the player wants the
-	# missile pointed, and it is not rate-limited — only the missile is.
-	var stick_step := deg_to_rad(Tuning.num("controls/stick_reticle_speed_deg_per_sec")) * delta
-	var yaw := -stick.x * stick_step - deg_to_rad(_pending_steer.x * Tuning.num("controls/mouse_sensitivity"))
-	var pitch := -stick.y * stick_step - deg_to_rad(_pending_steer.y * Tuning.num("controls/mouse_sensitivity"))
-	_pending_steer = Vector2.ZERO
-	_aim_basis = FlightGeometry.steer_basis(_aim_basis, yaw, pitch)
-
-	# Step 2: hold the reticle inside a cone around the nose, so it can never be
-	# parked somewhere the missile has no chance of reaching.
-	var forward := -basis.z
-	var aim := FlightGeometry.clamp_to_cone(
-		-_aim_basis.z, forward, deg_to_rad(Tuning.num("missile/reticle_max_angle_deg")))
-	_aim_basis = FlightGeometry.basis_from_forward(aim)
-
-	# Step 3: the missile turns towards the reticle at its own bounded rate. This
-	# is the whole difference between "responsive" and "has mass".
+	# Braking widens the turn rate; everything else about the instrument is the
+	# same one the ship flies with (ADR 0040).
 	var turn_rate := Tuning.num("missile/turn_rate_deg_per_sec")
 	if _braking:
 		turn_rate *= Tuning.num("missile/brake_turn_multiplier")
-	var max_step := deg_to_rad(turn_rate) * delta
-	basis = FlightGeometry.basis_from_forward(
-		FlightGeometry.turn_towards(forward, aim, max_step))
+
+	basis = _reticle.update(basis, stick, delta,
+		Tuning.num("controls/stick_reticle_speed_deg_per_sec"),
+		Tuning.num("controls/mouse_sensitivity"),
+		turn_rate,
+		Tuning.num("missile/reticle_max_angle_deg"))
 
 
 ## Hold-to-boost, drawn from a reserve that empties. Not a toggle: releasing the
@@ -251,7 +254,7 @@ func _dodge_velocity() -> Vector3:
 ## Mouse motion arrives as events, not as a polled axis; the view controller feeds
 ## it here so the missile stays the only thing that decides how input becomes turn.
 func add_mouse_steer(relative: Vector2) -> void:
-	_pending_steer += relative
+	_reticle.add_mouse(relative)
 
 
 ## Player-triggered detonation. POC step 5 also brings splash damage; this is the
@@ -319,12 +322,12 @@ func distance_to_target() -> float:
 
 ## Where the reticle is pointing, in world space.
 ##
-## `_aim_basis` is parent-relative, like `basis` and `position` — that is the
-## floating-origin rule (ADR 0020). Converting here rather than storing a world
+## The reticle's basis is parent-relative, like `basis` and `position` — that is
+## the floating-origin rule (ADR 0020). Converting here rather than storing a world
 ## direction keeps it valid across a recentre.
 func aim_direction() -> Vector3:
 	var parent := get_parent_node_3d()
-	var local_aim := -_aim_basis.z
+	var local_aim := -_reticle.aim_basis.z
 	if parent == null:
 		return local_aim.normalized()
 	return (parent.global_transform.basis * local_aim).normalized()
@@ -332,4 +335,4 @@ func aim_direction() -> Vector3:
 
 ## Angle in degrees between the nose and the reticle — the lag the player feels.
 func aim_offset_degrees() -> float:
-	return rad_to_deg((-basis.z).angle_to(-_aim_basis.z))
+	return _reticle.offset_degrees(basis)

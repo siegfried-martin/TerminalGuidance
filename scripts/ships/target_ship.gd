@@ -1,44 +1,238 @@
 class_name TargetShip
 extends Node3D
-## The dumb enemy target. Drifts slowly in a straight line and turns around at the
-## edge of its patrol box. Nothing else — blockers, return fire and the interrupt
-## are POC steps 7 and 8, not this one.
+## The enemy target: a gray-box hull with destructible components bolted to it.
 ##
-## Its collision radius is a plain number rather than a physics shape: the missile
-## hit test is a swept segment against a sphere (see FlightGeometry), which does
-## not tunnel and does not need the physics server to run headless.
+## It still drifts in a straight line and turns at the edge of its patrol box, and
+## it still does not shoot — blockers, return fire and the interrupt are POC steps
+## 7 and 8, not this one.
+##
+## What is new is the components (ADR 0042). Each one takes two hits: the first
+## darkens it, the second destroys it with the missile's own detonation flash.
+## They exist to answer a feel question — whether a target with several small
+## things worth aiming at beats one big thing worth hitting — and they are the
+## reason the hull is built out of parts now rather than being a cube. A cube
+## gives the eye nothing to aim at, so "did I aim, or did I merely arrive?" is
+## unanswerable, and that is the question a target-practice loop has to settle.
+##
+## Nothing here is a physics shape: the missile test is a swept segment (see
+## FlightGeometry), which does not tunnel and runs headless. The hull is hit as the
+## boxes it is drawn from, and the components as spheres mounted proud of it —
+## **whichever the segment reaches FIRST wins** (ADR 0043).
+##
+## The first version of this got that wrong in a way worth remembering. It wrapped
+## the whole ship in one 9 m sphere and tested the components before it. But the
+## sphere enclosed every component, so it always resolved first and no component
+## was ever reachable — the ordering was decorative and the bug presented as "my
+## aim can't be that bad". Test order cannot substitute for geometry.
+
+## `destroyed` is false for the darkening hit and true for the killing one.
+signal component_damaged(index: int, position: Vector3, destroyed: bool)
 
 var radius: float = 0.0
 
 var _drift_direction: Vector3 = Vector3.FORWARD
 var _patrol_half_extent: float = 0.0
-var _mesh: MeshInstance3D
-var _material: StandardMaterial3D
+var _parts: Node3D
+var _components: Node3D
+var _hull_material: StandardMaterial3D
+
+## Component state, parallel arrays indexed together. Offsets are in the ship's own
+## frame, so the spin and the drift both come for free.
+var _component_offsets: PackedVector3Array = PackedVector3Array()
+var _component_hits: PackedInt32Array = PackedInt32Array()
+var _component_respawn: PackedFloat32Array = PackedFloat32Array()
+var _component_meshes: Array[MeshInstance3D] = []
+var _component_materials: Array[StandardMaterial3D] = []
+var _component_hit_radius: float = 0.0
+var _hits_to_destroy: int = 2
+
+## The hull's own hit volumes, one per drawn part: {offset, orientation, half}
+## in the ship's frame. Boxes, tested with the exact slab method, so the hull is
+## as solid as it looks rather than as solid as a sphere around it.
+var _hull_volumes: Array[Dictionary] = []
+## A sphere enclosing every part and every component, derived rather than tuned.
+## Purely a broad-phase reject — a tuned value here could be set too small and
+## would silently make the nose unhittable.
+var _bound_radius: float = 0.0
 
 
 func _ready() -> void:
-	_material = StandardMaterial3D.new()
-	_material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
+	_parts = Node3D.new()
+	_parts.name = "Parts"
+	add_child(_parts)
 
-	_mesh = MeshInstance3D.new()
-	_mesh.name = "Hull"
-	_mesh.mesh = BoxMesh.new()
-	_mesh.material_override = _material
-	add_child(_mesh)
+	_components = Node3D.new()
+	_components.name = "Components"
+	add_child(_components)
 
 	_apply_tuning()
 	Tuning.reloaded.connect(_apply_tuning)
 
 
+# --- construction ------------------------------------------------------------
+
 func _apply_tuning() -> void:
 	radius = Tuning.num("enemy/radius")
 	_patrol_half_extent = Tuning.num("enemy/patrol_half_extent")
-	(_mesh.mesh as BoxMesh).size = Vector3.ONE * radius * 1.6
-	_material.albedo_color = Tuning.color("enemy/hull_color")
-	_material.emission_enabled = true
-	_material.emission = Tuning.color("enemy/hull_color")
-	_material.emission_energy_multiplier = Tuning.num("enemy/hull_emission")
+	_hits_to_destroy = maxi(Tuning.integer("enemy/component_hits_to_destroy"), 1)
+	_component_hit_radius = Tuning.num("enemy/component_hit_radius")
+	_build_hull()
+	_build_components()
+	_recompute_bound()
 
+
+## A fuselage, a nose cone, two wings and a fin. Primitives only (ADR 0030) — the
+## point is a silhouette with a front and a back, so the player can tell which way
+## the thing is facing and where its parts are.
+func _build_hull() -> void:
+	for child in _parts.get_children():
+		child.free()
+	_hull_volumes.clear()
+
+	_hull_material = StandardMaterial3D.new()
+	_hull_material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
+	_hull_material.albedo_color = Tuning.color("enemy/hull_color")
+	_hull_material.emission_enabled = true
+	_hull_material.emission = Tuning.color("enemy/hull_color")
+	_hull_material.emission_energy_multiplier = Tuning.num("enemy/hull_emission")
+
+	var length := Tuning.num("enemy/hull_length")
+	var width := Tuning.num("enemy/hull_width")
+	var height := Tuning.num("enemy/hull_height")
+
+	var fuselage := BoxMesh.new()
+	fuselage.size = Vector3(width, height, length)
+	_add_part("Fuselage", fuselage, Vector3.ZERO, Basis.IDENTITY)
+	_add_volume(Vector3.ZERO, Basis.IDENTITY, fuselage.size * 0.5)
+
+	# CylinderMesh runs along +Y, so a quarter turn about X lays it along -Z — the
+	# ship's forward. A zero top radius makes it a cone.
+	var nose := CylinderMesh.new()
+	nose.top_radius = 0.0
+	nose.bottom_radius = maxf(width, height) * 0.5
+	nose.height = Tuning.num("enemy/nose_length")
+	nose.radial_segments = 10
+	var nose_at := Vector3(0.0, 0.0, -(length + nose.height) * 0.5)
+	_add_part("Nose", nose, nose_at, Basis.from_euler(Vector3(-PI * 0.5, 0.0, 0.0)))
+	# The one approximation left: a cone hit as a box. Inset to 0.6 of the base
+	# radius so the box stays INSIDE the cone rather than around it — under-reaching
+	# forgives, over-reaching invents hull where the screen shows empty space, and
+	# only one of those is a bug the player can see.
+	_add_volume(nose_at, Basis.IDENTITY,
+		Vector3(nose.bottom_radius * 0.6, nose.bottom_radius * 0.6, nose.height * 0.5))
+
+	var span := Tuning.num("enemy/wing_span")
+	var chord := Tuning.num("enemy/wing_chord")
+	var thickness := Tuning.num("enemy/wing_thickness")
+	var wing := BoxMesh.new()
+	wing.size = Vector3(span, thickness, chord)
+	var wing_at := Vector3(0.0, 0.0, length * 0.15)
+	_add_part("Wings", wing, wing_at, Basis.IDENTITY)
+	_add_volume(wing_at, Basis.IDENTITY, wing.size * 0.5)
+
+	var fin := BoxMesh.new()
+	fin.size = Vector3(thickness, Tuning.num("enemy/fin_height"), chord * 0.6)
+	var fin_at := Vector3(
+		0.0, (height + Tuning.num("enemy/fin_height")) * 0.5, length * 0.3)
+	_add_part("Fin", fin, fin_at, Basis.IDENTITY)
+	_add_volume(fin_at, Basis.IDENTITY, fin.size * 0.5)
+
+
+## Register a hit volume for a drawn part. Called beside `_add_part` rather than
+## inside it, because the nose is the one part whose hit box is deliberately not
+## its drawn bounds and the difference should be visible at the call site.
+func _add_volume(offset: Vector3, orientation: Basis, half_extents: Vector3) -> void:
+	_hull_volumes.append({
+		"offset": offset, "orientation": orientation, "half": half_extents})
+
+
+func _add_part(part_name: String, mesh: Mesh, offset: Vector3, orientation: Basis) -> void:
+	var instance := MeshInstance3D.new()
+	instance.name = part_name
+	instance.mesh = mesh
+	instance.material_override = _hull_material
+	instance.transform = Transform3D(orientation, offset)
+	_parts.add_child(instance)
+
+
+## Cylinders ringed around the fuselage, spread along its length so no two sit on
+## the same line of approach. Placement is deterministic from tuning: nothing here
+## is random, so a practice run is repeatable and the headless gate can name a
+## component and aim at it.
+func _build_components() -> void:
+	for child in _components.get_children():
+		child.free()
+	_component_offsets.clear()
+	_component_hits.clear()
+	_component_respawn.clear()
+	_component_meshes.clear()
+	_component_materials.clear()
+
+	var count := maxi(Tuning.integer("enemy/component_count"), 0)
+	if count == 0:
+		return
+
+	var mount_radius := Tuning.num("enemy/component_mount_radius")
+	var component_radius := Tuning.num("enemy/component_radius")
+	var component_length := Tuning.num("enemy/component_length")
+	var hull_length := Tuning.num("enemy/hull_length")
+	var base_color := Tuning.color("enemy/component_color")
+
+	for i in count:
+		# Half-step offset so the ring sits at the fuselage's corners rather than on
+		# its axes: on-axis, a component shares a line of approach with the wings
+		# (which are wide and flat) or the fin, and is shadowed by them.
+		var angle := TAU * (float(i) + 0.5) / float(count)
+		# Spread along the hull as well as around it: -0.3 to +0.3 of the length,
+		# so the ring is a helix and every component has a clear approach.
+		var along := hull_length * (float(i) / float(maxi(count - 1, 1)) - 0.5) * 0.6
+		var offset := Vector3(cos(angle) * mount_radius, sin(angle) * mount_radius, along)
+
+		var mesh := CylinderMesh.new()
+		mesh.top_radius = component_radius
+		mesh.bottom_radius = component_radius
+		mesh.height = component_length
+		mesh.radial_segments = 10
+
+		var material := StandardMaterial3D.new()
+		material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
+		material.albedo_color = base_color
+		material.emission_enabled = true
+		material.emission = base_color
+		material.emission_energy_multiplier = Tuning.num("enemy/component_emission")
+
+		var instance := MeshInstance3D.new()
+		instance.name = "Component%d" % i
+		instance.mesh = mesh
+		instance.material_override = material
+		# Laid along the hull, like the nose cone.
+		instance.transform = Transform3D(
+			Basis.from_euler(Vector3(-PI * 0.5, 0.0, 0.0)), offset)
+		_components.add_child(instance)
+
+		_component_offsets.append(offset)
+		_component_hits.append(0)
+		_component_respawn.append(0.0)
+		_component_meshes.append(instance)
+		_component_materials.append(material)
+
+
+## The broad-phase sphere, derived from what was actually built. Nothing tuned:
+## a hand-set bound that is a metre too small makes the nose silently unhittable,
+## and there would be no error anywhere to find.
+func _recompute_bound() -> void:
+	_bound_radius = 0.0
+	for volume in _hull_volumes:
+		# `offset + half` is the wrong corner whenever the offset and the half-extent
+		# disagree in sign — it lands *inside* the box and under-reports. The furthest
+		# any corner can be is |offset| + |half|, whatever the orientation.
+		_bound_radius = maxf(_bound_radius,
+			Vector3(volume["offset"]).length() + Vector3(volume["half"]).length())
+	for offset in _component_offsets:
+		_bound_radius = maxf(_bound_radius, offset.length() + _component_hit_radius)
+
+
+# --- flight ------------------------------------------------------------------
 
 func _process(delta: float) -> void:
 	position += _drift_direction * Tuning.num("enemy/drift_speed") * delta
@@ -50,7 +244,158 @@ func _process(delta: float) -> void:
 		_drift_direction.z = -signf(position.z)
 		_drift_direction = _drift_direction.normalized()
 	rotate_y(deg_to_rad(Tuning.num("enemy/spin_deg_per_sec")) * delta)
+	_tick_respawns(delta)
+
+
+## Destroyed components come back after a delay so a practice run does not run out
+## of things to shoot mid-session. Zero disables it and the target stays stripped.
+func _tick_respawns(delta: float) -> void:
+	var window := Tuning.num("enemy/component_respawn_seconds")
+	if window <= 0.0:
+		return
+	for i in _component_respawn.size():
+		if _component_respawn[i] <= 0.0:
+			continue
+		_component_respawn[i] = maxf(_component_respawn[i] - delta, 0.0)
+		if _component_respawn[i] <= 0.0:
+			_component_hits[i] = 0
+			_component_meshes[i].visible = true
+			_apply_component_shade(i)
 
 
 func set_drift_direction(direction: Vector3) -> void:
 	_drift_direction = direction.normalized()
+
+
+# --- damage ------------------------------------------------------------------
+
+## What the swept segment a→b hits first, as
+## `{"hit": bool, "component": int, "point": Vector3}` — `component` is -1 for the
+## hull. Coordinates are in this node's parent frame, like `Missile.position`
+## (ADR 0020); the offsets below are ship-local, so the spin and the drift are
+## already accounted for by the time they are transformed out.
+##
+## **Nearest along the segment wins.** Not "components first": components sit proud
+## of the hull, so the geometry decides, and a shot aimed at one reaches it before
+## the hull it is bolted to. Ordering the tests instead was the bug in the first
+## version — see the note at the top of this file.
+func hit_test(a: Vector3, b: Vector3) -> Dictionary:
+	var miss := {"hit": false, "component": -1, "point": Vector3.ZERO}
+	if not FlightGeometry.segment_hits_sphere(a, b, position, _bound_radius):
+		return miss
+
+	var best := 2.0
+	var best_component := -1
+
+	for i in _component_offsets.size():
+		if _component_hits[i] >= _hits_to_destroy:
+			continue
+		var t := FlightGeometry.segment_sphere_entry(
+			a, b, component_position(i), _component_hit_radius)
+		if t >= 0.0 and t < best:
+			best = t
+			best_component = i
+
+	for volume in _hull_volumes:
+		var t := FlightGeometry.segment_box_entry(a, b,
+			transform * Vector3(volume["offset"]),
+			transform.basis.orthonormalized() * (volume["orientation"] as Basis),
+			volume["half"])
+		if t >= 0.0 and t < best:
+			best = t
+			best_component = -1
+
+	if best > 1.0:
+		return miss
+	return {"hit": true, "component": best_component, "point": a + (b - a) * best}
+
+
+## Put a hit on component `index`. Returns true if that hit destroyed it.
+func damage_component(index: int) -> bool:
+	if index < 0 or index >= _component_hits.size():
+		return false
+	if _component_hits[index] >= _hits_to_destroy:
+		return false
+
+	_component_hits[index] += 1
+	var destroyed := _component_hits[index] >= _hits_to_destroy
+	if destroyed:
+		_component_meshes[index].visible = false
+		_component_respawn[index] = Tuning.num("enemy/component_respawn_seconds")
+	else:
+		_apply_component_shade(index)
+	component_damaged.emit(index, component_position(index), destroyed)
+	return destroyed
+
+
+## Darker with every hit taken, so damage is readable at standoff range without a
+## health bar. A fresh component is at full colour.
+func _apply_component_shade(index: int) -> void:
+	var wear := float(_component_hits[index]) / float(_hits_to_destroy)
+	var amount := Tuning.num("enemy/component_damaged_darken") * wear
+	var base_color := Tuning.color("enemy/component_color")
+	var material := _component_materials[index]
+	material.albedo_color = base_color.darkened(amount)
+	material.emission = base_color.darkened(amount)
+	material.emission_energy_multiplier = \
+		Tuning.num("enemy/component_emission") * (1.0 - amount)
+
+
+# --- readouts ----------------------------------------------------------------
+
+## Component `index`'s centre in the parent frame.
+func component_position(index: int) -> Vector3:
+	return transform * _component_offsets[index]
+
+
+## The sphere that encloses every part and every component. Derived, not tuned.
+func bound_radius() -> float:
+	return _bound_radius
+
+
+## How far component `index`'s outermost point clears the hull, in metres.
+## Positive means it stands proud and a shot down its mounting direction reaches it
+## before the hull; negative means it is buried and unaimable *however the tests
+## are ordered*, which was the shipped bug (ADR 0043).
+##
+## Measured as the point's distance outside the nearest hull box, not by comparing
+## support functions — a wide flat wing has a far corner along a diagonal, but that
+## corner is somewhere else in space and says nothing about whether this particular
+## point is inside the wing.
+func component_exposure(index: int) -> float:
+	var offset := Vector3(_component_offsets[index])
+	var outward := Vector3(offset.x, offset.y, 0.0)
+	if outward.length_squared() < 0.000001:
+		return -_component_hit_radius
+	var tip := offset + outward.normalized() * _component_hit_radius
+
+	var clearance := INF
+	for volume in _hull_volumes:
+		var half: Vector3 = volume["half"]
+		var local: Vector3 = (volume["orientation"] as Basis).transposed() \
+			* (tip - Vector3(volume["offset"]))
+		# Positive on any axis means outside that pair of faces; the largest is how
+		# far outside the box the point is.
+		clearance = minf(clearance, maxf(absf(local.x) - half.x,
+			maxf(absf(local.y) - half.y, absf(local.z) - half.z)))
+	return clearance
+
+
+func component_count() -> int:
+	return _component_offsets.size()
+
+
+func component_hits(index: int) -> int:
+	return _component_hits[index]
+
+
+func is_component_alive(index: int) -> bool:
+	return _component_hits[index] < _hits_to_destroy
+
+
+func components_alive() -> int:
+	var alive := 0
+	for i in _component_hits.size():
+		if _component_hits[i] < _hits_to_destroy:
+			alive += 1
+	return alive

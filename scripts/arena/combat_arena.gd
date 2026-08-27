@@ -9,6 +9,12 @@ extends Node3D
 ## dodge (ADR 0039), plus rocks that kill a missile on contact (ADR 0038). Splash
 ## damage is still outstanding, because it needs the target to have hit points.
 ##
+## Two things here are outside the POC scope doc as written, both at the human's
+## explicit direction: manual ship flight (ADR 0040), which that doc always called
+## a scope deferral rather than a decision, and destructible components on the
+## target (ADR 0042), which front-runs part of step 9's hit feedback. The target
+## ship itself still has no hit points and never dies — that is still step 9.
+##
 ## Deliberately absent, in build order: splash damage (step 5); turret mode and the
 ## missile cooldown (step 6); blockers, enemy fire and ship HP (step 7); the
 ## interrupt (step 8); death/respawn and the PiP toggle (step 9).
@@ -93,6 +99,7 @@ func _build_ships() -> void:
 	_target.name = "Target"
 	_arena_root.add_child(_target)
 	_target.set_drift_direction(Vector3(0.4, 0.0, 1.0))
+	_target.component_damaged.connect(_on_component_damaged)
 
 	_ship = Mothership.new()
 	_ship.name = "Mothership"
@@ -167,7 +174,23 @@ func _build_hud() -> void:
 		var cooldown := missile.dodge_cooldown_remaining()
 		return "ready" if cooldown <= 0.0 else "%.2f s" % cooldown)
 	_hud.add_row("rocks", func() -> String:
-		return "%d drawn · %d hittable" % [_rocks.rock_count(), _rocks.hittable_count()])
+		return "%d rocks · %d lobes · %d hittable" % [
+			_rocks.rock_count(), _rocks.lobe_count(), _rocks.hittable_count()])
+	_hud.add_row("flight", func() -> String:
+		if _ship.autopilot:
+			return "AUTOPILOT  ·  %.0f m/s" % _ship.speed()
+		return "MANUAL  ·  throttle %3.0f%%  ·  %.0f m/s of %.0f" % [
+			_ship.throttle() * 100.0, _ship.speed(), _ship.manual_max_speed()])
+	_hud.add_row("components", func() -> String:
+		var total := _target.component_count()
+		if total == 0:
+			return "none — hull only"
+		var parts: PackedStringArray = []
+		for i in total:
+			parts.append("×" if not _target.is_component_alive(i)
+				else str(_target.component_hits(i)))
+		return "%d of %d alive  [%s]" % [
+			_target.components_alive(), total, " ".join(parts)])
 	_hud.add_row("aim off", func() -> String:
 		var missile := _views.piloted_missile()
 		return "—" if missile == null else "%.0f deg" % missile.aim_offset_degrees())
@@ -178,7 +201,9 @@ func _build_hud() -> void:
 	_hud.add_row("keys", func() -> String:
 		if _views.view() == ViewController.View.MISSILE:
 			return "W boost · S brake · A/D dodge · mouse/stick aims · Space/LMB detonate · F1 hud · F2 tune"
-		return "LMB/Space fire · F1 hud · F2 tune · F5 reload · R reverse arc · Esc quit")
+		if _ship.autopilot:
+			return "LMB/Space fire · T fly manually · R reverse arc · F1 hud · F2 tune · F5 reload · Esc quit"
+		return "W/S throttle · A/D thrusters · mouse steers · LMB/Space fire · T autopilot · F1 hud · F2 tune")
 
 
 func _apply_tuning() -> void:
@@ -224,6 +249,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		Tuning.reload()
 	elif event.is_action_pressed("debug_reverse_arc"):
 		_ship.reverse_arc()
+	elif event.is_action_pressed("toggle_autopilot"):
+		_ship.set_autopilot(not _ship.autopilot)
+		# Manual flight steers with the mouse, so handing the ship over changes who
+		# owns the pointer. Nothing else can change that without a view change.
+		_views.refresh_mouse_mode()
 
 
 ## Launch along the ship's current heading and ride it. One missile at a time —
@@ -275,7 +305,26 @@ func _on_missile_detonated(missile: Missile, reason: int, hit: bool) -> void:
 		Tuning.color("missile/flash_color" if hit else "missile/flash_color_dud"))
 
 	if reason == Missile.EndReason.IMPACT:
-		pass  # damage, death and respawn are step 9
+		pass  # the target's own hit points, death and respawn are still step 9
+
+
+## A component going up borrows the missile's detonation flash, at the human's
+## direction — a real secondary explosion is art, and this is gray-box (ADR 0030).
+## The darkening hit gets no flash: the shade change is the feedback, and a flash
+## on both would make the two outcomes read the same.
+func _on_component_damaged(index: int, where: Vector3, destroyed: bool) -> void:
+	_last_outcome = "component %d %s" % [index, "DESTROYED" if destroyed else "damaged"]
+	if not destroyed:
+		return
+	var flash := DetonationFlash.new()
+	flash.name = "ComponentFlash"
+	_arena_root.add_child(flash)
+	flash.position = where
+	flash.setup(
+		Tuning.num("missile/flash_start_radius"),
+		Tuning.num("missile/flash_end_radius"),
+		Tuning.num("missile/flash_seconds"),
+		Tuning.color("missile/flash_color"))
 
 
 # --- readouts for the headless gate ------------------------------------------

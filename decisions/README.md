@@ -86,5 +86,13 @@ The reasoning, including what the alternative was and why it lost.
 | [0037](0037-side-thrusters-bounded-slide.md) | ~~Side thrusters are a bounded slide~~ — superseded by 0039 |
 | [0038](0038-rocks-are-obstacles.md) | Reference rocks are obstacles, inside the engagement volume |
 | [0039](0039-dodge-brake-boost.md) | The missile's three verbs: boost, brake, and a dodge on a cooldown |
+| [0040](0040-manual-ship-flight.md) | Manual ship flight lands; the autopilot becomes a mode the player leaves |
+| [0041](0041-rocks-are-sphere-clusters.md) | A rock is a cluster of ellipsoids, and the drawn shape is the hit shape |
+| [0042](0042-target-carries-components.md) | ~~The target carries destructible components, tested before the hull~~ — hull clauses superseded by 0043 |
+| [0043](0043-nearest-part-wins.md) | The target is hit as its parts, and the nearest one along the shot wins |
+| [0044](0044-ships-are-gunboats.md) | Ships are capital-scale gunboats; the engagement is naval, not a dogfight |
+| [0045](0045-shared-horizon-no-roll.md) | Every vehicle shares one horizon; nothing accumulates roll |
+| [0046](0046-two-playstyles-one-gradient.md) | Two supported playstyles, and the economy leans toward the gunboat |
+| [0047](0047-advanced-verbs-are-tiered.md) | Brake and boost are missile-tier equipment, not baseline verbs |
 
-*Next number: 0040.*
+*Next number: 0048.*
