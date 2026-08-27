@@ -91,5 +91,8 @@ The reasoning, including what the alternative was and why it lost.
 | [0042](0042-target-carries-components.md) | ~~The target carries destructible components, tested before the hull~~ — hull clauses superseded by 0043 |
 | [0043](0043-nearest-part-wins.md) | The target is hit as its parts, and the nearest one along the shot wins |
 | [0044](0044-ships-are-gunboats.md) | Ships are capital-scale gunboats; the engagement is naval, not a dogfight |
+| [0045](0045-shared-horizon-no-roll.md) | Every vehicle shares one horizon; nothing accumulates roll |
+| [0046](0046-two-playstyles-one-gradient.md) | Two supported playstyles, and the economy leans toward the gunboat |
+| [0047](0047-advanced-verbs-are-tiered.md) | Brake and boost are missile-tier equipment, not baseline verbs |
 
-*Next number: 0045.*
+*Next number: 0048.*

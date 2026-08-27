@@ -1,24 +1,37 @@
 # STATUS
 
-*Updated 2026-08-26.*
+*Updated 2026-08-27.*
 
 ## Where the build is
 
-POC build order **steps 3 and 4 are in, and step 5 is all but done**: the arena, the mothership under its one
-autopilot behaviour, one dumb target, and the missile — launch, chase cam,
-steering, fuse. Early detonate, boost, brake, dodge and rock obstacles landed on
-top. This is the **first feel checkpoint** and it is still waiting on a human
-verdict (success criterion 1: the 8 seconds) — now with a good deal more to judge.
+### ✅ Success criterion 1 has PASSED — 2026-08-27
 
-**Two things now sit outside the scope doc as originally written, both at the
-human's direction, and both amended into it:** manual ship flight (ADR 0040), which
-that doc always called a scope deferral rather than a decision, and destructible
-components on the target (ADR 0042), which front-runs part of step 9's hit
-feedback. The target ship itself still has no hit points and never dies — **step 9
-is not started.**
+> "I have play tested enough of the POC to determine this is a winner. The brakes +
+> acceleration give a much higher skill ceiling that feels believable."
 
-Toolchain from the bootstrap session is unchanged and still the way everything is
-driven; no Godot editor GUI has been used at any point.
+The 8 seconds work. The named cause is **brake and boost**, which is worth holding
+onto: the verdict is not "flying a missile is fun" (that was never in doubt and the
+POC doc says so) but that the *speed-versus-agility trade* is what gives it a
+ceiling. That is the thing to protect in every later change.
+
+Also endorsed, and now written down:
+
+- **The shared horizon.** "All ships are kept on the same plane" — nothing rolls
+  (ADR 0045). This had been an accident of ADR 0003's roll-free bases; it is a rule
+  now.
+- **Ship movement and the autopilot.** Good enough. Better trajectory-locking
+  mechanics are wanted eventually; the heading hold is not blocking anything.
+
+### ⛔ Criteria 2 and 3 are still untested, and cannot be tested yet
+
+**Turret mode does not exist.** Criterion 2 is the loop — "after 30 minutes the
+developer is still choosing to fire, and never feels stuck waiting" — and criterion
+3 is the ceiling. Both are questions about *what happens between missiles*, and
+there is currently no between. `PROJECT_OVERVIEW.md` §Sequencing is blunt about it:
+"the loop under test is missile *and* turret, not missile alone."
+
+So the POC is half-verdicted. The half that passed is the half the doc predicted
+would pass.
 
 ### What works
 
@@ -84,39 +97,55 @@ forward, because adding one early destroys the reading on the one before it:
 
 ## Next
 
-**A human feel session, before any more code.** Step 4 is the first checkpoint and
-the answer gates everything after it. Fly it, turn the knobs with F2 while it runs,
-and answer success criterion 1: *does the developer grin during missile flight, in
-gray-box, with no art and no progression?*
+**Step 6: turret mode and the missile cooldown.** It is the last thing that could
+invalidate the design, and it is small — the view state machine already treats
+TURRET as a peer of SHIP (`view_controller.gd` says so in its header), the reticle
+instrument is shared and tested, and the swept-segment hit testing already works
+against ship parts. No ladder, no walking, no interior: an instant switch to a
+fixed station, aim-and-track, and a cooldown timer.
 
-The session has a lot to judge now, and the pieces interact — read them together,
-not one at a time:
+**And take the engagement-envelope measurement** — see below. It is an observation,
+not a design act, and the entire exploration numbers chain is blocked on it.
 
-1. **Boost** — is 1.9x a spend worth making, or is the reserve so small it is
-   never worth the thumb?
-2. **Dodge** — 22 m over 0.28 s on a 1.1 s cooldown. Is one press enough to clear
-   a rock, and is the cooldown long enough that spending it is a decision?
-3. **Brake** — the speed/agility trade. 0.55x speed for 1.8x turn. This is the one
-   verb with no reserve: it pays in range, because the fuse is a timer.
-4. **Rocks as obstacles**, now that they bite at their drawn silhouette rather than
-   at 0.55 of it. They are meaningfully more solid than they were last session, and
-   the tuned rock counts and sizes were chosen against the old, forgiving shape.
-5. **The ship's new scale.** 50 m of hull at a 203 m standoff, with the camera 62 m
-   back. Every camera and speed value was retuned around it and none of them has
-   been felt. This is the one most likely to be wrong.
-6. **Manual flight against autopilot.** The interesting question is not whether
-   flying the ship is fun on its own — it is whether *choosing* to fly it changes
-   how a fight goes, or whether the autopilot's arc is simply better and manual
-   flight is a novelty. Watch what standoff you actually choose when you own it.
-7. **Target practice.** Components against a single hit sphere. Does aiming at a
-   small thing on the target beat hitting the target? `enemy/component_count = 0`
-   restores the old behaviour, so the two can be felt back to back in one session.
-8. **Whether the far-field speed reference is missed** now the rocks came inside.
+Everything else the design is waiting on — cruise, economy, missions, interactions,
+art — is downstream of one or the other of those two. See *Where to start* below.
+
+Still open from the first feel session, and worth judging while playing step 6:
+
+1. **Boost and brake numbers.** 1.9x for 1.8 s of reserve; 0.55x speed for 1.8x
+   turn. The verdict says the *shape* is right, which makes the values worth a
+   second pass rather than a first one.
+2. **Dodge** — 22 m over 0.28 s on a 1.1 s cooldown. Not named in the verdict
+   either way. Worth asking whether it is earning its button (ADR 0047 leaves its
+   tier open for that reason).
+3. **The ship's new scale.** 50 m of hull at a 203 m standoff, camera 62 m back.
+   Every camera and speed value was retuned around it and none has been felt.
+4. **Target practice.** Components against a single hit sphere.
+   `enemy/component_count = 0` restores the old target for an A/B.
+5. **Whether the far-field speed reference is missed** now the rocks came inside.
    If it is, the fix is a second sparse non-colliding layer (ADR 0038), not moving
    these back out.
 
-Then step 6 (turret mode and cooldown), which is the alternation the POC exists
-to test.
+## Where to start — the dependency chain
+
+The design has a lot of open fronts (cruise, between-system activity, economy,
+missions, interactions, art) and they look parallel. They are not; they are a
+chain, and most of it is already written down in `PROJECT_OVERVIEW.md`
+§Sequencing and §Open Questions. In order:
+
+1. **Finish the combat bet** — step 6, then 7-9. Cheapest remaining question,
+   and the only one that can still say "rethink".
+2. **Measure `ship.max_engagement_envelope`.** Root of the numbers chain.
+3. **Exploration prototype** — the second bet, and blocked on 2. Cruise feel, the
+   gauntlet, whether a gray blip is worth diverting for.
+4. **Overworld design in parallel** — chat-only, validated by a headless faction
+   sim at 1000x before anything visual exists.
+5. **Economy, missions, interactions** — these price off travel time, which comes
+   out of 3. Travel carries the campaign clock (ADR 0022), the clock sets mission
+   cadence, cadence sets economy tuning. Designing them before cruise feel is
+   settled means re-tuning all of it afterwards.
+6. **Art, last.** Placeholders are generated by scripts and replaced in place
+   (ADR 0030); nothing in code knows the difference, so nothing is waiting on it.
 
 Every change lands on a feature branch via a PR to `main`. See `CLAUDE.md`
 §Git flow.
@@ -172,7 +201,25 @@ They are the knobs most likely to be wrong.
 - **`enemy/component_respawn_seconds` 8.0.** A harness value, not a design claim —
   it exists so the loop can be felt more than once per session.
 
-### Decided this session
+### Decided 2026-08-27 (from the POC verdict)
+
+- **Every vehicle shares one horizon; nothing rolls** (ADR 0045). Promoted from an
+  accident of ADR 0003 to a rule, because the next session to add a vehicle will
+  otherwise reach for a roll axis and the reason not to was nowhere in the code.
+  Ships and missiles still pitch and climb freely — this is not a 2D plane.
+- **Two supported playstyles, one economic gradient** (ADR 0046). Gunboat with
+  missiles and turret, or a fast fighter with ship-facing pilot-controlled guns.
+  Merchant hulls are large and hauling is the reliable money, so the earning curve
+  points at the gunboat. **The tension to watch:** the fighter must earn *less*,
+  never *not enough* — ADR 0025's "the cautious path stays viable" applies, and a
+  playstyle that cannot pay its own upkeep is a trap dressed as a choice.
+- **Brake and boost are missile-tier equipment** (ADR 0047), not baseline verbs.
+  The starting missile is reticle steering, a fuse and early detonate. This is
+  Pillar 1's "the upgrade tree is itself a difficulty dial" applied to the two
+  verbs that turned out to carry the ceiling — and it protects the fuse, which is
+  fuzzier to read when boost is available (ADR 0002).
+
+### Decided 2026-08-26
 
 - **Manual ship flight lands** (ADR 0040). `T` toggles; `W`/`S` are a *throttle*
   that stays where it is put, `A`/`D` are held thrusters, the mouse steers through
@@ -283,18 +330,26 @@ back to the file without disturbing a single comment; *Revert* throws it away.
 Editing the file in a text editor still hot-reloads, and disk wins over unsaved
 panel edits.
 
-### Engagement envelope — record this
+### Engagement envelope — STILL UNMEASURED, and now it is the blocker
 
-`docs/COMBAT_POC_IMPLEMENTATION.md` asks for `ship.max_engagement_envelope` to be
-observed rather than guessed, because it is the first link in the exploration
-numbers chain (envelope → disc height → cruise speeds → system diameter).
+`docs/COMBAT_POC_IMPLEMENTATION.md` asks for `ship.max_engagement_envelope` — the
+largest distance a fight sprawls across — to be observed rather than guessed,
+because it is the first link in the exploration numbers chain:
+
+> envelope → disc height (5-10x the envelope) → cruise speeds → system diameter
+
+`PROJECT_OVERVIEW.md` §Open Questions 1 adds that these are "sized in that order;
+each mostly determines the next", and that the height:diameter ratio is an *output*.
+So the exploration prototype cannot be scoped without this number, and guessing it
+means re-deriving cruise speeds and system size afterwards.
+
+It costs one playtest to observe and it has now been deferred twice.
 
 Current geometry, as built: standoff 203 m, missile reach ~350 m un-boosted, target
-patrol ±300 m, obstacle field from 70 m out. Manual flight makes this observable
-for the first time in a way autopilot never did — the standoff you *choose* when
-you own the throttle is a much better reading than the one the autopilot holds.
-**Nothing is confirmed until a tuning session settles the numbers** — write the
-observed value here when it does.
+patrol ±300 m, obstacle field from 70 m out, player hull 50 m. Manual flight makes
+this properly observable for the first time — **the standoff you choose when you
+own the throttle is the reading that matters**, not the one the autopilot holds.
+Write the observed value here.
 
 ### Still open from the doc
 
