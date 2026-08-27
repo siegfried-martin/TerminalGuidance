@@ -97,7 +97,15 @@ forward, because adding one early destroys the reading on the one before it:
 
 ## Next
 
-**Step 6: turret mode and the missile cooldown.** It is the last thing that could
+**Turret mode — steps 6, 7 and 8 together.** Specified in full by the human on
+2026-08-27 and written up in `docs/TURRET_MODE_IMPLEMENTATION.md`: four weapons
+across two loadouts, blockers on both sides, a 10 s missile cooldown, and the
+interrupt. Read that doc's *Flags* section before building — three build-order
+checkpoints are landing at once, and the interrupt is arriving at an interval the
+scope doc predicts is far too dense. Every layer is required to be independently
+disableable from tuning so clean readings are still obtainable.
+
+The reason it is next, unchanged: It is the last thing that could
 invalidate the design, and it is small — the view state machine already treats
 TURRET as a peer of SHIP (`view_controller.gd` says so in its header), the reticle
 instrument is shared and tested, and the swept-segment hit testing already works
@@ -127,6 +135,9 @@ Still open from the first feel session, and worth judging while playing step 6:
    these back out.
 
 ## Where to start — the dependency chain
+
+*Full version, with what each stage is blocked on: `docs/ROADMAP.md`.
+The current build's detailed spec: `docs/TURRET_MODE_IMPLEMENTATION.md`.*
 
 The design has a lot of open fronts (cruise, between-system activity, economy,
 missions, interactions, art) and they look parallel. They are not; they are a

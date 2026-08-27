@@ -11,6 +11,8 @@ session; the rules below are not suggestions.
 | Decisions already made, and what each one forbids | `decisions/` |
 | What is built, what is next, open feel questions | `STATUS.md` |
 | What is being built first, and its scope boundary | `docs/COMBAT_POC_IMPLEMENTATION.md` |
+| What is being built *right now*, in detail | `docs/TURRET_MODE_IMPLEMENTATION.md` |
+| What comes after the combat bet, and in what order | `docs/ROADMAP.md` |
 | The full design of record | `docs/PROJECT_OVERVIEW.md` |
 
 Before proposing anything that changes how the game behaves, check `decisions/` —
