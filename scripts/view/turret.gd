@@ -22,13 +22,17 @@ extends Node3D
 ## the aim is two scalars, an azimuth and an elevation, and the basis is derived
 ## from them every frame.
 ##
-## Two of the four weapons are live: the autocannon, which throws a `Projectile`
-## on a fire-rate cooldown, and the pulse beam, which is hitscan on purpose (the
-## human's spec calls that a requirement, so lead and travel time never have to be
-## reasoned about) and is limited by heat rather than by ammo. The unguided missile
-## and the blockers are stages 3 and 4 of docs/TURRET_MODE_IMPLEMENTATION.md and
-## are deliberately absent rather than stubbed; a loadout slot holding one simply
-## does nothing yet.
+## Three of the four weapons are live, and each is rationed differently on purpose:
+##
+## - **Autocannon** — held, rate-limited, unlimited. The weapon that always works.
+## - **Pulse beam** — held, hitscan (a specification requirement, so lead and travel
+##   time never have to be reasoned about), rationed by heat.
+## - **Unguided missile** — *clicked*, from a magazine, and the second click
+##   detonates the one in the air. One at a time, which is what makes that second
+##   click a decision rather than a spam button.
+##
+## Blockers are stage 4 of docs/TURRET_MODE_IMPLEMENTATION.md and are deliberately
+## absent rather than stubbed; a loadout slot holding one simply does nothing yet.
 ##
 ## Every shot — travelling or hitscan — resolves through `Shot`, so a rock between
 ## the gun and the target stops it and a component mounted proud of the hull is
@@ -70,9 +74,24 @@ var _heat: float = 0.0
 var _overheat_left: float = 0.0
 var _rounds_fired: int = 0
 
+## The unguided missile: a magazine, a slow trickle back, and the one round in the
+## air that a second click will detonate.
+var _unguided_left: int = 0
+var _unguided_reload: float = 0.0
+var _unguided_in_flight: Projectile
+
+## Last frame's trigger states, so a click can be told from a hold without
+## `Input.is_action_just_pressed`. That call is keyed to the engine's frame
+## counter, which does not advance when the headless gate steps `_process` by hand
+## — a magazine weapon would empty in a single "frame" under test and the whole
+## thing would be untestable.
+var _primary_was_down: bool = false
+var _secondary_was_down: bool = false
+
 
 func _ready() -> void:
 	reset_to_hull()
+	_unguided_left = maxi(Tuning.integer("turret/unguided_magazine"), 0)
 
 
 ## Hand the station what it can shoot at and where to put its effects. Called by
@@ -218,23 +237,26 @@ func firing_direction() -> Vector3:
 
 # --- firing ------------------------------------------------------------------
 
-## One frame of every weapon that is currently held.
+## One frame of every weapon the player is asking for.
 ##
-## Cooldowns and cooling run whether or not the station is manned, so leaving for a
-## missile and coming back does not find the gun in the state it was abandoned in.
-## Firing itself needs the station manned, which is the sequential-attention rule
-## again — an unmanned turret is not a second player.
+## Cooldowns, cooling and the magazine's trickle all run whether or not the station
+## is manned, so leaving for a missile and coming back does not find the gun in the
+## state it was abandoned in. Firing itself needs the station manned, which is the
+## sequential-attention rule again — an unmanned turret is not a second player.
 func _run_weapons(delta: float) -> void:
 	_autocannon_cooldown = maxf(_autocannon_cooldown - delta, 0.0)
 	_overheat_left = maxf(_overheat_left - delta, 0.0)
+	_tick_reload(delta)
 
-	var held := held_weapons()
-	if held.has(Weapon.AUTOCANNON):
+	var requested := requested_weapons()
+	if requested.has(Weapon.AUTOCANNON):
 		_fire_autocannon()
+	if requested.has(Weapon.UNGUIDED):
+		_fire_unguided()
 
 	# The beam is the only weapon whose *not* firing is a state change, because
 	# that is when it cools. Everything else simply does nothing.
-	if held.has(Weapon.PULSE) and _overheat_left <= 0.0:
+	if requested.has(Weapon.PULSE) and _overheat_left <= 0.0:
 		_fire_pulse(delta)
 	else:
 		_heat = maxf(_heat - Tuning.num("turret/pulse_cool_per_second") * delta, 0.0)
@@ -243,16 +265,69 @@ func _run_weapons(delta: float) -> void:
 ## Which weapons the player is asking for this frame, deduped — two loadout slots
 ## may legitimately hold the same weapon, and it must not then run twice and build
 ## heat at double rate.
-func held_weapons() -> Array:
-	var held: Array = []
-	if not active:
-		return held
-	if Input.is_action_pressed("fire_primary"):
-		held.append(primary())
-	if Input.is_action_pressed("fire_secondary") and not held.has(secondary()):
-		held.append(secondary())
-	held.erase(Weapon.NONE)
-	return held
+##
+## Two different questions, because there are two kinds of weapon. The autocannon
+## and the beam are **held**; the unguided missile and the blockers are **clicked**,
+## because a magazine on a held trigger empties in a fifth of a second and because
+## the unguided missile's second click is what detonates it.
+func requested_weapons() -> Array:
+	var primary_down := active and Input.is_action_pressed("fire_primary")
+	var secondary_down := active and Input.is_action_pressed("fire_secondary")
+	var primary_click := primary_down and not _primary_was_down
+	var secondary_click := secondary_down and not _secondary_was_down
+	_primary_was_down = primary_down
+	_secondary_was_down = secondary_down
+
+	var requested: Array = []
+	_consider(requested, primary(), primary_down, primary_click)
+	_consider(requested, secondary(), secondary_down, secondary_click)
+	return requested
+
+
+func _consider(into: Array, weapon: Weapon, down: bool, click: bool) -> void:
+	if weapon == Weapon.NONE or into.has(weapon):
+		return
+	if click if is_click_weapon(weapon) else down:
+		into.append(weapon)
+
+
+## Held or clicked. A property of the weapon, not of the button it sits on.
+static func is_click_weapon(weapon: Weapon) -> bool:
+	return weapon == Weapon.UNGUIDED or weapon == Weapon.BLOCKER
+
+
+## The unguided missile's magazine trickles back rather than reloading in one go,
+## so running dry is a slope rather than a cliff. Zero seconds means it never
+## refills in a session, which is the setting for reading how much ten shots is.
+func _tick_reload(delta: float) -> void:
+	var seconds := Tuning.num("turret/unguided_reload_seconds")
+	var magazine := maxi(Tuning.integer("turret/unguided_magazine"), 0)
+	_unguided_left = mini(_unguided_left, magazine)
+	if seconds <= 0.0 or _unguided_left >= magazine:
+		_unguided_reload = 0.0
+		return
+	_unguided_reload += delta
+	while _unguided_reload >= seconds and _unguided_left < magazine:
+		_unguided_reload -= seconds
+		_unguided_left += 1
+
+
+## Click to fire; click again to set off the one already in the air.
+##
+## One at a time, deliberately. The second click is the weapon's whole mechanic —
+## it is what turns a miss into a chosen detonation point, and what lets one round
+## reach several components at once. With a dozen in flight the button would mean
+## nothing in particular.
+func _fire_unguided() -> void:
+	if _unguided_in_flight != null and is_instance_valid(_unguided_in_flight) \
+			and not _unguided_in_flight.is_spent():
+		_unguided_in_flight.detonate()
+		_unguided_in_flight = null
+		return
+	if _unguided_left <= 0 or _world == null:
+		return
+	_unguided_left -= 1
+	_unguided_in_flight = _spawn_round("turret/unguided")
 
 
 func _fire_autocannon() -> void:
@@ -261,13 +336,16 @@ func _fire_autocannon() -> void:
 	var rate := maxf(Tuning.num("turret/autocannon_rounds_per_second"), 0.01)
 	_autocannon_cooldown = 1.0 / rate
 	_rounds_fired += 1
+	_spawn_round("turret/autocannon")
 
+
+func _spawn_round(prefix: String) -> Projectile:
 	var round_shot := Projectile.new()
 	round_shot.name = "Round"
 	_world.add_child(round_shot)
-	round_shot.launch(muzzle_position(), firing_direction(),
-		"turret/autocannon", _target, _rocks)
+	round_shot.launch(muzzle_position(), firing_direction(), prefix, _target, _rocks)
 	round_shot.spent.connect(_on_round_spent)
+	return round_shot
 
 
 ## Hitscan, on purpose: the whole range is resolved in one segment this frame, so
@@ -302,13 +380,27 @@ func _fire_pulse(delta: float) -> void:
 ## A round reaching something gets the missile's own flash, scaled down. A real
 ## impact effect is art and this is gray-box (ADR 0030); what matters is that the
 ## player can see where the shot went, including when it went into a rock.
-func _on_round_spent(_round_shot: Projectile, kind: int, point: Vector3) -> void:
-	if kind == Shot.Kind.NOTHING or _world == null or not is_instance_valid(_world):
+func _on_round_spent(round_shot: Projectile, kind: int, point: Vector3) -> void:
+	if _world == null or not is_instance_valid(_world):
 		return
+	var blast := round_shot.blast_radius
+	# A solid round that simply ran out of range leaves nothing behind. A warhead
+	# always goes off, wherever it was when it did.
+	if blast <= 0.0 and kind == Shot.Kind.NOTHING:
+		return
+
 	var flash := DetonationFlash.new()
 	flash.name = "ImpactFlash"
 	_world.add_child(flash)
 	flash.position = point
+	if blast > 0.0:
+		# Drawn at exactly the radius it damaged. The drawn shape is the hit shape,
+		# the same rule the rocks and the hull are built on (ADR 0041, ADR 0043) —
+		# a blast that looks bigger than it reaches is a lie the player acts on.
+		flash.setup(Tuning.num("turret/impact_flash_start_radius"), blast,
+			Tuning.num(round_shot.tuning_prefix() + "_flash_seconds"),
+			Tuning.color(round_shot.tuning_prefix() + "_flash_color"))
+		return
 	flash.setup(
 		Tuning.num("turret/impact_flash_start_radius"),
 		Tuning.num("turret/impact_flash_end_radius"),
@@ -345,6 +437,26 @@ func autocannon_cooldown_remaining() -> float:
 ## HUD; the autocannon has unlimited ammo by specification.
 func rounds_fired() -> int:
 	return _rounds_fired
+
+
+## Unguided missiles left in the magazine.
+func unguided_remaining() -> int:
+	return _unguided_left
+
+
+## Is one in the air waiting for its second click?
+func unguided_in_flight() -> bool:
+	return _unguided_in_flight != null and is_instance_valid(_unguided_in_flight) \
+		and not _unguided_in_flight.is_spent()
+
+
+## Seconds until the next round trickles back, or 0 when the magazine is full or
+## `turret/unguided_reload_seconds` is 0 (never refills).
+func unguided_reload_remaining() -> float:
+	var seconds := Tuning.num("turret/unguided_reload_seconds")
+	if seconds <= 0.0 or _unguided_left >= Tuning.integer("turret/unguided_magazine"):
+		return 0.0
+	return maxf(seconds - _unguided_reload, 0.0)
 
 
 # --- loadouts ----------------------------------------------------------------

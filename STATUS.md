@@ -31,12 +31,12 @@ missiles*, and there is still nothing to *do* in the between. `PROJECT_OVERVIEW.
 §Sequencing is blunt about it: "the loop under test is missile *and* turret, not
 missile alone."
 
-Stages 1 and 2 of `docs/TURRET_MODE_IMPLEMENTATION.md` landed on 2026-08-27: `G`
-mans the guns, the aim and the camera work, the loadouts switch, and **two of the
-four weapons fire** — the autocannon and the hitscan pulse beam. What is still
-missing for criterion 2 is the *rhythm*: the unguided missile, the blockers, and
-above all the 10 s missile cooldown, which is what makes "am I ever stuck waiting?"
-a question with an answer.
+Stages 1 to 3 of `docs/TURRET_MODE_IMPLEMENTATION.md` landed on 2026-08-27: `G`
+mans the guns, the aim and the camera work, the loadouts switch, and **three of the
+four weapons fire** — the autocannon, the hitscan pulse beam, and the unguided
+missile with its blast. What is still missing for criterion 2 is the *rhythm*: the
+blockers, and above all the 10 s missile cooldown, which is what makes "am I ever
+stuck waiting?" a question with an answer.
 
 So the POC is half-verdicted. The half that passed is the half the doc predicted
 would pass.
@@ -56,12 +56,12 @@ would pass.
 | Gray-box arena: 7³ marker lattice via one MultiMesh, rebuilt on reload | working |
 | Debug fly-cam (RMB look, WASD/QE, Shift boost) | working |
 | Asset pipeline: `.obj` model + `.png` texture, generated → imported → rendered | working |
-| `make check`: 521 headless assertions, exit code gated | working |
+| `make check`: 564 headless assertions, exit code gated | working |
 | Godot-3 API linter over all scripts, data-driven denylist | working |
 | `make shot`: render frames to PNG from the CLI for visual verification | working |
 | `make apiref`: this exact build's 771-class reference for API grounding | working |
 | `DESIGN.md` — distilled thesis, Target Experience verbatim | written |
-| `decisions/` — 49 ADRs, indexed, each with a *What this forbids* section | written |
+| `decisions/` — 50 ADRs, indexed, each with a *What this forbids* section | written |
 | **Combat arena** (`scenes/arena.tscn`, now the main scene) | working |
 | Mothership autopilot: slow arc at standoff, nose on target | working |
 | Dumb target ship: drifts, turns at its patrol bounds | working |
@@ -102,18 +102,24 @@ would pass.
 | Projectile speed clamped *above* the missile's boosted top speed, in code | working |
 | Guns are sighted: muzzle off the sight line, shots converge at a tuned range | working |
 | Heat bar under the crosshair; `guns` HUD row with rate, cooldown and heat | working |
+| **Unguided missile**: click to fire, click again to detonate, one in the air | working |
+| Magazine of 10 with a per-round trickle back; `unguided` HUD row | working |
+| **Splash damage** — POC step 5 is finished (ADR 0004, `scripts/lib/damage.gd`) | working |
+| Splash capped below a direct hit *in code*, falloff floored at quadratic | working |
+| One blast damages several components at once, skipping the one it hit directly | working |
+| A blast is drawn at exactly the radius it damaged (ADR 0050) | working |
 
 ### Deliberately not built yet
 
 In build order, each with its own feel checkpoint — do not pull any of them
 forward, because adding one early destroys the reading on the one before it:
 
-- **Step 5** — only **splash damage** is left. Early detonate, boost, brake and
-  dodge are all in (pulled forward by request). Splash needs the target to have hit
-  points, which is really step 7's job, so it may land there instead.
-- **Step 6** — half landed on 2026-08-27: the station, the autocannon and the
-  pulse beam. Still missing: the unguided missile, the blockers, and the 10 s
-  missile cooldown. *The cooldown is the alternation the whole POC exists to test*
+- ~~**Step 5**~~ — **done** on 2026-08-27. Splash landed with the unguided
+  missile's warhead; the ridden missile's early detonation, fuse expiry and impact
+  all go off in a radius through the same falloff (ADR 0004).
+- **Step 6** — mostly landed on 2026-08-27: the station, the autocannon, the pulse
+  beam and the unguided missile. Still missing: the blockers, and the 10 s missile
+  cooldown. *The cooldown is the alternation the whole POC exists to test*
   (success criterion 2), so step 6 is not done until it is in.
 - **Step 7** — blockers, enemy fire, ship HP.
 - **Step 8** — the interrupt, starting at zero and raised carefully.
@@ -121,12 +127,11 @@ forward, because adding one early destroys the reading on the one before it:
 
 ## Next
 
-**Turret mode, stage 3: the unguided missile and its blast.** Stages 1 (the
-station) and 2 (the autocannon and the pulse beam) are done. The remaining stages
-are listed in `docs/TURRET_MODE_IMPLEMENTATION.md` §Build stages, in order:
+**Turret mode, stage 4: flares.** Stages 1 (the station), 2 (the autocannon and the
+pulse beam) and 3 (the unguided missile, its blast, and splash) are done. The
+remaining stages are listed in `docs/TURRET_MODE_IMPLEMENTATION.md` §Build stages,
+in order:
 
-3. Unguided missile and blast — manual detonate and splash falloff (ADR 0004),
-   which also closes the last of POC step 5.
 4. Flares — player blockers, enemy blockers at 50% on approach.
 5. The 10 s missile cooldown — what makes criterion 2 answerable at all.
 6. The interrupt — enemy guided missile, the alert, invulnerable by default.
@@ -269,10 +274,41 @@ They are the knobs most likely to be wrong.
   the 203 m standoff. **That gap is the whole design of the two weapons**: the
   cannon works from where the autopilot parks you, the beam is a reason to close.
   If closing never feels worth it, the beam's damage or the cannon's is wrong.
+- **`turret/unguided_magazine` 10 with `unguided_reload_seconds` 6.0 per round.**
+  A full magazine back takes a minute. Whether ten shots is a session's worth or a
+  minute's worth is the open question, and `unguided_reload_seconds = 0` (never
+  refills) is the setting that answers it cleanly.
+- **`turret/unguided_blast_radius` 17.34 against `unguided_blast_damage` 22 and a
+  falloff of 2.4.** Twice the ridden missile's splash radius, as specified. The
+  falloff is steep enough that "somewhere near two components" is worth much less
+  than "between them" — which is the skill in the weapon. If choosing where to
+  detonate never feels worth it, the falloff is too shallow, not too steep.
+- **`missile/splash_damage_fraction` 0.25**, the number ADR 0004 named, under a
+  hard code ceiling of `splash_max_fraction` 0.4. The first thing to watch is
+  whether early detonation has quietly become the default play; if it has, this is
+  too high, and that ADR says so in advance.
 - **`turret/pulse_heat_per_second` 0.42 with `cool_per_second` 0.3 and a 2.5 s
   lockout.** About 2.4 seconds of beam, then a wait. Whether that reads as a rhythm
   or as an interruption is the question; it is the only weapon with a limiter the
   player has to think about at all until the missile cooldown lands.
+
+### Decided 2026-08-27 (from building the unguided missile)
+
+- **One unguided missile in the air, and the second click is the mechanic**
+  (ADR 0050). A weapon is either *held* or *clicked*, and which one is a property
+  of the weapon: on a held trigger a magazine of ten empties in a fifth of a
+  second, and with a dozen rounds in flight "click again to detonate" has no
+  referent. One at a time makes the second click a decision with a subject — you
+  are always either holding a shot or holding a detonator.
+- **A blast is drawn at exactly the radius it damaged.** `missile/flash_end_radius`
+  is gone; the flash's end radius *is* `missile/splash_radius`. This is the same
+  rule as ADR 0041's rocks and ADR 0043's hull arriving a third time, and it is
+  worse here than either — the player judges "did that reach the other component"
+  from a sphere that expands and fades in half a second and cannot be studied.
+- **Splash is capped below a direct hit in code, not by a comment.**
+  `Damage.capped_peak` enforces ADR 0004's "do not tune splash upward to make
+  missiles feel more reliable", and the falloff power is floored at quadratic so no
+  tuning session can buy the polite straight taper that ADR rejects.
 
 ### Decided 2026-08-27 (from building the turret's first weapons)
 

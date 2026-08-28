@@ -176,7 +176,8 @@ scripts/view/          camera/control state machine, chase camera, the gun stati
 scripts/world/         marker lattice, reference field
 scripts/effects/       detonation flash, pulse-beam tracer
 scripts/lib/           pure helpers — no scene tree, no disk, unit tested:
-                       FlightGeometry, TuningSchema, TuningWriter
+                       FlightGeometry, ReticleSteering, Damage, TuningSchema,
+                       TuningWriter
 scripts/sandbox/       the asset harness scene
 scripts/debug/         HUD, debug fly-cam, the F2 tuning panel
 assets/                models and textures (+ committed .import files)
