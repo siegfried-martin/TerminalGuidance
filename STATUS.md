@@ -56,12 +56,12 @@ would pass.
 | Gray-box arena: 7³ marker lattice via one MultiMesh, rebuilt on reload | working |
 | Debug fly-cam (RMB look, WASD/QE, Shift boost) | working |
 | Asset pipeline: `.obj` model + `.png` texture, generated → imported → rendered | working |
-| `make check`: 665 headless assertions, exit code gated | working |
+| `make check`: 668 headless assertions, exit code gated | working |
 | Godot-3 API linter over all scripts, data-driven denylist | working |
 | `make shot`: render frames to PNG from the CLI for visual verification | working |
 | `make apiref`: this exact build's 771-class reference for API grounding | working |
 | `DESIGN.md` — distilled thesis, Target Experience verbatim | written |
-| `decisions/` — 54 ADRs, indexed, each with a *What this forbids* section | written |
+| `decisions/` — 55 ADRs, indexed, each with a *What this forbids* section | written |
 | **Combat arena** (`scenes/arena.tscn`, now the main scene) | working |
 | Mothership autopilot: slow arc at standoff, nose on target | working |
 | Dumb target ship: drifts, turns at its patrol bounds | working |
@@ -124,6 +124,7 @@ would pass.
 | **First-person gun station** with its own narrower FOV (ADR 0054) | working |
 | Off-screen arrow pointing at an incoming missile, not just a bracket | working |
 | A flare star has two speeds: one moves the wall, one opens it | working |
+| A star carries the launching ship's motion; aimed shots do not (ADR 0055) | working |
 
 ### Deliberately not built yet
 
@@ -333,7 +334,10 @@ They are the knobs most likely to be wrong.
   at it, or as the game taking a shot away. If it is the second, the answer is a
   longer trigger range and more room, not a lower chance.
 - **`flare/launch_speed` 15 against `flare/spread_speed` 6**, with `flare/radius`
-  5.5 and six flares. Six 5.5 m spheres opening at 6 m/s are shoulder to shoulder
+  5.5 and six flares. **These are relative to the launching ship now** (ADR 0055),
+  which changes what the number means: 15 is the separation the wall achieves from
+  the ship that threw it, so after four seconds of flare life the wall is 60 m out
+  in front. Whether that is the right standoff for a wall has never been felt. Six 5.5 m spheres opening at 6 m/s are shoulder to shoulder
   for the first couple of seconds and a scatter with 30 m gaps by four. **This is
   now a tighter, more solid wall than the one that was played**, which cuts both
   ways: harder to thread while it is fresh, and easier to go around, because it
@@ -365,6 +369,14 @@ They are the knobs most likely to be wrong.
 > a first person experience, maybe the FOV also needs to be adjusted for this as
 > well"
 
+- **A star carries the launching ship's motion** (ADR 0055). Reported as "the
+  blocker is slower than the ship, which causes issues" — and it was worse than a
+  nuisance: *both* flare speeds are slower than a ship at cruise, so the wall was
+  dropped in place and the ship flew out through its own countermeasure inside a
+  second. The general rule it settles is **whether the player is aiming the thing**:
+  if they are, it goes where they pointed and inherits nothing; if they are letting
+  go of it, it keeps what it had. ADR 0005 already made that call for the ridden
+  missile; this states the reason.
 - **A flare star has two speeds now, not one speed and a blend.**
   `flare/launch_speed` moves the whole wall along the throw; `flare/spread_speed`
   opens the ring. The old parameterisation could not express "throw it out quickly

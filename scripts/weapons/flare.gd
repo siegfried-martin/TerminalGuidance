@@ -147,11 +147,19 @@ func velocity() -> Vector3:
 ## They started as one speed and a blend factor, which could not express "throw it
 ## out quickly but keep it tight" at all: raising the speed to move the wall also
 ## opened it up.
+##
+## `carrier_velocity` is the launching ship's own motion, and the star **inherits
+## it** (ADR 0055). Both of those speeds are slower than a ship at cruise, so
+## without it the wall is dropped in place and the ship flies straight out through
+## its own countermeasure. A flare is an object, not an effect — an object thrown
+## from a moving ship keeps the ship's motion, and this is that sentence in code.
 static func burst(world: Node3D, origin: Vector3, axis: Vector3, flare_side: int,
-		count: int) -> Array[Flare]:
+		count: int, carrier_velocity: Vector3 = Vector3.ZERO) -> Array[Flare]:
 	var thrown: Array[Flare] = []
 	if world == null or count <= 0:
 		return thrown
+	var inherited := carrier_velocity \
+		* clampf(Tuning.num("flare/velocity_inheritance"), 0.0, 1.0)
 	var forward := axis.normalized()
 	if forward.length_squared() < 0.5:
 		forward = Vector3.FORWARD
@@ -165,7 +173,8 @@ static func burst(world: Node3D, origin: Vector3, axis: Vector3, flare_side: int
 		var flare := Flare.new()
 		flare.name = "Flare"
 		world.add_child(flare)
-		flare.launch(origin, forward * launch_speed + outward * spread_speed, flare_side)
+		flare.launch(origin,
+			inherited + forward * launch_speed + outward * spread_speed, flare_side)
 		thrown.append(flare)
 	return thrown
 

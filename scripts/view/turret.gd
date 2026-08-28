@@ -349,7 +349,12 @@ func _fire_blocker() -> void:
 		return
 	_blocker_cooldown = Tuning.num("turret/blocker_cooldown_seconds")
 	var count := Tuning.integer("turret/blocker_flare_count")
-	Flare.burst(_world, muzzle_position(), aim_local(), Flare.Side.PLAYER, count)
+	# The star carries the hull's own motion (ADR 0055). Without it the ship flies
+	# straight out through its own countermeasure — both flare speeds are slower
+	# than a ship at cruise.
+	var carrier := Vector3.ZERO if ship == null or not is_instance_valid(ship) \
+		else ship.velocity()
+	Flare.burst(_world, muzzle_position(), aim_local(), Flare.Side.PLAYER, count, carrier)
 	_flares_thrown += count
 
 

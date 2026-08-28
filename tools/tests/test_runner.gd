@@ -54,7 +54,8 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"turret/unguided_blast_max_fraction", "turret/unguided_blast_falloff_power",
 	"turret/unguided_flash_seconds", "turret/unguided_flash_color",
 	"turret/blocker_cooldown_seconds", "turret/blocker_flare_count",
-	"flare/radius", "flare/launch_speed", "flare/spread_speed", "flare/seconds",
+	"flare/radius", "flare/launch_speed", "flare/spread_speed",
+	"flare/velocity_inheritance", "flare/seconds",
 	"flare/player_color", "flare/enemy_color",
 	"flare/kill_flash_radius", "flare/kill_flash_seconds", "flare/kill_flash_color",
 	"turret/pulse_range", "turret/pulse_damage_per_second",
@@ -1479,6 +1480,31 @@ func _test_flares_and_blockers() -> void:
 		"%.1f m/s out and %.1f along, tuned %.1f and %.1f" % [
 			least_sideways, least_forward,
 			Tuning.num("flare/spread_speed"), Tuning.num("flare/launch_speed")])
+
+	# Both flare speeds are slower than a ship at cruise, so a star that did not
+	# carry the launcher's motion would be behind it the moment it was thrown — the
+	# ship flies out through its own countermeasure (ADR 0055).
+	var carrier := Vector3(0.0, 0.0, -40.0)
+	var moving := Flare.burst(world, Vector3(0.0, 0.0, 1600.0), Vector3.FORWARD,
+		Flare.Side.PLAYER, 4, carrier)
+	var slowest_along := INF
+	for thrown in moving:
+		slowest_along = minf(slowest_along, thrown.velocity().dot(carrier.normalized()))
+	_expect(slowest_along > carrier.length(),
+		"a star carries the launching ship's own motion, and then some",
+		"the slowest flare makes %.1f m/s against a ship doing %.1f" % [
+			slowest_along, carrier.length()])
+
+	Tuning.set_value("flare/velocity_inheritance", 0.0)
+	var dropped := Flare.burst(world, Vector3(0.0, 0.0, 2400.0), Vector3.FORWARD,
+		Flare.Side.PLAYER, 4, carrier)
+	var fastest_along := -INF
+	for thrown in dropped:
+		fastest_along = maxf(fastest_along, thrown.velocity().dot(carrier.normalized()))
+	_expect(fastest_along < carrier.length(),
+		"…and an inheritance of 0 drops it in place, which is the bug it fixes",
+		"still keeping up at %.1f m/s" % fastest_along)
+	Tuning.revert()
 
 	# A flare stops being a wall when it burns out.
 	var timed := Flare.new()
