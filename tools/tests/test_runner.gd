@@ -34,7 +34,7 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"ship/manual_max_speed", "ship/manual_speed_ceiling_fraction",
 	"ship/manual_turn_rate_deg_per_sec", "ship/manual_reticle_max_angle_deg",
 	"ship/autopilot_turn_rate_deg_per_sec",
-	"ship/manual_strafe_speed",
+	"ship/manual_strafe_speed", "ship/missile_cooldown_seconds",
 	"turret/mount_offset", "turret/muzzle_offset", "turret/muzzle_mount_offset",
 	"turret/convergence_distance", "turret/traverse_deg_per_sec",
 	"turret/elevation_limit_deg",
@@ -92,6 +92,8 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"hud/turret_reticle_color", "hud/turret_reticle_size",
 	"hud/turret_heat_bar_width", "hud/turret_heat_bar_height", "hud/turret_heat_bar_offset",
 	"hud/turret_heat_color", "hud/turret_overheat_color",
+	"hud/tube_bar_width", "hud/tube_bar_height", "hud/tube_bar_bottom_margin",
+	"hud/tube_ready_color", "hud/tube_reloading_color",
 	"arena/marker_spacing", "arena/marker_count_per_axis", "arena/marker_size",
 	"arena/marker_color", "arena/background_color", "arena/ambient_energy",
 	"arena/glow_enabled", "arena/glow_intensity",
@@ -143,6 +145,7 @@ func _ready() -> void:
 	_test_turret_weapons()
 	_test_splash_and_unguided()
 	_test_flares_and_blockers()
+	_test_missile_cooldown()
 	_test_overlay_projection_guard()
 	_test_tuning_schema()
 	_test_tuning_writer()
@@ -1530,6 +1533,63 @@ func _test_flares_and_blockers() -> void:
 	world.free()
 
 
+
+## The launch tube's cooldown (POC step 6). Small, and the single most consequential
+## number in the build: success criterion 2 is a question about it.
+func _test_missile_cooldown() -> void:
+	var world := Node3D.new()
+	add_child(world)
+	var target := Node3D.new()
+	world.add_child(target)
+	var ship := Mothership.new()
+	ship.set_process(false)
+	world.add_child(ship)
+	ship.target = target
+	ship.position = Vector3(0.0, 0.0, 1.0)
+	ship.snap_to_standoff()
+
+	var step := 1.0 / 60.0
+	var tuned := Tuning.num("ship/missile_cooldown_seconds")
+	_expect(ship.missile_ready(), "the tube starts loaded", "started cold")
+	_expect(is_equal_approx(ship.missile_charge(), 1.0),
+		"…and reads as fully charged", "%.2f" % ship.missile_charge())
+
+	ship.note_missile_launched()
+	_expect(not ship.missile_ready(), "launching empties the tube", "still ready")
+	_expect(ship.missile_charge() < 0.05,
+		"…and the gauge drops to nothing", "%.2f charged" % ship.missile_charge())
+
+	# The tube reloads on its own clock, whichever station the player is at — while
+	# riding, at the guns, or flying. That is the whole of the rhythm this build
+	# exists to read.
+	ship.piloted = false
+	var frames := 0
+	while not ship.missile_ready() and frames < 6000:
+		ship._process(step)
+		frames += 1
+	var took := float(frames) * step
+	_expect(absf(took - tuned) < maxf(tuned * 0.05, 2.0 * step),
+		"the tube reloads in ship/missile_cooldown_seconds, unattended",
+		"took %.2f s against a tuned %.2f" % [took, tuned])
+	_expect(ship.missile_ready(), "…and is ready at the end of it", "still cold")
+
+	# Halfway through, the gauge has to say halfway — the bar is the instrument.
+	ship.note_missile_launched()
+	for _i in int(tuned * 30.0):
+		ship._process(step)
+	_expect(absf(ship.missile_charge() - 0.5) < 0.05,
+		"the reload gauge tracks the cooldown", "%.2f at halfway" % ship.missile_charge())
+
+	# 0 is the escape hatch back to the pre-step-6 arena.
+	Tuning.set_value("ship/missile_cooldown_seconds", 0.0)
+	ship.note_missile_launched()
+	_expect(ship.missile_ready(),
+		"a cooldown of 0 removes the mechanic entirely", "still made us wait")
+	Tuning.revert()
+
+	world.free()
+
+
 func _test_overlay_projection_guard() -> void:
 	var overlay := FlightOverlay.new()
 	add_child(overlay)
@@ -1838,6 +1898,13 @@ func _test_arena_builds() -> void:
 
 	_expect(bool(arena.call("detonate_current")),
 		"detonate_current() ends the ride", "nothing to detonate")
+	# And still refused after the ride, because the tube is cold — that refusal is
+	# the between-missiles the whole build exists to create.
+	if ship != null and Tuning.num("ship/missile_cooldown_seconds") > 0.0:
+		_expect(not ship.missile_ready(),
+			"the tube is cold after a launch", "reloaded instantly")
+		_expect(arena.call("fire") == null,
+			"…and fire() is refused until it reloads", "launched on a cold tube")
 	_expect(not bool(arena.call("detonate_current")),
 		"detonate_current() is a no-op with no missile", "detonated twice")
 

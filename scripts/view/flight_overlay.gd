@@ -18,6 +18,8 @@ var target: Node3D
 var missile_provider: Callable = func() -> Missile: return null
 ## Returns the gun station while it is manned, or null.
 var turret_provider: Callable = func() -> Turret: return null
+## The ship, for the launch tube's reload gauge.
+var ship: Mothership
 
 
 func _ready() -> void:
@@ -46,6 +48,7 @@ func _draw() -> void:
 	_draw_target_indicator(camera)
 	_draw_reticle(camera)
 	_draw_crosshair(camera)
+	_draw_tube()
 
 
 # --- target indicator --------------------------------------------------------
@@ -189,6 +192,31 @@ func _draw_heat(turret: Turret, centre: Vector2) -> void:
 
 	draw_rect(Rect2(origin, Vector2(bar_width, bar_height)), Color(color, 0.25))
 	draw_rect(Rect2(origin, Vector2(bar_width * clampf(heat, 0.0, 1.0), bar_height)), color)
+
+
+## The launch tube's reload, along the bottom of the screen in every view.
+##
+## It is here rather than in the debug HUD because it is the one gauge the whole
+## build exists to read. Success criterion 2 is "still choosing to fire, and never
+## feels stuck waiting" — that is a question about this bar, and it has to be
+## answerable at a glance from the turret, from the helm and from inside a missile,
+## without the debug overlay switched on.
+func _draw_tube() -> void:
+	if ship == null or not is_instance_valid(ship):
+		return
+	var charge := ship.missile_charge()
+	var bar_width := Tuning.num("hud/tube_bar_width")
+	var bar_height := Tuning.num("hud/tube_bar_height")
+	var origin := Vector2((size.x - bar_width) * 0.5,
+		size.y - Tuning.num("hud/tube_bar_bottom_margin") - bar_height)
+	var color := Tuning.color("hud/tube_ready_color") if ship.missile_ready() \
+		else Tuning.color("hud/tube_reloading_color")
+
+	draw_rect(Rect2(origin, Vector2(bar_width, bar_height)), Color(color, 0.2))
+	draw_rect(Rect2(origin, Vector2(bar_width * charge, bar_height)), color)
+	if not ship.missile_ready():
+		_draw_label("%.1f s" % ship.missile_cooldown_remaining(),
+			origin + Vector2(bar_width + 8.0, bar_height), color)
 
 
 ## Can `unproject_position` be asked about this point at all?

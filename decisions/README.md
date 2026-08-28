@@ -98,5 +98,6 @@ The reasoning, including what the alternative was and why it lost.
 | [0049](0049-damage-is-a-pool.md) | Damage is a pool, every shot resolves in one place, and the guns are sighted |
 | [0050](0050-one-unguided-in-the-air.md) | One unguided missile in the air, and the second click is the mechanic |
 | [0051](0051-flares-are-objects-not-odds.md) | A flare is an object in the way, not a chance of being fooled |
+| [0052](0052-cooldown-starts-at-launch.md) | The launch tube's clock starts at launch, not at detonation |
 
-*Next number: 0052.*
+*Next number: 0053.*
