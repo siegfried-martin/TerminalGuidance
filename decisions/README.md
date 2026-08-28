@@ -101,5 +101,6 @@ The reasoning, including what the alternative was and why it lost.
 | [0052](0052-cooldown-starts-at-launch.md) | The launch tube's clock starts at launch, not at detonation |
 | [0053](0053-the-interrupt-is-telegraphed.md) | The interrupt is telegraphed before it happens, and the miss is decided at launch |
 | [0054](0054-turret-is-first-person.md) | The gun station is first person, with its own field of view |
+| [0055](0055-countermeasures-inherit-velocity.md) | Countermeasures inherit the launcher's velocity; aimed shots do not |
 
-*Next number: 0055.*
+*Next number: 0056.*

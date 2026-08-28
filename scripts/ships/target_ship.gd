@@ -336,8 +336,10 @@ func _tick_blockers(delta: float) -> void:
 ## win a coin toss.
 func deploy_blocker(towards: Vector3) -> Array[Flare]:
 	_blocker_cooldown = Tuning.num("enemy/blocker_cooldown_seconds")
+	# The star carries this ship's drift with it (ADR 0055), for the same reason the
+	# player's does: a wall dropped in place by a moving ship is behind it at once.
 	return Flare.burst(get_parent_node_3d(), position, towards, Flare.Side.ENEMY,
-		Tuning.integer("enemy/blocker_flare_count"))
+		Tuning.integer("enemy/blocker_flare_count"), velocity())
 
 
 ## One roll, isolated so the gate can check the tuned chance over many trials
@@ -413,6 +415,11 @@ func seconds_to_interrupt() -> float:
 ## Has the warning for the next one already gone out?
 func interrupt_warned_already() -> bool:
 	return _warned
+
+
+## How fast this ship is moving, in the parent frame. Its flares inherit it.
+func velocity() -> Vector3:
+	return _drift_direction * Tuning.num("enemy/drift_speed")
 
 
 func set_drift_direction(direction: Vector3) -> void:
