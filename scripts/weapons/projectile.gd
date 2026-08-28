@@ -6,7 +6,10 @@ extends Node3D
 ##
 ## One class for both because the difference between them is a tuning prefix and a
 ## blast radius, not a behaviour. `launch()` takes the prefix and every number is
-## read from it, the same way `ChaseCamera` serves three views.
+## read from it, the same way `ChaseCamera` serves three views. A round whose
+## prefix has a positive `_blast_radius` goes off in a radius wherever it stops,
+## and can also be detonated on command — that is the unguided missile's second
+## click, and it is what makes one useful against several components at once.
 ##
 ## Hit testing is a swept segment against the metre it crossed this frame, resolved
 ## by `Shot` so that a rock between the gun and the target stops it (ADR 0032,
@@ -19,6 +22,10 @@ extends Node3D
 ## `kind` is a `Shot.Kind`. Emitted whatever was reached, including a clean expiry
 ## at maximum range, where `kind` is NOTHING.
 signal spent(projectile: Projectile, kind: int, point: Vector3)
+
+## Whether this round carries a warhead, which is a property of its tuning prefix
+## rather than of its class.
+var blast_radius: float = 0.0
 
 var _prefix: String = "turret/autocannon"
 var _speed: float = 0.0
@@ -45,9 +52,11 @@ func launch(from: Vector3, direction: Vector3, prefix: String,
 	_speed = resolved_speed(prefix)
 	_damage = Tuning.num(prefix + "_damage")
 	_range_left = Tuning.num(prefix + "_range")
+	blast_radius = Tuning.num(prefix + "_blast_radius")
 	position = from
 	_previous_position = from
 	basis = FlightGeometry.basis_from_forward(_direction)
+	_build_body()
 
 
 ## The speed a round actually flies at, whatever its own tuning says.
@@ -69,13 +78,16 @@ static func resolved_speed(prefix: String) -> float:
 	return maxf(Tuning.num(prefix + "_speed"), floor_speed)
 
 
-func _ready() -> void:
-	_build_body()
-
-
 ## Gray-box tracer: a thin bar drawn along the flight path so the round is legible
 ## at speed. Placeholder art, generated rather than authored (ADR 0030).
+##
+## Built from `launch`, not from `_ready`. `_ready` fires when the node enters the
+## tree, which is *before* the caller has said which weapon this is — so building
+## it there drew every round with the autocannon's size and colour, including the
+## unguided missile. The prefix has to be known before anything reads from it.
 func _build_body() -> void:
+	if _body != null:
+		_body.free()
 	var mesh := BoxMesh.new()
 	var width := Tuning.num(_prefix + "_round_width")
 	mesh.size = Vector3(width, width, Tuning.num(_prefix + "_round_length"))
@@ -113,11 +125,42 @@ func _land(result: Dictionary) -> void:
 	var component := int(result["component"])
 	if component >= 0 and _target != null and is_instance_valid(_target):
 		_target.damage_component(component, _damage)
+	_burst(result["point"], component)
 	_finish(int(result["kind"]), result["point"])
 
 
 func _expire() -> void:
+	# A warhead reaching the end of its range still goes off; a solid round does not.
+	_burst(position, -1)
 	_finish(Shot.Kind.NOTHING, position)
+
+
+## Detonate on command, wherever the round is now. This is the unguided missile's
+## second click: it is what turns "I missed" into "I chose where it went off", and
+## it is the whole reason the weapon is worth a magazine slot against several
+## components at once.
+##
+## A round with no warhead simply expires — pressing the button on an autocannon
+## shell should not make it vanish.
+func detonate() -> void:
+	if _finished:
+		return
+	if blast_radius <= 0.0:
+		return
+	_burst(position, -1)
+	_finish(Shot.Kind.NOTHING, position)
+
+
+## The warhead. Damage falls away steeply from the centre and can never be worth
+## as much as landing the shot — ADR 0004, enforced in `Damage`, not here.
+func _burst(at: Vector3, direct_component: int) -> void:
+	if blast_radius <= 0.0 or _target == null or not is_instance_valid(_target):
+		return
+	var peak := Damage.capped_peak(
+		Tuning.num(_prefix + "_blast_damage"), _damage,
+		Tuning.num(_prefix + "_blast_max_fraction"))
+	_target.damage_in_radius(at, blast_radius, peak,
+		Tuning.num(_prefix + "_blast_falloff_power"), direct_component)
 
 
 func _finish(kind: int, point: Vector3) -> void:
@@ -139,3 +182,13 @@ func speed() -> float:
 
 func range_remaining() -> float:
 	return _range_left
+
+
+func is_spent() -> bool:
+	return _finished
+
+
+## The tuning group this round reads. The turret asks so it can size the flash
+## from the same numbers the round was built from.
+func tuning_prefix() -> String:
+	return _prefix

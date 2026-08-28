@@ -15,13 +15,15 @@ extends Node3D
 ## target (ADR 0042), which front-runs part of step 9's hit feedback. The target
 ## ship itself still has no hit points and never dies — that is still step 9.
 ##
-## Step 6 is under way: `G` mans the gun station (ADR 0048), and two of its four
-## weapons are live — the autocannon and the hitscan pulse beam. Component damage
-## is a pool now rather than a hit count (ADR 0049), because four weapons with four
-## damage numbers cannot share a counter.
+## Step 6 is under way: `G` mans the gun station (ADR 0048), and three of its four
+## weapons are live — the autocannon, the hitscan pulse beam and the unguided
+## missile with its blast. Component damage is a pool now rather than a hit count
+## (ADR 0049), because four weapons with four damage numbers cannot share a counter.
 ##
-## Deliberately absent, in build order: splash damage (step 5, landing with the
-## unguided missile); the unguided missile, the blockers and the missile cooldown
+## Step 5 is finished: splash damage landed with the unguided missile's warhead and
+## the ridden missile now uses the same falloff (ADR 0004, `scripts/lib/damage.gd`).
+##
+## Deliberately absent, in build order: the blockers and the missile cooldown
 ## (step 6); enemy fire and ship HP (step 7); the interrupt (step 8); death,
 ## respawn and the PiP toggle (step 9).
 ## Do not add them here ahead of their step — each one has a feel checkpoint
@@ -215,6 +217,13 @@ func _build_hud() -> void:
 	_hud.add_row("gun aim", func() -> String:
 		return "%+.0f deg bearing  ·  %+.0f deg elevation" % [
 			_turret.azimuth_degrees(), _turret.elevation_degrees()])
+	_hud.add_row("unguided", func() -> String:
+		var reload := _turret.unguided_reload_remaining()
+		var state := "IN FLIGHT — click to detonate" if _turret.unguided_in_flight() \
+			else ("+1 in %.0f s" % reload if reload > 0.0 else "magazine full")
+		return "%d of %d  ·  %s" % [
+			_turret.unguided_remaining(),
+			Tuning.integer("turret/unguided_magazine"), state])
 	_hud.add_row("guns", func() -> String:
 		var beam := "OVERHEATED %.1f s" % _turret.overheat_remaining() \
 			if _turret.is_overheated() else "heat %3.0f%%" % (_turret.heat() * 100.0)
@@ -360,13 +369,15 @@ func _on_missile_detonated(missile: Missile, reason: int, hit: bool) -> void:
 	else:
 		_last_outcome = "fuse expired at %.0f m" % missile.distance_to_target()
 
+	# Drawn at exactly the radius the warhead damaged, so the blast cannot look
+	# bigger than it reached (ADR 0049's rule, and ADR 0041's before it).
 	var flash := DetonationFlash.new()
 	flash.name = "Flash"
 	_arena_root.add_child(flash)
 	flash.position = missile.position
 	flash.setup(
 		Tuning.num("missile/flash_start_radius"),
-		Tuning.num("missile/flash_end_radius"),
+		Tuning.num("missile/splash_radius"),
 		Tuning.num("missile/flash_seconds"),
 		Tuning.color("missile/flash_color" if hit else "missile/flash_color_dud"))
 
@@ -388,7 +399,7 @@ func _on_component_damaged(index: int, where: Vector3, destroyed: bool) -> void:
 	flash.position = where
 	flash.setup(
 		Tuning.num("missile/flash_start_radius"),
-		Tuning.num("missile/flash_end_radius"),
+		Tuning.num("missile/splash_radius"),
 		Tuning.num("missile/flash_seconds"),
 		Tuning.color("missile/flash_color"))
 

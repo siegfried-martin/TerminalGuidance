@@ -20,11 +20,12 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"missile/velocity_inheritance", "missile/reticle_max_angle_deg",
 	"missile/body_length", "missile/body_width", "missile/body_color",
 	"missile/exhaust_length", "missile/exhaust_color",
-	"missile/flash_start_radius", "missile/flash_end_radius",
+	"missile/flash_start_radius", "missile/damage",
+	"missile/splash_radius", "missile/splash_damage_fraction",
+	"missile/splash_max_fraction", "missile/splash_falloff_power",
 	"missile/flash_seconds", "missile/flash_color", "missile/flash_color_dud",
 	"missile/boost_multiplier", "missile/boost_seconds", "missile/boost_regen_per_sec",
 	"missile/dodge_distance", "missile/dodge_seconds", "missile/dodge_cooldown_seconds",
-	"missile/damage",
 	"missile/brake_speed_multiplier", "missile/brake_turn_multiplier",
 	"ship/arc_speed", "ship/standoff_distance", "ship/muzzle_offset", "ship/hull_scale",
 	"ship/range_hold_seconds", "ship/range_hold_max_speed",
@@ -43,7 +44,14 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"turret/autocannon_rounds_per_second", "turret/autocannon_damage",
 	"turret/autocannon_speed", "turret/autocannon_range",
 	"turret/autocannon_round_length", "turret/autocannon_round_width",
-	"turret/autocannon_round_color",
+	"turret/autocannon_round_color", "turret/autocannon_blast_radius",
+	"turret/unguided_magazine", "turret/unguided_reload_seconds",
+	"turret/unguided_damage", "turret/unguided_speed", "turret/unguided_range",
+	"turret/unguided_round_length", "turret/unguided_round_width",
+	"turret/unguided_round_color",
+	"turret/unguided_blast_radius", "turret/unguided_blast_damage",
+	"turret/unguided_blast_max_fraction", "turret/unguided_blast_falloff_power",
+	"turret/unguided_flash_seconds", "turret/unguided_flash_color",
 	"turret/pulse_range", "turret/pulse_damage_per_second",
 	"turret/pulse_heat_per_second", "turret/pulse_cool_per_second",
 	"turret/pulse_overheat_lockout_seconds",
@@ -127,6 +135,7 @@ func _ready() -> void:
 	_test_target_components()
 	_test_turret_station()
 	_test_turret_weapons()
+	_test_splash_and_unguided()
 	_test_overlay_projection_guard()
 	_test_tuning_schema()
 	_test_tuning_writer()
@@ -1174,6 +1183,193 @@ func _test_turret_weapons() -> void:
 	_expect(turret.rounds_fired() == quiet,
 		"…and firing it does nothing",
 		"%d rounds from an empty slot" % (turret.rounds_fired() - quiet))
+	Tuning.revert()
+
+	world.free()
+
+
+
+## Splash (ADR 0004) and the unguided missile, which is the weapon it was built
+## for. The rule under test is not "splash exists" but "splash is a consolation,
+## never a build" — so most of these assertions are about how much it *cannot* do.
+func _test_splash_and_unguided() -> void:
+	# The pure rule first, with no scene tree in the way.
+	var peak := 100.0
+	var radius := 20.0
+	var power := Tuning.num("missile/splash_falloff_power")
+	_expect(is_equal_approx(Damage.splash(peak, 0.0, radius, power), peak),
+		"splash is full strength at the centre of the blast",
+		"%.2f of %.2f" % [Damage.splash(peak, 0.0, radius, power), peak])
+	_expect(is_equal_approx(Damage.splash(peak, radius, radius, power), 0.0),
+		"…and nothing at all at the edge",
+		"%.2f at the edge" % Damage.splash(peak, radius, radius, power))
+	_expect(is_equal_approx(Damage.splash(peak, radius * 2.0, radius, power), 0.0),
+		"…or beyond it", "still doing damage outside the radius")
+	# "Steeply" is the load-bearing word in ADR 0004: halfway out must be much less
+	# than half strength, or the blast is a polite taper and detonating near the
+	# target becomes the optimal play.
+	_expect(Damage.splash(peak, radius * 0.5, radius, power) < peak * 0.25,
+		"splash collapses faster than linearly — ADR 0004's 'steeply'",
+		"%.1f%% at half the radius" % Damage.splash(peak, radius * 0.5, radius, power))
+	_expect(is_equal_approx(Damage.splash(peak, radius * 0.5, radius, 1.0),
+			Damage.splash(peak, radius * 0.5, radius, 2.0)),
+		"…and a falloff power below 2 is floored, so no tuning buys a straight taper",
+		"a linear falloff got through the floor")
+
+	var direct := 100.0
+	_expect(Damage.capped_peak(1000.0, direct, 5.0) < direct,
+		"a blast can never be worth as much as a direct hit, whatever tuning says",
+		"capped at %.1f against a direct hit of %.1f" % [
+			Damage.capped_peak(1000.0, direct, 5.0), direct])
+
+	# Now the weapon.
+	var world := Node3D.new()
+	add_child(world)
+	var enemy := TargetShip.new()
+	enemy.set_process(false)
+	world.add_child(enemy)
+	if enemy.component_count() < 2:
+		world.free()
+		return
+	var pool := enemy.component_hit_points()
+
+	# The reason the weapon exists: one blast reaching several components at once.
+	var touched := enemy.damage_in_radius(enemy.position,
+		Tuning.num("turret/unguided_blast_radius"),
+		Tuning.num("turret/unguided_blast_damage"),
+		Tuning.num("turret/unguided_blast_falloff_power"))
+	_expect(touched >= 2, "one blast reaches several components at once",
+		"only touched %d" % touched)
+	var alive_and_hurt := 0
+	for i in enemy.component_count():
+		if enemy.component_health_fraction(i) < 1.0:
+			alive_and_hurt += 1
+	_expect(alive_and_hurt >= 2, "…and all of them actually lost health",
+		"only %d took damage" % alive_and_hurt)
+
+	# A direct hit must not also be splashed by its own warhead, or it would
+	# quietly be worth more than its damage number says.
+	var fresh := TargetShip.new()
+	fresh.set_process(false)
+	world.add_child(fresh)
+	fresh.damage_in_radius(fresh.component_position(0), 100.0, 50.0, 2.0, 0)
+	_expect(is_equal_approx(fresh.component_health_fraction(0), 1.0),
+		"a blast skips the component its own direct hit already paid for",
+		"double-counted: %.2f left" % fresh.component_health_fraction(0))
+
+	# The ridden missile's early detonation, which is the last of POC step 5.
+	var victim := TargetShip.new()
+	victim.set_process(false)
+	world.add_child(victim)
+	var missile := Missile.new()
+	missile.set_process(false)
+	world.add_child(missile)
+	missile.launch(victim.component_position(0) + Vector3(0.0, 0.0, 5.0),
+		Basis.IDENTITY, Vector3.ZERO, victim, victim.radius, null)
+	var before := victim.component_health_fraction(0)
+	missile.detonate_early()
+	var spent := (before - victim.component_health_fraction(0)) * pool
+	_expect(spent > 0.0, "an early detonation splashes what the missile was near",
+		"nothing landed 5 m from a component")
+	_expect(spent < Tuning.num("missile/damage"),
+		"…for steeply less than a direct hit would have done",
+		"%.1f damage against a direct hit of %.1f" % [spent, Tuning.num("missile/damage")])
+
+	# The magazine, and the second click.
+	var ship := Mothership.new()
+	ship.set_process(false)
+	world.add_child(ship)
+	var turret := Turret.new()
+	turret.ship = ship
+	turret.set_process(false)
+	world.add_child(turret)
+	turret.setup(world, enemy, null)
+	turret.active = true
+	turret.set_loadout(2)
+	_expect(turret.primary() == Turret.Weapon.UNGUIDED,
+		"loadout 2's left button holds the unguided missile",
+		"holds %s" % Turret.weapon_label(turret.primary()))
+	_expect(Turret.is_click_weapon(Turret.Weapon.UNGUIDED)
+			and not Turret.is_click_weapon(Turret.Weapon.AUTOCANNON),
+		"the unguided missile is clicked and the autocannon is held",
+		"both are treated the same way")
+
+	var step := 1.0 / 60.0
+	var click := func() -> void:
+		Input.action_press("fire_primary")
+		turret._process(step)
+		Input.action_release("fire_primary")
+		turret._process(step)
+
+	# The round has to be drawn from its OWN tuning group. It was not: the body was
+	# built in `_ready`, which fires when the node enters the tree and therefore
+	# before `launch` has said which weapon this is, so every round was drawn with
+	# the autocannon's size and colour.
+	var sample := Projectile.new()
+	world.add_child(sample)
+	sample.launch(Vector3.ZERO, Vector3.FORWARD, "turret/unguided", null, null)
+	var drawn := (sample.get_node_or_null("Round") as MeshInstance3D)
+	var drawn_mesh := drawn.mesh as BoxMesh if drawn != null else null
+	_expect(drawn_mesh != null and is_equal_approx(
+			drawn_mesh.size.z, Tuning.num("turret/unguided_round_length")),
+		"a round is drawn from its own tuning group, not the autocannon's",
+		"drew a body of %s" % (drawn_mesh.size if drawn_mesh != null else "nothing"))
+	sample.free()
+
+	var magazine := Tuning.integer("turret/unguided_magazine")
+	_expect(turret.unguided_remaining() == magazine,
+		"the magazine starts full", "%d of %d" % [turret.unguided_remaining(), magazine])
+
+	click.call()
+	_expect(turret.unguided_remaining() == magazine - 1,
+		"a click spends a round", "%d left" % turret.unguided_remaining())
+	_expect(turret.unguided_in_flight(), "…and puts one in the air", "nothing in flight")
+
+	click.call()
+	_expect(not turret.unguided_in_flight(),
+		"the second click detonates the one in the air", "still flying")
+	_expect(turret.unguided_remaining() == magazine - 1,
+		"…and costs no ammunition", "%d left" % turret.unguided_remaining())
+
+	# Held rather than clicked, this weapon would empty its magazine in a fifth of
+	# a second. Two seconds of held trigger may spend exactly the one round the
+	# initial press asked for, and no more.
+	var before_hold := turret.unguided_remaining()
+	Input.action_press("fire_primary")
+	for _i in 120:
+		turret._process(step)
+	Input.action_release("fire_primary")
+	turret._process(step)
+	_expect(turret.unguided_remaining() == before_hold - 1,
+		"two seconds of held trigger spends one round, not the magazine",
+		"lost %d rounds to one held press" % (before_hold - turret.unguided_remaining()))
+
+	# Run it dry. Two clicks per round: one to fire, one to detonate.
+	for _i in magazine * 2:
+		click.call()
+	_expect(turret.unguided_remaining() == 0, "the magazine runs dry",
+		"%d left after emptying it" % turret.unguided_remaining())
+	click.call()
+	_expect(not turret.unguided_in_flight(),
+		"…and an empty magazine launches nothing", "fired on an empty magazine")
+
+	# The trickle back. One round per turret/unguided_reload_seconds, not the whole
+	# magazine at once, so running dry is a slope rather than a cliff.
+	var reload := Tuning.num("turret/unguided_reload_seconds")
+	if reload > 0.0:
+		for _i in int(ceil(reload * 60.0)) + 2:
+			turret._process(step)
+		_expect(turret.unguided_remaining() == 1,
+			"one round trickles back after turret/unguided_reload_seconds",
+			"%d back after %.1f s" % [turret.unguided_remaining(), reload])
+
+	Tuning.set_value("turret/unguided_reload_seconds", 0.0)
+	var dry := turret.unguided_remaining()
+	for _i in 3600:
+		turret._process(step)
+	_expect(turret.unguided_remaining() == dry,
+		"a reload time of 0 means the magazine never refills in a session",
+		"gained %d rounds anyway" % (turret.unguided_remaining() - dry))
 	Tuning.revert()
 
 	world.free()

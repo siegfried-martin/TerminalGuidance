@@ -153,7 +153,7 @@ There is still **no death and no respawn** — that is step 9 regardless.
 |---|---|---|
 | "10 ammo before reset" | A magazine of 10 that refills over `turret/unguided_reload_seconds`. `0` = never refills in a session. | tuning |
 | Which weapon on which button | L1 = autocannon (LMB) + pulse beam (RMB); L2 = unguided missile (LMB) + blockers (RMB) | tuning |
-| "twice current missile radius" | Twice `missile/flash_end_radius`, given as its own tuned key rather than a derived one | tuning |
+| "twice current missile radius" | Twice `missile/splash_radius`, given as its own tuned key rather than a derived one. (`missile/flash_end_radius` is gone: the flash is now drawn at the splash radius, so there is one number — ADR 0050.) | tuning |
 | Turret aim feel | Mouse aims **1:1, no lag** — a hitscan weapon whose aim lags is a control that lies. Gamepad stick sweeps at `turret/traverse_deg_per_sec`. | tuning |
 
 ### 5. Two invariants this build must not break

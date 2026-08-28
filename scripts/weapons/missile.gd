@@ -147,6 +147,9 @@ func _process(delta: float) -> void:
 
 	_fuse_left -= delta
 	if _fuse_left <= 0.0:
+		# The fuse is a warhead going off on a timer, not the missile vanishing.
+		# Expiring inside the blast radius of something is a real, if thin, outcome.
+		_splash(-1)
 		_finish(EndReason.FUSE_EXPIRED, false)
 
 
@@ -166,6 +169,11 @@ func _hit_target() -> bool:
 		var part := int(result["component"])
 		if part >= 0:
 			enemy.damage_component(part, Tuning.num("missile/damage"))
+		# The warhead still goes off where it landed, so a neighbour close enough to
+		# the impact takes the blast too — but never the part that just took the
+		# direct hit, or a direct hit would quietly be worth more than its number.
+		position = result["point"]
+		_splash(part)
 		return true
 	return FlightGeometry.segment_hits_sphere(
 		_previous_position, position, _target.position, _target_radius)
@@ -257,10 +265,28 @@ func add_mouse_steer(relative: Vector2) -> void:
 	_reticle.add_mouse(relative)
 
 
-## Player-triggered detonation. POC step 5 also brings splash damage; this is the
-## abort half of it, so a bad shot can be ended instead of watched.
+## Player-triggered detonation, and the abort half of POC step 5: a bad shot can be
+## ended rather than watched out. The warhead goes off where the missile is, which
+## is what makes it a graded outcome instead of a binary one (ADR 0004).
 func detonate_early() -> void:
+	_splash(-1)
 	_finish(EndReason.EARLY_DETONATE, false)
+
+
+## The warhead going off. Damage falls away steeply from the centre and can never
+## be worth as much as landing the shot — ADR 0004, enforced in `Damage`, not here.
+##
+## `except_index` is the component a direct hit has already paid for, or -1.
+func _splash(except_index: int) -> void:
+	var enemy := _target as TargetShip
+	if enemy == null or not is_instance_valid(enemy):
+		return
+	var peak := Damage.capped_peak(
+		Tuning.num("missile/damage") * Tuning.num("missile/splash_damage_fraction"),
+		Tuning.num("missile/damage"),
+		Tuning.num("missile/splash_max_fraction"))
+	enemy.damage_in_radius(position, Tuning.num("missile/splash_radius"), peak,
+		Tuning.num("missile/splash_falloff_power"), except_index)
 
 
 func _finish(reason: EndReason, hit: bool) -> void:

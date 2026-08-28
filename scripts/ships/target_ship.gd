@@ -340,6 +340,35 @@ func damage_component(index: int, amount: float) -> bool:
 	return destroyed
 
 
+## Spend a blast's damage on every live component within `radius` of `centre`,
+## falling off with distance (ADR 0004). Returns how many it touched.
+##
+## `except_index` is the component a direct hit already paid for — a warhead that
+## landed on a component should not then also splash that same component, which
+## would make a direct hit quietly worth more than its own damage number. Pass -1
+## when nothing was hit directly.
+##
+## Distance is measured to the component's *surface*, not its centre: a blast that
+## reaches the skin of a fuel cell has reached it, and measuring to the middle
+## would make bigger components harder to splash than small ones.
+func damage_in_radius(centre: Vector3, radius: float, peak: float,
+		falloff_power: float, except_index: int = -1) -> int:
+	if radius <= 0.0 or peak <= 0.0:
+		return 0
+	var touched := 0
+	for i in _component_offsets.size():
+		if i == except_index or not is_component_alive(i):
+			continue
+		var distance := maxf(
+			component_position(i).distance_to(centre) - _component_hit_radius, 0.0)
+		var amount := Damage.splash(peak, distance, radius, falloff_power)
+		if amount <= 0.0:
+			continue
+		damage_component(i, amount)
+		touched += 1
+	return touched
+
+
 ## Darker with every hit taken, so damage is readable at standoff range without a
 ## health bar. A fresh component is at full colour.
 func _apply_component_shade(index: int) -> void:
