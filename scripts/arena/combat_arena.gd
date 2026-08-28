@@ -15,17 +15,20 @@ extends Node3D
 ## target (ADR 0042), which front-runs part of step 9's hit feedback. The target
 ## ship itself still has no hit points and never dies — that is still step 9.
 ##
-## Step 6 is under way: `G` mans the gun station (ADR 0048), and three of its four
-## weapons are live — the autocannon, the hitscan pulse beam and the unguided
-## missile with its blast. Component damage is a pool now rather than a hit count
-## (ADR 0049), because four weapons with four damage numbers cannot share a counter.
+## Step 6 is under way: `G` mans the gun station (ADR 0048), and all four of its
+## weapons are live — the autocannon, the hitscan pulse beam, the unguided missile
+## with its blast, and the blockers. Component damage is a pool now rather than a
+## hit count (ADR 0049), because four weapons with four damage numbers cannot share
+## a counter.
 ##
 ## Step 5 is finished: splash damage landed with the unguided missile's warhead and
 ## the ridden missile now uses the same falloff (ADR 0004, `scripts/lib/damage.gd`).
+## Half of step 7 is in too: the target answers an incoming missile with a star of
+## flares, on a roll of `enemy/blocker_chance` (ADR 0051).
 ##
-## Deliberately absent, in build order: the blockers and the missile cooldown
-## (step 6); enemy fire and ship HP (step 7); the interrupt (step 8); death,
-## respawn and the PiP toggle (step 9).
+## Deliberately absent, in build order: the missile cooldown (step 6); enemy return
+## fire and ship HP (step 7); the interrupt (step 8); death, respawn and the PiP
+## toggle (step 9).
 ## Do not add them here ahead of their step — each one has a feel checkpoint
 ## attached to it and adding it early destroys the reading.
 ##
@@ -217,6 +220,14 @@ func _build_hud() -> void:
 	_hud.add_row("gun aim", func() -> String:
 		return "%+.0f deg bearing  ·  %+.0f deg elevation" % [
 			_turret.azimuth_degrees(), _turret.elevation_degrees()])
+	_hud.add_row("blockers", func() -> String:
+		var mine := "ready" if _turret.blocker_ready() \
+			else "%.1f s" % _turret.blocker_cooldown_remaining()
+		var theirs := "ready" if _target.blocker_cooldown_remaining() <= 0.0 \
+			else "%.1f s" % _target.blocker_cooldown_remaining()
+		return "mine %s (%d flares thrown)  ·  theirs %s at %.0f%%" % [
+			mine, _turret.flares_thrown(), theirs,
+			Tuning.num("enemy/blocker_chance") * 100.0])
 	_hud.add_row("unguided", func() -> String:
 		var reload := _turret.unguided_reload_remaining()
 		var state := "IN FLIGHT — click to detonate" if _turret.unguided_in_flight() \
@@ -366,6 +377,8 @@ func _on_missile_detonated(missile: Missile, reason: int, hit: bool) -> void:
 		_last_outcome = "detonated at %.0f m" % missile.distance_to_target()
 	elif reason == Missile.EndReason.ROCK_IMPACT:
 		_last_outcome = "hit a rock at %.0f m" % missile.distance_to_target()
+	elif reason == Missile.EndReason.FLARE_INTERCEPT:
+		_last_outcome = "BLOCKED by a flare at %.0f m" % missile.distance_to_target()
 	else:
 		_last_outcome = "fuse expired at %.0f m" % missile.distance_to_target()
 

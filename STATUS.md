@@ -31,12 +31,11 @@ missiles*, and there is still nothing to *do* in the between. `PROJECT_OVERVIEW.
 §Sequencing is blunt about it: "the loop under test is missile *and* turret, not
 missile alone."
 
-Stages 1 to 3 of `docs/TURRET_MODE_IMPLEMENTATION.md` landed on 2026-08-27: `G`
-mans the guns, the aim and the camera work, the loadouts switch, and **three of the
-four weapons fire** — the autocannon, the hitscan pulse beam, and the unguided
-missile with its blast. What is still missing for criterion 2 is the *rhythm*: the
-blockers, and above all the 10 s missile cooldown, which is what makes "am I ever
-stuck waiting?" a question with an answer.
+Stages 1 to 4 of `docs/TURRET_MODE_IMPLEMENTATION.md` landed on 2026-08-27: `G`
+mans the guns, the aim and the camera work, the loadouts switch, **all four weapons
+fire**, and both sides throw flares. What is still missing for criterion 2 is the
+*rhythm* — **the 10 s missile cooldown**, which is what makes "am I ever stuck
+waiting?" a question with an answer.
 
 So the POC is half-verdicted. The half that passed is the half the doc predicted
 would pass.
@@ -56,12 +55,12 @@ would pass.
 | Gray-box arena: 7³ marker lattice via one MultiMesh, rebuilt on reload | working |
 | Debug fly-cam (RMB look, WASD/QE, Shift boost) | working |
 | Asset pipeline: `.obj` model + `.png` texture, generated → imported → rendered | working |
-| `make check`: 564 headless assertions, exit code gated | working |
+| `make check`: 597 headless assertions, exit code gated | working |
 | Godot-3 API linter over all scripts, data-driven denylist | working |
 | `make shot`: render frames to PNG from the CLI for visual verification | working |
 | `make apiref`: this exact build's 771-class reference for API grounding | working |
 | `DESIGN.md` — distilled thesis, Target Experience verbatim | written |
-| `decisions/` — 50 ADRs, indexed, each with a *What this forbids* section | written |
+| `decisions/` — 51 ADRs, indexed, each with a *What this forbids* section | written |
 | **Combat arena** (`scenes/arena.tscn`, now the main scene) | working |
 | Mothership autopilot: slow arc at standoff, nose on target | working |
 | Dumb target ship: drifts, turns at its patrol bounds | working |
@@ -108,6 +107,11 @@ would pass.
 | Splash capped below a direct hit *in code*, falloff floored at quadratic | working |
 | One blast damages several components at once, skipping the one it hit directly | working |
 | A blast is drawn at exactly the radius it damaged (ADR 0050) | working |
+| **Blockers**: a star of flares on a 5 s cooldown, thrown across the threat axis | working |
+| **Enemy blockers**: the target answers an incoming missile on a tuned roll | working |
+| A flare is a physical object, not a chance of being fooled (ADR 0051) | working |
+| One flare stops one missile and is spent; the star is exactly what is drawn | working |
+| Shootable sets are Godot groups, so nothing keeps a registry that could rot | working |
 
 ### Deliberately not built yet
 
@@ -117,22 +121,21 @@ forward, because adding one early destroys the reading on the one before it:
 - ~~**Step 5**~~ — **done** on 2026-08-27. Splash landed with the unguided
   missile's warhead; the ridden missile's early detonation, fuse expiry and impact
   all go off in a radius through the same falloff (ADR 0004).
-- **Step 6** — mostly landed on 2026-08-27: the station, the autocannon, the pulse
-  beam and the unguided missile. Still missing: the blockers, and the 10 s missile
-  cooldown. *The cooldown is the alternation the whole POC exists to test*
-  (success criterion 2), so step 6 is not done until it is in.
-- **Step 7** — blockers, enemy fire, ship HP.
+- **Step 6** — all four weapons landed on 2026-08-27. Still missing: **the 10 s
+  missile cooldown**. *That cooldown is the alternation the whole POC exists to
+  test* (success criterion 2), so step 6 is not done until it is in.
+- **Step 7** — half landed: blockers on both sides are in. Still missing: enemy
+  return fire and ship HP.
 - **Step 8** — the interrupt, starting at zero and raised carefully.
 - **Step 9** — damage, death, respawn, the PiP camera toggle, verdict session.
 
 ## Next
 
-**Turret mode, stage 4: flares.** Stages 1 (the station), 2 (the autocannon and the
-pulse beam) and 3 (the unguided missile, its blast, and splash) are done. The
-remaining stages are listed in `docs/TURRET_MODE_IMPLEMENTATION.md` §Build stages,
-in order:
+**Turret mode, stage 5: the missile cooldown.** Stages 1 (the station), 2 (the
+autocannon and the pulse beam), 3 (the unguided missile, its blast, and splash) and
+4 (flares on both sides) are done. The remaining stages are listed in
+`docs/TURRET_MODE_IMPLEMENTATION.md` §Build stages, in order:
 
-4. Flares — player blockers, enemy blockers at 50% on approach.
 5. The 10 s missile cooldown — what makes criterion 2 answerable at all.
 6. The interrupt — enemy guided missile, the alert, invulnerable by default.
 7. Docs.
@@ -274,6 +277,18 @@ They are the knobs most likely to be wrong.
   the 203 m standoff. **That gap is the whole design of the two weapons**: the
   cannon works from where the autopilot parks you, the beam is a reason to close.
   If closing never feels worth it, the beam's damage or the cannon's is wrong.
+- **`enemy/blocker_trigger_range` 120 m against a 203 m standoff and a flare that
+  lives 4 s and spreads at 26 m/s.** *When* the wall goes up is the whole difficulty
+  of the mechanic: thrown early the flares have dispersed by the time the missile
+  arrives, thrown late there is no room to fly around them. This is the single most
+  likely wrong number in the blocker set.
+- **`enemy/blocker_chance` 0.5**, the spec's figure, with a 6 s launcher cooldown.
+  Worth watching whether being blocked reads as *your* mistake for flying straight
+  at it, or as the game taking a shot away. If it is the second, the answer is a
+  longer trigger range and more room, not a lower chance.
+- **`flare/radius` 5.5 with `blocker_flare_count` 6 and `forward_bias` 0.25.** How
+  threadable a star is. Six 5.5 m spheres on a ring is either a wall with gaps or a
+  wall — which one it is has never been felt.
 - **`turret/unguided_magazine` 10 with `unguided_reload_seconds` 6.0 per round.**
   A full magazine back takes a minute. Whether ten shots is a session's worth or a
   minute's worth is the open question, and `unguided_reload_seconds = 0` (never
@@ -291,6 +306,21 @@ They are the knobs most likely to be wrong.
   lockout.** About 2.4 seconds of beam, then a wait. Whether that reads as a rhythm
   or as an interruption is the question; it is the only weapon with a limiter the
   player has to think about at all until the missile cooldown lands.
+
+### Decided 2026-08-27 (from building the blockers)
+
+- **A flare is an object in the way, not a chance of being fooled** (ADR 0051). The
+  genre default is a seduction roll resolved off screen — a condition imposed on
+  the player that they cannot see, act on, or learn from. A flare is a sphere: it
+  is visible before the missile reaches it, the counter to it is flying around it,
+  and getting better at that is a skill. One flare stops one missile and is spent,
+  so the star on screen *is* the accounting.
+- **A star is a ring across the threat axis, not a cone down it.** A cone is a line
+  of flares the missile flies between. `flare/forward_bias` leans the wall out to
+  meet the missile rather than dropping it in place.
+- **The enemy rolls once per missile, not once per frame.** At 60 fps a per-frame
+  roll of 0.5 fires on the first frame every time, and `enemy/blocker_chance` would
+  be a number with no effect that nobody would notice was broken.
 
 ### Decided 2026-08-27 (from building the unguided missile)
 
