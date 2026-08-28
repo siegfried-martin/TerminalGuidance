@@ -6,8 +6,12 @@ extends Node3D
 ## it still does not shoot — blockers, return fire and the interrupt are POC steps
 ## 7 and 8, not this one.
 ##
-## What is new is the components (ADR 0042). Each one takes two hits: the first
-## darkens it, the second destroys it with the missile's own detonation flash.
+## What is new is the components (ADR 0042). Each one carries a pool of hit points
+## and every weapon spends a damage number against it; it darkens as the pool
+## drains and goes up with the missile's own detonation flash when it empties.
+## The pool replaced a count of hits when the turret arrived (ADR 0049) — four
+## weapons with four different damages cannot share a counter. ADR 0042's
+## behaviour is unchanged; only the currency is.
 ## They exist to answer a feel question — whether a target with several small
 ## things worth aiming at beats one big thing worth hitting — and they are the
 ## reason the hull is built out of parts now rather than being a cube. A cube
@@ -39,12 +43,12 @@ var _hull_material: StandardMaterial3D
 ## Component state, parallel arrays indexed together. Offsets are in the ship's own
 ## frame, so the spin and the drift both come for free.
 var _component_offsets: PackedVector3Array = PackedVector3Array()
-var _component_hits: PackedInt32Array = PackedInt32Array()
+var _component_damage: PackedFloat32Array = PackedFloat32Array()
 var _component_respawn: PackedFloat32Array = PackedFloat32Array()
 var _component_meshes: Array[MeshInstance3D] = []
 var _component_materials: Array[StandardMaterial3D] = []
 var _component_hit_radius: float = 0.0
-var _hits_to_destroy: int = 2
+var _component_hit_points: float = 1.0
 
 ## The hull's own hit volumes, one per drawn part: {offset, orientation, half}
 ## in the ship's frame. Boxes, tested with the exact slab method, so the hull is
@@ -74,7 +78,7 @@ func _ready() -> void:
 func _apply_tuning() -> void:
 	radius = Tuning.num("enemy/radius")
 	_patrol_half_extent = Tuning.num("enemy/patrol_half_extent")
-	_hits_to_destroy = maxi(Tuning.integer("enemy/component_hits_to_destroy"), 1)
+	_component_hit_points = maxf(Tuning.num("enemy/component_hit_points"), 0.001)
 	_component_hit_radius = Tuning.num("enemy/component_hit_radius")
 	_build_hull()
 	_build_components()
@@ -163,7 +167,7 @@ func _build_components() -> void:
 	for child in _components.get_children():
 		child.free()
 	_component_offsets.clear()
-	_component_hits.clear()
+	_component_damage.clear()
 	_component_respawn.clear()
 	_component_meshes.clear()
 	_component_materials.clear()
@@ -211,7 +215,7 @@ func _build_components() -> void:
 		_components.add_child(instance)
 
 		_component_offsets.append(offset)
-		_component_hits.append(0)
+		_component_damage.append(0.0)
 		_component_respawn.append(0.0)
 		_component_meshes.append(instance)
 		_component_materials.append(material)
@@ -258,7 +262,7 @@ func _tick_respawns(delta: float) -> void:
 			continue
 		_component_respawn[i] = maxf(_component_respawn[i] - delta, 0.0)
 		if _component_respawn[i] <= 0.0:
-			_component_hits[i] = 0
+			_component_damage[i] = 0.0
 			_component_meshes[i].visible = true
 			_apply_component_shade(i)
 
@@ -288,7 +292,7 @@ func hit_test(a: Vector3, b: Vector3) -> Dictionary:
 	var best_component := -1
 
 	for i in _component_offsets.size():
-		if _component_hits[i] >= _hits_to_destroy:
+		if not is_component_alive(i):
 			continue
 		var t := FlightGeometry.segment_sphere_entry(
 			a, b, component_position(i), _component_hit_radius)
@@ -307,18 +311,26 @@ func hit_test(a: Vector3, b: Vector3) -> Dictionary:
 
 	if best > 1.0:
 		return miss
-	return {"hit": true, "component": best_component, "point": a + (b - a) * best}
+	return {"hit": true, "component": best_component,
+		"point": a + (b - a) * best, "t": best}
 
 
-## Put a hit on component `index`. Returns true if that hit destroyed it.
-func damage_component(index: int) -> bool:
-	if index < 0 or index >= _component_hits.size():
+## Spend `amount` of damage on component `index`. Returns true if that emptied it.
+##
+## Every weapon goes through here with its own number, which is the whole reason
+## the pool replaced a hit count (ADR 0049): an autocannon round, a beam's tick and
+## a missile warhead are not interchangeable, and a counter cannot tell them apart.
+## A beam calls this every frame with damage-per-second times delta, so the
+## darkening is continuous rather than stepped, and that is intended.
+func damage_component(index: int, amount: float) -> bool:
+	if index < 0 or index >= _component_damage.size():
 		return false
-	if _component_hits[index] >= _hits_to_destroy:
+	if amount <= 0.0 or not is_component_alive(index):
 		return false
 
-	_component_hits[index] += 1
-	var destroyed := _component_hits[index] >= _hits_to_destroy
+	_component_damage[index] = minf(
+		_component_damage[index] + amount, _component_hit_points)
+	var destroyed := not is_component_alive(index)
 	if destroyed:
 		_component_meshes[index].visible = false
 		_component_respawn[index] = Tuning.num("enemy/component_respawn_seconds")
@@ -331,7 +343,7 @@ func damage_component(index: int) -> bool:
 ## Darker with every hit taken, so damage is readable at standoff range without a
 ## health bar. A fresh component is at full colour.
 func _apply_component_shade(index: int) -> void:
-	var wear := float(_component_hits[index]) / float(_hits_to_destroy)
+	var wear := clampf(_component_damage[index] / _component_hit_points, 0.0, 1.0)
 	var amount := Tuning.num("enemy/component_damaged_darken") * wear
 	var base_color := Tuning.color("enemy/component_color")
 	var material := _component_materials[index]
@@ -385,17 +397,25 @@ func component_count() -> int:
 	return _component_offsets.size()
 
 
-func component_hits(index: int) -> int:
-	return _component_hits[index]
+## How much of component `index`'s pool is left, 0 to 1. The HUD shows it, and it
+## is what the shade is derived from.
+func component_health_fraction(index: int) -> float:
+	return clampf(1.0 - _component_damage[index] / _component_hit_points, 0.0, 1.0)
+
+
+## The size of one component's pool. Weapons are tuned against this number, so it
+## is worth being able to read it back.
+func component_hit_points() -> float:
+	return _component_hit_points
 
 
 func is_component_alive(index: int) -> bool:
-	return _component_hits[index] < _hits_to_destroy
+	return _component_damage[index] < _component_hit_points
 
 
 func components_alive() -> int:
 	var alive := 0
-	for i in _component_hits.size():
-		if _component_hits[i] < _hits_to_destroy:
+	for i in _component_damage.size():
+		if is_component_alive(i):
 			alive += 1
 	return alive

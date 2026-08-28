@@ -41,6 +41,6 @@ func _process(delta: float) -> void:
 	_damaged = true
 	# Component 0 destroyed, component 1 damaged, the rest untouched — every state
 	# the player will see, in one photograph.
-	for _hit in Tuning.integer("enemy/component_hits_to_destroy"):
-		_target.damage_component(0)
-	_target.damage_component(1)
+	var pool := _target.component_hit_points()
+	_target.damage_component(0, pool)
+	_target.damage_component(1, pool * 0.5)

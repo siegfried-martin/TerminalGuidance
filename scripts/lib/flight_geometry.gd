@@ -37,6 +37,23 @@ static func segment_hits_ellipsoid(a: Vector3, b: Vector3, center: Vector3,
 	return segment_distance_to_point(local_a, local_b, Vector3.ZERO) <= 1.0
 
 
+## Where along the swept segment a→b does it first enter the ellipsoid? Returns
+## the parameter t in 0..1, or -1 for a clean miss.
+##
+## Same affine trick as `segment_hits_ellipsoid`, and the parameter survives it:
+## the map into the ellipsoid's frame is linear in t, so a point at t in the mapped
+## frame is the point at t in the real one. The distances in there are not metres;
+## the parameter is exact.
+static func segment_ellipsoid_entry(a: Vector3, b: Vector3, center: Vector3,
+		orientation: Basis, radii: Vector3) -> float:
+	if radii.x <= 0.0 or radii.y <= 0.0 or radii.z <= 0.0:
+		return -1.0
+	var to_local := orientation.transposed()
+	var local_a := (to_local * (a - center)) / radii
+	var local_b := (to_local * (b - center)) / radii
+	return segment_sphere_entry(local_a, local_b, Vector3.ZERO, 1.0)
+
+
 ## Where along the swept segment a→b does it first enter the sphere? Returns the
 ## parameter t in 0..1, or -1 for a clean miss. t = 0 means it started inside.
 ##
