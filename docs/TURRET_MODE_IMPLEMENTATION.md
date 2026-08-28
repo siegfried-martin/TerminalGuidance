@@ -1,6 +1,18 @@
 # Turret Mode — Implementation Doc
 
-*Version 1 · 2026-08-27 · covers POC build-order steps 6, 7 and 8, specified together by the human after the criterion-1 verdict.*
+*Version 2 · 2026-08-27 · covers POC build-order steps 6, 7 and 8, specified together by the human after the criterion-1 verdict.*
+
+> **Status: built.** All seven stages landed on 2026-08-27 across PRs #5–#10, and
+> `make check` is green at 661 assertions. Nothing here has been *played*. The
+> tuning values in it are starting positions, and `STATUS.md` §Open feel questions
+> names the ones most likely to be wrong — `enemy/interrupt_interval_seconds` above
+> all, which this document's own Flag 1 predicts is far too dense.
+>
+> The decisions taken while building it are ADRs **0048** (the station is a peer of
+> the helm), **0049** (damage is a pool, one shot resolver, sighted guns), **0050**
+> (one unguided missile in the air), **0051** (a flare is an object, not odds),
+> **0052** (the tube's clock starts at launch) and **0053** (the interrupt is
+> telegraphed).
 
 This is the second half of the combat bet. `COMBAT_POC_IMPLEMENTATION.md` remains
 the scope authority; this document is the detail for the part of it that is being
@@ -227,20 +239,23 @@ hitscan beam is the same test with a very long segment.
 | `tuning.cfg` | New `[turret]` section; `[enemy]` gains blockers and the interrupt; `[ship]` gains `hp` and `invulnerable` |
 | `tools/tests/test_runner.gd` | Required keys and actions, plus the behavioural tests below |
 
-### Build stages — each ends with `make check` green
+### Build stages — each ended with `make check` green
 
-1. **Turret view.** `G`, the camera, aim, loadout switching, HUD rows. No weapons.
-2. **Autocannon and pulse beam.** Projectile and hitscan paths, the damage pool,
+*All seven are done. Kept as written so the order and the reasoning behind it stay
+visible; the PR each landed in is in brackets.*
+
+1. ✅ **Turret view.** [#5] `G`, the camera, aim, loadout switching, HUD rows. No weapons.
+2. ✅ **Autocannon and pulse beam.** [#6] Projectile and hitscan paths, the damage pool,
    the speed-hierarchy clamp.
-3. **Unguided missile and blast.** Manual detonate, splash falloff (ADR 0004),
+3. ✅ **Unguided missile and blast.** [#7] Manual detonate, splash falloff (ADR 0004),
    which also closes POC step 5.
-4. **Flares.** Player blockers, enemy blockers at 50% on approach, missiles dying
+4. ✅ **Flares.** [#8] Player blockers, enemy blockers at 50% on approach, missiles dying
    to them. Closes the blocker half of step 7.
-5. **The missile cooldown.** 10 s. This is what makes step 6's checkpoint
+5. ✅ **The missile cooldown.** [#9] 10 s. This is what makes step 6's checkpoint
    answerable at all.
-6. **The interrupt.** Enemy guided missile, imperfect accuracy, the alert, the
+6. ✅ **The interrupt.** [#10] Enemy guided missile, imperfect accuracy, the alert, the
    hit counter, turret intercept. Steps 7 and 8. Invulnerable by default.
-7. **Docs.** ADRs, `STATUS.md`, `make shot` frames.
+7. ✅ **Docs.** ADRs 0048–0053, `STATUS.md`, `make shot` frames.
 
 ### Tests worth having
 

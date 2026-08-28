@@ -39,6 +39,17 @@ var _reticle := ReticleSteering.new()
 ## Seconds until the launch tube can put another missile out. The tube belongs to
 ## the ship, not to the arena that happens to be wiring it up.
 var _missile_cooldown: float = 0.0
+## Hit points, and whether they mean anything. `ship/invulnerable` is true for this
+## build at the human's direction: the pacing test asks "does being pulled to the
+## turret disrupt the rhythm?", and that is answerable without a consequence for
+## failing. Adding damage now would mix a pacing signal with a difficulty one and
+## neither could be read cleanly. Hits still REGISTER — they are counted and they
+## flash — because otherwise a failed intercept is indistinguishable from one that
+## never arrived, and there would be nothing to pace against.
+var _hp: float = -1.0
+var _hits_taken: int = 0
+## Seconds left on the impact flash. Feedback without consequence.
+var _hit_flash: float = 0.0
 
 
 func _ready() -> void:
@@ -88,6 +99,7 @@ func _process(delta: float) -> void:
 	# cooldown is the rhythm of the whole loop and it must not depend on which
 	# station the player happens to be standing at.
 	_missile_cooldown = maxf(_missile_cooldown - delta, 0.0)
+	_hit_flash = maxf(_hit_flash - delta, 0.0)
 	if autopilot:
 		_fly_autopilot(delta)
 	elif piloted:
@@ -204,6 +216,69 @@ func _fly_manual(delta: float) -> void:
 	_velocity = (-basis.z * (_throttle * manual_max_speed()) + basis.x * strafe) \
 		.limit_length(manual_max_speed())
 	position += _velocity * delta
+
+
+# --- taking hits -------------------------------------------------------------
+
+## Register an incoming missile's warhead. Returns true if it actually cost HP.
+##
+## Turning damage on later is a single flip of `ship/invulnerable`, not a build:
+## the counting, the flash and the readouts are all here already and are exercised
+## by the pacing test itself.
+func take_hit(damage: float) -> bool:
+	_hits_taken += 1
+	_hit_flash = Tuning.num("hud/hit_flash_seconds")
+	if Tuning.flag("ship/invulnerable"):
+		return false
+	if _hp < 0.0:
+		_hp = Tuning.num("ship/hp")
+	_hp = maxf(_hp - damage, 0.0)
+	return true
+
+
+func hits_taken() -> int:
+	return _hits_taken
+
+
+## Hit points remaining. Full while invulnerable, because nothing has been spent.
+func hp() -> float:
+	if _hp < 0.0:
+		return Tuning.num("ship/hp")
+	return _hp
+
+
+func hp_fraction() -> float:
+	var pool := maxf(Tuning.num("ship/hp"), 0.001)
+	return clampf(hp() / pool, 0.0, 1.0)
+
+
+func is_invulnerable() -> bool:
+	return Tuning.flag("ship/invulnerable")
+
+
+## 0 to 1, fading. What the overlay tints the screen edge with on an impact.
+func hit_flash() -> float:
+	var total := maxf(Tuning.num("hud/hit_flash_seconds"), 0.001)
+	return clampf(_hit_flash / total, 0.0, 1.0)
+
+
+## The sphere an incoming missile is tested against.
+##
+## Derived from the hull mesh's own bounds rather than tuned, for the reason
+## `TargetShip._recompute_bound` gives: a hand-set number a few metres short makes
+## part of the ship silently unhittable and there is no error anywhere to find.
+##
+## **This is the one hit shape in the game that is still a sphere around a mesh**,
+## which is exactly the shape ADR 0043 was written about. It is acceptable only
+## because the player is invulnerable in this build and the error is generous in
+## the direction of *being* hit. When ship damage arrives (step 9) this has to
+## become the hull's own volumes, the way the target's did.
+func hit_radius() -> float:
+	var scale := maxf(Tuning.num("ship/hit_radius_scale"), 0.01)
+	if _hull == null or _hull.mesh == null:
+		return Tuning.num("ship/hull_scale") * scale
+	var extents: Vector3 = _hull.mesh.get_aabb().size * 0.5
+	return extents.length() * Tuning.num("ship/hull_scale") * scale
 
 
 # --- the launch tube ---------------------------------------------------------

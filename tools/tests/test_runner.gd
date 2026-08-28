@@ -35,6 +35,7 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"ship/manual_turn_rate_deg_per_sec", "ship/manual_reticle_max_angle_deg",
 	"ship/autopilot_turn_rate_deg_per_sec",
 	"ship/manual_strafe_speed", "ship/missile_cooldown_seconds",
+	"ship/invulnerable", "ship/hp", "ship/hit_radius_scale",
 	"turret/mount_offset", "turret/muzzle_offset", "turret/muzzle_mount_offset",
 	"turret/convergence_distance", "turret/traverse_deg_per_sec",
 	"turret/elevation_limit_deg",
@@ -69,6 +70,11 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"enemy/wing_span", "enemy/wing_chord", "enemy/wing_thickness", "enemy/fin_height",
 	"enemy/blocker_chance", "enemy/blocker_trigger_range",
 	"enemy/blocker_cooldown_seconds", "enemy/blocker_flare_count",
+	"enemy/interrupt_interval_seconds", "enemy/interrupt_warning_lead_seconds",
+	"enemy/missile_aim_error", "enemy/missile_speed",
+	"enemy/missile_turn_rate_deg_per_sec", "enemy/missile_fuse_seconds",
+	"enemy/missile_radius", "enemy/missile_hit_points", "enemy/missile_damage",
+	"enemy/missile_color",
 	"enemy/component_count", "enemy/component_hit_points",
 	"enemy/component_radius", "enemy/component_length", "enemy/component_mount_radius",
 	"enemy/component_hit_radius", "enemy/component_damaged_darken",
@@ -94,6 +100,9 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"hud/turret_heat_color", "hud/turret_overheat_color",
 	"hud/tube_bar_width", "hud/tube_bar_height", "hud/tube_bar_bottom_margin",
 	"hud/tube_ready_color", "hud/tube_reloading_color",
+	"hud/alert_color", "hud/alert_font_size", "hud/alert_top_margin",
+	"hud/alert_pulse_hz", "hud/alert_bracket_size", "hud/alert_seconds",
+	"hud/hit_flash_seconds", "hud/hit_flash_band", "hud/hit_flash_color",
 	"arena/marker_spacing", "arena/marker_count_per_axis", "arena/marker_size",
 	"arena/marker_color", "arena/background_color", "arena/ambient_energy",
 	"arena/glow_enabled", "arena/glow_intensity",
@@ -146,6 +155,7 @@ func _ready() -> void:
 	_test_splash_and_unguided()
 	_test_flares_and_blockers()
 	_test_missile_cooldown()
+	_test_interrupt()
 	_test_overlay_projection_guard()
 	_test_tuning_schema()
 	_test_tuning_writer()
@@ -1586,6 +1596,190 @@ func _test_missile_cooldown() -> void:
 	_expect(ship.missile_ready(),
 		"a cooldown of 0 removes the mechanic entirely", "still made us wait")
 	Tuning.revert()
+
+	world.free()
+
+
+
+## The interrupt (POC step 8). The most dangerous thing in the build for the target
+## experience, so most of what is pinned down here is that it can be switched off,
+## that it is telegraphed before it happens, and that every weapon that should be
+## able to answer it can.
+func _test_interrupt() -> void:
+	var world := Node3D.new()
+	add_child(world)
+	var ship := Mothership.new()
+	ship.set_process(false)
+	world.add_child(ship)
+	var enemy := TargetShip.new()
+	enemy.set_process(false)
+	world.add_child(enemy)
+	enemy.position = Vector3(0.0, 0.0, -Tuning.num("ship/standoff_distance"))
+	enemy.player = ship
+	var step := 1.0 / 60.0
+
+	var live := func() -> int:
+		return get_tree().get_nodes_in_group(EnemyMissile.GROUP).size()
+
+	# Off is off. This is the escape hatch that keeps a clean reading of steps 6 and
+	# 7 obtainable while step 8 exists.
+	Tuning.set_value("enemy/interrupt_interval_seconds", 0.0)
+	var before_off := int(live.call())
+	for _i in 600:
+		enemy._tick_interrupt(step)
+	_expect(int(live.call()) == before_off,
+		"enemy/interrupt_interval_seconds = 0 never launches anything",
+		"launched %d anyway" % (int(live.call()) - before_off))
+	_expect(enemy.seconds_to_interrupt() < 0.0,
+		"…and reports itself as off", "still counting down")
+
+	# Telegraphed BEFORE the launch, not at it. Pillar 2: it must be possible to win
+	# both, which is only true if the warning arrives with time left to act on.
+	Tuning.set_value("enemy/interrupt_interval_seconds", 4.0)
+	Tuning.set_value("enemy/interrupt_warning_lead_seconds", 2.0)
+	var warned := {"count": 0, "at": -1.0}
+	var launched := {"count": 0}
+	enemy.interrupt_warned.connect(func() -> void:
+		warned["count"] = int(warned["count"]) + 1
+		warned["at"] = 4.0 - enemy.seconds_to_interrupt())
+	enemy.interrupt_launched.connect(func(_m: EnemyMissile) -> void:
+		launched["count"] = int(launched["count"]) + 1)
+
+	var before_cycle := int(live.call())
+	# A shade over the interval: 240 sixtieths of a second accumulate to slightly
+	# under 4.0 in floating point, and the launch is on `>=`.
+	for _i in 260:
+		enemy._tick_interrupt(step)
+	_expect(int(warned["count"]) == 1, "the interrupt is telegraphed exactly once",
+		"%d warnings in one cycle" % int(warned["count"]))
+	_expect(absf(float(warned["at"]) - 2.0) < 0.1,
+		"…a full interrupt_warning_lead_seconds before the launch",
+		"warned %.2f s in, launch at 4.0" % float(warned["at"]))
+	_expect(int(launched["count"]) == 1, "the interrupt fires on its interval",
+		"%d launches" % int(launched["count"]))
+	_expect(int(live.call()) == before_cycle + 1,
+		"…and puts exactly one missile in the air",
+		"%d in the air" % (int(live.call()) - before_cycle))
+	Tuning.revert()
+
+	# Clear the one the timing test put up. Every interrupt launches from the same
+	# point, so leaving it there would make the assertions below name whichever of
+	# two overlapping missiles the group happened to list first.
+	for node in get_tree().get_nodes_in_group(EnemyMissile.GROUP):
+		(node as EnemyMissile).take_damage(1e9)
+
+	# The speed hierarchy applies to both sides: an enemy missile that outran the
+	# player's own would outrun the rounds meant to intercept it.
+	var missile_top := Tuning.num("missile/base_speed") * Tuning.num("missile/boost_multiplier")
+	Tuning.set_value("enemy/missile_speed", missile_top * 10.0)
+	_expect(EnemyMissile.resolved_speed() <= missile_top + 0.001,
+		"an enemy missile cannot outrun the player's own at full boost",
+		"%.0f m/s against a top of %.0f" % [EnemyMissile.resolved_speed(), missile_top])
+	Tuning.revert()
+
+	# The aim error is bounded, and zero means it never misses.
+	var spread := Tuning.num("enemy/missile_aim_error")
+	var worst := 0.0
+	for _i in 200:
+		worst = maxf(worst, EnemyMissile.random_error().length())
+	_expect(worst <= spread + 0.001, "the aim error stays inside enemy/missile_aim_error",
+		"drew %.1f m against a spread of %.1f" % [worst, spread])
+	_expect(worst > spread * 0.5,
+		"…and actually uses the spread it is given",
+		"never drew more than %.1f m of a possible %.1f" % [worst, spread])
+	Tuning.set_value("enemy/missile_aim_error", 0.0)
+	_expect(EnemyMissile.random_error().is_equal_approx(Vector3.ZERO),
+		"an aim error of 0 means it never misses", "still wandered")
+	Tuning.revert()
+
+	# Shootable: it is simply another thing on the segment, and wins if it is nearest.
+	var incoming := enemy.launch_interrupt()
+	_expect(incoming != null, "launch_interrupt() puts one in the air", "returned null")
+	if incoming == null:
+		world.free()
+		return
+	incoming.set_process(false)
+	var across_a := incoming.position + Vector3(0.0, 0.0, 40.0)
+	var across_b := incoming.position - Vector3(0.0, 0.0, 40.0)
+	var found := Shot.resolve(across_a, across_b, null, null, get_tree())
+	_expect(int(found["kind"]) == Shot.Kind.ENEMY_MISSILE,
+		"a turret shot resolves against an incoming missile",
+		"resolved to %s" % Shot.kind_label(int(found["kind"])))
+	_expect(found["node"] == incoming, "…and names the one it reached", "named something else")
+
+	# Answerable from loadout 1. If the autocannon cannot bring one down in a
+	# handful of rounds the interrupt is unanswerable unless you switched loadout
+	# before it arrived, which the player has no way of knowing to do.
+	var rounds := 0
+	while not incoming.is_spent() and rounds < 200:
+		rounds += 1
+		incoming.take_damage(Tuning.num("turret/autocannon_damage"))
+	_expect(incoming.is_spent(), "the autocannon brings an incoming missile down",
+		"survived %d rounds" % rounds)
+	_expect(rounds <= 8, "…in a handful of rounds, not a magazine",
+		"took %d rounds at %.1f each" % [rounds, Tuning.num("turret/autocannon_damage")])
+
+	var by_beam := enemy.launch_interrupt()
+	by_beam.set_process(false)
+	by_beam.take_damage(Tuning.num("turret/pulse_damage_per_second") * 1.0)
+	_expect(by_beam.is_spent(), "one second of pulse beam brings one down",
+		"%.0f%% health left" % (by_beam.health_fraction() * 100.0))
+
+	# The unguided missile's stated second job: "potentially useful for killing
+	# enemy missiles as well as damaging multiple components".
+	var by_blast := enemy.launch_interrupt()
+	by_blast.set_process(false)
+	var peak := Damage.capped_peak(Tuning.num("turret/unguided_blast_damage"),
+		Tuning.num("turret/unguided_damage"),
+		Tuning.num("turret/unguided_blast_max_fraction"))
+	var killed := EnemyMissile.splash(get_tree(), by_blast.position,
+		Tuning.num("turret/unguided_blast_radius"), peak,
+		Tuning.num("turret/unguided_blast_falloff_power"))
+	_expect(killed >= 1 and by_blast.is_spent(),
+		"an unguided missile's blast kills an incoming one it goes off on",
+		"killed %d" % killed)
+
+	# And a player flare stops one, which is the blockers' other half.
+	var by_flare := enemy.launch_interrupt()
+	var wall := Flare.new()
+	world.add_child(wall)
+	wall.launch(by_flare.position - (by_flare.position - ship.position).normalized() * 10.0,
+		Vector3.ZERO, Flare.Side.PLAYER)
+	var flare_end := {"reason": -1}
+	by_flare.ended.connect(func(_m: EnemyMissile, reason: int, _p: Vector3) -> void:
+		flare_end["reason"] = reason)
+	for _i in 120:
+		if int(flare_end["reason"]) >= 0:
+			break
+		by_flare._process(step)
+	_expect(int(flare_end["reason"]) == EnemyMissile.EndReason.FLARE_INTERCEPT,
+		"a player flare stops an incoming missile",
+		"ended with reason %d" % int(flare_end["reason"]))
+
+	# Invulnerability. The pacing build ships with it on: a hit is counted and
+	# flashed, and costs nothing.
+	Tuning.set_value("ship/invulnerable", true)
+	var before_hits := ship.hits_taken()
+	var full := ship.hp()
+	_expect(not ship.take_hit(Tuning.num("enemy/missile_damage")),
+		"an invulnerable ship reports the hit as costing nothing", "took damage")
+	_expect(ship.hits_taken() == before_hits + 1,
+		"…but the hit is still counted", "not counted")
+	_expect(ship.hit_flash() > 0.0, "…and still flashes", "no feedback at all")
+	_expect(is_equal_approx(ship.hp(), full), "…and no hit points were spent",
+		"%.0f of %.0f left" % [ship.hp(), full])
+
+	Tuning.set_value("ship/invulnerable", false)
+	_expect(ship.take_hit(Tuning.num("enemy/missile_damage")),
+		"…and with the flag off, a hit costs hit points", "still free")
+	_expect(ship.hp() < full, "…and the pool actually drops",
+		"%.0f of %.0f left" % [ship.hp(), full])
+	Tuning.revert()
+
+	# The one hit shape left as a sphere around a mesh has to at least contain it.
+	_expect(ship.hit_radius() > Tuning.num("ship/hull_scale"),
+		"the ship's hit sphere is derived from its hull, not from nothing",
+		"%.1f m" % ship.hit_radius())
 
 	world.free()
 

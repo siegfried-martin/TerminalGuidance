@@ -382,13 +382,16 @@ func _spawn_round(prefix: String) -> Projectile:
 func _fire_pulse(delta: float) -> void:
 	var from := sight_origin()
 	var to := from + aim_local() * Tuning.num("turret/pulse_range")
-	var result := Shot.resolve(from, to, _target, _rocks)
+	var result := Shot.resolve(from, to, _target, _rocks, get_tree())
 	var end_point: Vector3 = result["point"]
 
+	var tick := Tuning.num("turret/pulse_damage_per_second") * delta
 	var component := int(result["component"])
 	if component >= 0 and _target != null and is_instance_valid(_target):
-		_target.damage_component(
-			component, Tuning.num("turret/pulse_damage_per_second") * delta)
+		_target.damage_component(component, tick)
+	var struck := result["node"] as EnemyMissile
+	if struck != null:
+		struck.take_damage(tick)
 
 	_heat = minf(_heat + Tuning.num("turret/pulse_heat_per_second") * delta, 1.0)
 	if _heat >= 1.0:

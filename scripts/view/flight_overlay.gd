@@ -18,8 +18,14 @@ var target: Node3D
 var missile_provider: Callable = func() -> Missile: return null
 ## Returns the gun station while it is manned, or null.
 var turret_provider: Callable = func() -> Turret: return null
-## The ship, for the launch tube's reload gauge.
+## The ship, for the launch tube's reload gauge and the impact flash.
 var ship: Mothership
+## The target, for the interrupt's telegraph.
+var enemy: TargetShip
+## Seconds of alert still to show. Set by the arena when the warning is raised;
+## counted down here so it survives the missile it is warning about.
+var alert_seconds: float = 0.0
+var alert_text: String = ""
 
 
 func _ready() -> void:
@@ -37,7 +43,8 @@ func _match_viewport() -> void:
 	size = get_viewport().get_visible_rect().size
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	_process_alert(delta)
 	queue_redraw()
 
 
@@ -49,6 +56,8 @@ func _draw() -> void:
 	_draw_reticle(camera)
 	_draw_crosshair(camera)
 	_draw_tube()
+	_draw_alert(camera)
+	_draw_hit_flash()
 
 
 # --- target indicator --------------------------------------------------------
@@ -217,6 +226,89 @@ func _draw_tube() -> void:
 	if not ship.missile_ready():
 		_draw_label("%.1f s" % ship.missile_cooldown_remaining(),
 			origin + Vector2(bar_width + 8.0, bar_height), color)
+
+
+func _process_alert(delta: float) -> void:
+	alert_seconds = maxf(alert_seconds - delta, 0.0)
+
+
+## The interrupt's telegraph, and a bracket on the missile itself once it is in
+## the air.
+##
+## Deliberately loud. The specification asked for "a small alert"; the scope doc's
+## Pillar 2 asks for one that is "loud, telegraphed, unambiguous", and those pull
+## in opposite directions. It is built prominent so the human can tune it *down* —
+## an alert small enough to miss stops being a punctual spike and becomes ambient
+## dread, which is precisely what the target-experience guard exists to prevent.
+## Every dimension of it is in tuning.
+func _draw_alert(camera: Camera3D) -> void:
+	var inbound := _nearest_inbound()
+	if alert_seconds <= 0.0 and inbound == null:
+		return
+
+	var color := Tuning.color("hud/alert_color")
+	# A slow pulse rather than a hard blink: readable in a still frame, and it does
+	# not compete with the reticle for attention every few frames.
+	var pulse := 0.55 + 0.45 * sin(
+		Time.get_ticks_msec() * 0.001 * TAU * Tuning.num("hud/alert_pulse_hz"))
+	var banner := alert_text
+	if inbound != null:
+		banner = "INCOMING MISSILE — %.0f m" % inbound.distance_to_ship()
+	if banner.is_empty():
+		return
+
+	var font := ThemeDB.fallback_font
+	var font_size := int(Tuning.num("hud/alert_font_size"))
+	var width := font.get_string_size(banner, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	var at := Vector2((size.x - width) * 0.5, Tuning.num("hud/alert_top_margin"))
+	draw_string(font, at, banner, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size,
+		Color(color, pulse))
+
+	# A bracket on the missile itself, so "incoming" is a direction and not just a
+	# word. Without it the player has to sweep the whole sky to find the thing.
+	if inbound == null or not _projectable(camera, inbound.global_position):
+		return
+	if camera.is_position_behind(inbound.global_position):
+		return
+	var half := Tuning.num("hud/alert_bracket_size") * 0.5
+	_draw_brackets(camera.unproject_position(inbound.global_position),
+		half * pulse, Color(color, pulse))
+
+
+## The closest live enemy missile, or null.
+func _nearest_inbound() -> EnemyMissile:
+	var tree := get_tree()
+	if tree == null:
+		return null
+	var best: EnemyMissile = null
+	var closest := INF
+	for node in tree.get_nodes_in_group(EnemyMissile.GROUP):
+		var missile := node as EnemyMissile
+		if missile == null or missile.is_spent():
+			continue
+		var distance := missile.distance_to_ship()
+		if distance < closest:
+			closest = distance
+			best = missile
+	return best
+
+
+## A tint round the edge of the screen when the ship is hit. It fires whether or
+## not the hit cost anything — with `ship/invulnerable` on, a failed intercept has
+## to still be distinguishable from one that never arrived, or there is nothing to
+## pace against (docs/TURRET_MODE_IMPLEMENTATION.md, Flag 3).
+func _draw_hit_flash() -> void:
+	if ship == null or not is_instance_valid(ship):
+		return
+	var strength := ship.hit_flash()
+	if strength <= 0.0:
+		return
+	var band := Tuning.num("hud/hit_flash_band")
+	var color := Color(Tuning.color("hud/hit_flash_color"), strength)
+	draw_rect(Rect2(Vector2.ZERO, Vector2(size.x, band)), color)
+	draw_rect(Rect2(Vector2(0.0, size.y - band), Vector2(size.x, band)), color)
+	draw_rect(Rect2(Vector2.ZERO, Vector2(band, size.y)), color)
+	draw_rect(Rect2(Vector2(size.x - band, 0.0), Vector2(band, size.y)), color)
 
 
 ## Can `unproject_position` be asked about this point at all?

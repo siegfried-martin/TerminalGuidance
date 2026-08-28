@@ -18,9 +18,9 @@ file is only about *order*.
 | | State |
 |---|---|
 | **Criterion 1** — the 8 seconds | ✅ **passed** 2026-08-27. Named cause: brake + boost, i.e. the speed/agility trade is what gives it a ceiling |
-| **Criterion 2** — the loop | ⛔ untestable until turret mode exists |
-| **Criterion 3** — the ceiling | ⛔ same |
-| `ship.max_engagement_envelope` | ⛔ **still unmeasured** after being deferred twice |
+| **Criterion 2** — the loop | ⏳ **testable since 2026-08-27**, untested. Turret mode is built |
+| **Criterion 3** — the ceiling | ⏳ same |
+| `ship.max_engagement_envelope` | ⛔ **still unmeasured** after being deferred three times. Nothing blocks it but a session |
 
 The half that passed is the half `COMBAT_POC_IMPLEMENTATION.md` predicted would
 pass: *"a missile-only POC returns a verdict on a minigame, not on a game."*
@@ -32,6 +32,10 @@ pass: *"a missile-only POC returns a verdict on a minigame, not on a game."*
 `docs/TURRET_MODE_IMPLEMENTATION.md`. Build-order steps 6, 7 and 8, specified
 together: turret mode with four weapons, the missile cooldown, blockers on both
 sides, enemy fire, and the interrupt.
+
+> **Built on 2026-08-27** (PRs #5–#10). What is left of stage 1 is **playing it**,
+> reading criteria 2 and 3, taking the envelope measurement, and then step 9 —
+> target death and respawn, the PiP toggle, and the verdict session.
 
 **Why first:** it is the last remaining question that can still return *rethink*.
 Every downstream stage is priced off "does the alternation sustain for thirty

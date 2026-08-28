@@ -99,5 +99,6 @@ The reasoning, including what the alternative was and why it lost.
 | [0050](0050-one-unguided-in-the-air.md) | One unguided missile in the air, and the second click is the mechanic |
 | [0051](0051-flares-are-objects-not-odds.md) | A flare is an object in the way, not a chance of being fooled |
 | [0052](0052-cooldown-starts-at-launch.md) | The launch tube's clock starts at launch, not at detonation |
+| [0053](0053-the-interrupt-is-telegraphed.md) | The interrupt is telegraphed before it happens, and the miss is decided at launch |
 
-*Next number: 0053.*
+*Next number: 0054.*
