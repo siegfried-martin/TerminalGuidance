@@ -33,6 +33,10 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"ship/manual_turn_rate_deg_per_sec", "ship/manual_reticle_max_angle_deg",
 	"ship/autopilot_turn_rate_deg_per_sec",
 	"ship/manual_strafe_speed",
+	"turret/mount_offset", "turret/muzzle_offset", "turret/traverse_deg_per_sec",
+	"turret/elevation_limit_deg",
+	"turret/loadout_1_primary", "turret/loadout_1_secondary",
+	"turret/loadout_2_primary", "turret/loadout_2_secondary",
 	"enemy/radius", "enemy/drift_speed", "enemy/spin_deg_per_sec",
 	"enemy/patrol_half_extent", "enemy/hull_color", "enemy/hull_emission",
 	"enemy/hull_length", "enemy/hull_width", "enemy/hull_height", "enemy/nose_length",
@@ -46,14 +50,18 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"camera/ship_look_ahead",
 	"camera/missile_follow_distance", "camera/missile_follow_height",
 	"camera/missile_follow_lag", "camera/missile_look_ahead",
+	"camera/turret_follow_distance", "camera/turret_follow_height",
+	"camera/turret_follow_lag", "camera/turret_look_ahead",
+	"camera/turret_boom_pitch_share",
 	"camera/free_move_speed", "camera/free_boost_multiplier", "camera/free_look_sensitivity",
 	"camera/free_move_smoothing", "camera/start_position", "camera/start_look_at",
 	"controls/mouse_sensitivity", "controls/stick_reticle_speed_deg_per_sec",
-	"controls/deadzone",
+	"controls/deadzone", "controls/turret_mouse_sensitivity",
 	"hud/font_size", "hud/line_width",
 	"hud/target_color", "hud/target_bracket_size", "hud/arrow_size", "hud/edge_margin",
 	"hud/reticle_color", "hud/reticle_size", "hud/reticle_distance",
 	"hud/reticle_lag_line_alpha",
+	"hud/turret_reticle_color", "hud/turret_reticle_size", "hud/turret_reticle_distance",
 	"arena/marker_spacing", "arena/marker_count_per_axis", "arena/marker_size",
 	"arena/marker_color", "arena/background_color", "arena/ambient_energy",
 	"arena/glow_enabled", "arena/glow_intensity",
@@ -75,6 +83,7 @@ const REQUIRED_ACTIONS: Array[String] = [
 	"fire", "detonate", "boost", "brake", "dodge_left", "dodge_right",
 	"aim_left", "aim_right", "aim_up", "aim_down",
 	"throttle_up", "throttle_down", "strafe_left", "strafe_right", "toggle_autopilot",
+	"turret_mode", "fire_primary", "fire_secondary", "loadout_1", "loadout_2",
 	"cam_forward", "cam_back", "cam_left", "cam_right", "cam_up", "cam_down",
 	"cam_boost", "cam_look",
 	"debug_toggle_hud", "debug_toggle_panel", "debug_reload_tuning",
@@ -100,6 +109,7 @@ func _ready() -> void:
 	_test_dodge_and_brake()
 	_test_manual_flight()
 	_test_target_components()
+	_test_turret_station()
 	_test_overlay_projection_guard()
 	_test_tuning_schema()
 	_test_tuning_writer()
@@ -855,6 +865,124 @@ func _test_target_components() -> void:
 ## origin, which is true of the target on the first frame of every run — nodes are
 ## built at their parent's origin and placed afterwards. The engine prints the
 ## assert and carries on, so nothing fails; it just shouts once per launch.
+## The gun station (POC step 6, stage 1). Driven through real `Input` actions and
+## real mouse deltas, so this exercises the same path a hand on the desk does.
+func _test_turret_station() -> void:
+	var ship := Mothership.new()
+	ship.set_process(false)
+	add_child(ship)
+	var turret := Turret.new()
+	turret.ship = ship
+	turret.set_process(false)   # stepped by hand below
+	add_child(turret)
+
+	var step := 1.0 / 60.0
+	_expect(absf(turret.azimuth_degrees()) < 0.001 and absf(turret.elevation_degrees()) < 0.001,
+		"the station starts pointed down the hull's nose",
+		"bearing %.2f, elevation %.2f" % [turret.azimuth_degrees(), turret.elevation_degrees()])
+
+	# The whole point of the station: the hull turns under it and the aim does not
+	# move. A nose gun would have swung 90 degrees here.
+	ship.basis = Basis(Vector3.UP, deg_to_rad(90.0))
+	ship.position = Vector3(10.0, 0.0, -4.0)
+	turret._process(step)
+	_expect(absf(turret.azimuth_degrees()) < 0.001,
+		"the hull turning under the station does not drag the aim with it",
+		"bearing moved to %.2f deg" % turret.azimuth_degrees())
+
+	# The mount, unlike the aim, does ride the hull.
+	var mount := Tuning.vec3("turret/mount_offset")
+	_expect(turret.position.is_equal_approx(ship.position + ship.basis * mount),
+		"the mount point rides the hull, in the ship's own axes",
+		"station at %s, hull mount at %s" % [turret.position, ship.position + ship.basis * mount])
+
+	# An unmanned station takes no input at all — neither device.
+	var held := turret.azimuth_degrees()
+	turret.add_mouse_aim(Vector2(500.0, 0.0))
+	Input.action_press("aim_right")
+	turret._process(step)
+	Input.action_release("aim_right")
+	_expect(absf(turret.azimuth_degrees() - held) < 0.001,
+		"an unmanned station holds its bearing and ignores input",
+		"drifted to %.2f deg" % turret.azimuth_degrees())
+
+	ship.basis = Basis.IDENTITY
+	turret.active = true
+	turret.set_aim_direction(Vector3.FORWARD)
+
+	# 1:1 and instant. There is no reticle here and no lag to measure — a hitscan
+	# weapon behind a lagging aim is a control that lies (ADR 0035 does not apply).
+	var sensitivity := Tuning.num("controls/turret_mouse_sensitivity")
+	turret.add_mouse_aim(Vector2(100.0, 0.0))
+	turret._process(step)
+	_expect(absf(turret.azimuth_degrees() - 100.0 * sensitivity) < 0.001,
+		"the mouse aims the gun 1:1, in one frame",
+		"100 px gave %.3f deg, tuned %.3f" % [turret.azimuth_degrees(), 100.0 * sensitivity])
+	_expect(turret.aim_local().x > 0.0, "mouse right aims right",
+		"aim went to %s" % turret.aim_local())
+
+	turret.set_aim_direction(Vector3.FORWARD)
+	turret.add_mouse_aim(Vector2(0.0, 100.0))
+	turret._process(step)
+	_expect(turret.aim_local().y < 0.0, "mouse down aims down",
+		"aim went to %s" % turret.aim_local())
+
+	# Elevation is bounded; bearing is not. Every ship shares one plane (ADR 0045),
+	# so a gun that can point at the zenith is aiming at nothing.
+	var limit := Tuning.num("turret/elevation_limit_deg")
+	turret.add_mouse_aim(Vector2(0.0, -100000.0))
+	turret._process(step)
+	_expect(absf(turret.elevation_degrees() - limit) < 0.001,
+		"elevation clamps at turret/elevation_limit_deg",
+		"reached %.2f deg against a limit of %.2f" % [turret.elevation_degrees(), limit])
+	turret.add_mouse_aim(Vector2(0.0, 100000.0))
+	turret._process(step)
+	_expect(absf(turret.elevation_degrees() + limit) < 0.001,
+		"…and at the same angle below the horizon",
+		"reached %.2f deg" % turret.elevation_degrees())
+
+	# The stick, unlike the mouse, sweeps at a rate.
+	turret.set_aim_direction(Vector3.FORWARD)
+	Input.action_press("aim_right")
+	for _i in 30:
+		turret._process(1.0 / 60.0)
+	Input.action_release("aim_right")
+	var tuned_sweep := Tuning.num("turret/traverse_deg_per_sec") * 0.5
+	_expect(absf(turret.azimuth_degrees() - tuned_sweep) < maxf(tuned_sweep * 0.02, 0.5),
+		"the stick sweeps the gun at turret/traverse_deg_per_sec",
+		"swept %.1f deg in half a second, tuned %.1f" % [turret.azimuth_degrees(), tuned_sweep])
+
+	# Loadouts. Four weapons over two buttons means switching is what it costs to
+	# reach the other two — so the two loadouts must actually differ.
+	_expect(turret.loadout() == 1, "the station starts on loadout 1",
+		"started on %d" % turret.loadout())
+	var first_pair := [turret.primary(), turret.secondary()]
+	_expect(turret.set_loadout(2) == 2, "2 switches loadout", "stayed on %d" % turret.loadout())
+	_expect(turret.primary() != first_pair[0] or turret.secondary() != first_pair[1],
+		"the two loadouts are not the same pair of weapons",
+		"both hold %s / %s" % [Turret.weapon_label(turret.primary()),
+			Turret.weapon_label(turret.secondary())])
+	_expect(turret.set_loadout(3) == 2, "a loadout outside 1..2 is refused",
+		"landed on %d" % turret.loadout())
+	_expect(turret.set_loadout(1) == 1, "1 switches back", "stayed on %d" % turret.loadout())
+
+	for slot: String in ["loadout_1_primary", "loadout_1_secondary",
+			"loadout_2_primary", "loadout_2_secondary"]:
+		var raw := Tuning.text("turret/" + slot)
+		var known := Turret.weapon_from_name(raw) != Turret.Weapon.NONE \
+			or raw.strip_edges().to_lower() == "none"
+		_expect(known, "turret/%s names a real weapon, or \"none\"" % slot,
+			"got \"%s\"" % raw)
+
+	# Names rather than indices, so a typo cannot silently arm the wrong weapon.
+	_expect(Turret.weapon_from_name("autocanon") == Turret.Weapon.NONE,
+		"a misspelt weapon name reads as nothing, not as its neighbour",
+		"resolved to %s" % Turret.weapon_label(Turret.weapon_from_name("autocanon")))
+
+	turret.free()
+	ship.free()
+
+
 func _test_overlay_projection_guard() -> void:
 	var overlay := FlightOverlay.new()
 	add_child(overlay)
@@ -1081,7 +1209,8 @@ func _test_arena_builds() -> void:
 			"ArenaRoot/Lattice", "ArenaRoot/Rocks", "ArenaRoot/Target",
 			"ArenaRoot/Target/Parts", "ArenaRoot/Target/Parts/Fuselage",
 			"ArenaRoot/Target/Parts/Nose", "ArenaRoot/Target/Components",
-			"ArenaRoot/Mothership", "ShipCamera", "MissileCamera",
+			"ArenaRoot/Mothership", "ArenaRoot/Turret",
+			"ShipCamera", "MissileCamera", "TurretCamera",
 			"ViewController", "DebugHud"]:
 		_expect(arena.has_node(path), "arena builds node: " + path, "not constructed")
 
@@ -1093,6 +1222,28 @@ func _test_arena_builds() -> void:
 	_expect(ship != null and ship.target != null,
 		"autopilot has a commanded target", "target not assigned")
 
+	# The guns are a peer of the helm, not a sub-state of it, and a missile is
+	# launched from the helm only — taking a turret-to-missile edge would put the
+	# player on two things at once for the frame it takes to leave.
+	var station := arena.call("turret") as Turret
+	_expect(station != null and not station.active,
+		"the station starts unmanned", "manned before anyone went there")
+	if views != null and station != null:
+		_expect(views.toggle_turret(), "G mans the guns", "refused")
+		_expect(views.view_name() == "TURRET", "manning the guns enters turret view",
+			"view=%s" % views.view_name())
+		_expect(station.active, "…and the station starts taking input", "still unmanned")
+		_expect(ship != null and not ship.piloted,
+			"the helm stops reading input while the guns are manned", "ship still piloted")
+		_expect(arena.call("fire") == null,
+			"a missile cannot be launched from the turret", "launched one anyway")
+		_expect(int(arena.call("shots_fired")) == 0, "…and no shot was counted",
+			"shots=%d" % int(arena.call("shots_fired")))
+		views.toggle_turret()
+		_expect(views.view_name() == "SHIP", "G goes back to the helm",
+			"view=%s" % views.view_name())
+		_expect(not station.active, "leaving the guns unmans the station", "still manned")
+
 	var missile := arena.call("fire") as Missile
 	_expect(missile != null, "fire() launches a missile", "returned null")
 	_expect(int(arena.call("shots_fired")) == 1, "fire() counts the shot",
@@ -1102,6 +1253,11 @@ func _test_arena_builds() -> void:
 			"view=%s" % views.view_name())
 	_expect(arena.call("fire") == null,
 		"a second fire() is refused while riding", "launched two piloted missiles")
+	if views != null:
+		_expect(not views.enter_turret_view(),
+			"the guns cannot be manned while riding a missile", "took both stations at once")
+		_expect(views.view_name() == "MISSILE", "…and the view did not change",
+			"view=%s" % views.view_name())
 
 	_expect(arena.has_node("OverlayLayer/FlightOverlay"),
 		"arena builds the flight overlay", "reticle and target indicator missing")

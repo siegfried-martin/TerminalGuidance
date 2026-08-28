@@ -172,7 +172,7 @@ scripts/autoload/      Tuning, Bindings
 scripts/arena/         the combat arena builder
 scripts/ships/         mothership, target ship
 scripts/weapons/       missile
-scripts/view/          camera/control state machine, chase camera
+scripts/view/          camera/control state machine, chase camera, the gun station
 scripts/world/         marker lattice, reference field
 scripts/effects/       detonation flash
 scripts/lib/           pure helpers — no scene tree, no disk, unit tested:

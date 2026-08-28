@@ -24,11 +24,16 @@ Also endorsed, and now written down:
 
 ### ⛔ Criteria 2 and 3 are still untested, and cannot be tested yet
 
-**Turret mode does not exist.** Criterion 2 is the loop — "after 30 minutes the
-developer is still choosing to fire, and never feels stuck waiting" — and criterion
-3 is the ceiling. Both are questions about *what happens between missiles*, and
-there is currently no between. `PROJECT_OVERVIEW.md` §Sequencing is blunt about it:
-"the loop under test is missile *and* turret, not missile alone."
+**The turret has a station but no weapons.** Criterion 2 is the loop — "after 30
+minutes the developer is still choosing to fire, and never feels stuck waiting" —
+and criterion 3 is the ceiling. Both are questions about *what happens between
+missiles*, and there is still nothing to *do* in the between. `PROJECT_OVERVIEW.md`
+§Sequencing is blunt about it: "the loop under test is missile *and* turret, not
+missile alone."
+
+Stage 1 of `docs/TURRET_MODE_IMPLEMENTATION.md` landed on 2026-08-27: `G` mans the
+guns, the aim and the camera work, the loadouts switch. The four weapons are stage
+2. Until they exist the criterion-2 reading is not available.
 
 So the POC is half-verdicted. The half that passed is the half the doc predicted
 would pass.
@@ -48,12 +53,12 @@ would pass.
 | Gray-box arena: 7³ marker lattice via one MultiMesh, rebuilt on reload | working |
 | Debug fly-cam (RMB look, WASD/QE, Shift boost) | working |
 | Asset pipeline: `.obj` model + `.png` texture, generated → imported → rendered | working |
-| `make check`: 403 headless assertions, exit code gated | working |
+| `make check`: 464 headless assertions, exit code gated | working |
 | Godot-3 API linter over all scripts, data-driven denylist | working |
 | `make shot`: render frames to PNG from the CLI for visual verification | working |
 | `make apiref`: this exact build's 771-class reference for API grounding | working |
 | `DESIGN.md` — distilled thesis, Target Experience verbatim | written |
-| `decisions/` — 44 ADRs, indexed, each with a *What this forbids* section | written |
+| `decisions/` — 48 ADRs, indexed, each with a *What this forbids* section | written |
 | **Combat arena** (`scenes/arena.tscn`, now the main scene) | working |
 | Mothership autopilot: slow arc at standoff, nose on target | working |
 | Dumb target ship: drifts, turns at its patrol bounds | working |
@@ -80,6 +85,13 @@ would pass.
 | Autopilot eases its nose instead of snapping, and cannot outrun manual flight | working |
 | F2 panel folds into one collapsible section per `[section]`, with counts | working |
 | `make shot SCENE=res://tools/shots/target_shot.tscn` — captures the target close up | working |
+| **Gun station**: `G` mans it, a peer of the helm, not a sub-state (ADR 0048) | working |
+| Turret aim is 1:1 in the arena frame — the hull turns under it, the aim holds | working |
+| Turret camera with a boom that levels instead of diving through the hull | working |
+| Loadout state: four weapon slots over two loadouts, `1` / `2` switch | working |
+| Gun crosshair, `turret` and `gun aim` HUD rows | working |
+| SHIP ↔ TURRET state machine; no turret-to-missile edge, and `fire()` enforces it | working |
+| `make shot SCENE=res://tools/shots/turret_shot.tscn` — captures the gun view | working |
 
 ### Deliberately not built yet
 
@@ -89,28 +101,38 @@ forward, because adding one early destroys the reading on the one before it:
 - **Step 5** — only **splash damage** is left. Early detonate, boost, brake and
   dodge are all in (pulled forward by request). Splash needs the target to have hit
   points, which is really step 7's job, so it may land there instead.
-- **Step 6** — turret mode and the missile cooldown. *This is the alternation the
-  whole POC exists to test* (success criterion 2).
+- **Step 6** — the turret's four weapons and the missile cooldown. The *station*
+  landed on 2026-08-27; what it fires did not. *This is the alternation the whole
+  POC exists to test* (success criterion 2).
 - **Step 7** — blockers, enemy fire, ship HP.
 - **Step 8** — the interrupt, starting at zero and raised carefully.
 - **Step 9** — damage, death, respawn, the PiP camera toggle, verdict session.
 
 ## Next
 
-**Turret mode — steps 6, 7 and 8 together.** Specified in full by the human on
-2026-08-27 and written up in `docs/TURRET_MODE_IMPLEMENTATION.md`: four weapons
-across two loadouts, blockers on both sides, a 10 s missile cooldown, and the
-interrupt. Read that doc's *Flags* section before building — three build-order
-checkpoints are landing at once, and the interrupt is arriving at an interval the
-scope doc predicts is far too dense. Every layer is required to be independently
-disableable from tuning so clean readings are still obtainable.
+**Turret mode, stage 2: the autocannon and the pulse beam.** Stage 1 (the station
+itself) is done. The remaining stages are listed in
+`docs/TURRET_MODE_IMPLEMENTATION.md` §Build stages, in order:
 
-The reason it is next, unchanged: It is the last thing that could
-invalidate the design, and it is small — the view state machine already treats
-TURRET as a peer of SHIP (`view_controller.gd` says so in its header), the reticle
-instrument is shared and tested, and the swept-segment hit testing already works
-against ship parts. No ladder, no walking, no interior: an instant switch to a
-fixed station, aim-and-track, and a cooldown timer.
+2. Autocannon and pulse beam — projectile and hitscan paths, the damage pool
+   conversion, and the speed-hierarchy clamp on projectiles.
+3. Unguided missile and blast — manual detonate and splash falloff (ADR 0004),
+   which also closes the last of POC step 5.
+4. Flares — player blockers, enemy blockers at 50% on approach.
+5. The 10 s missile cooldown — what makes criterion 2 answerable at all.
+6. The interrupt — enemy guided missile, the alert, invulnerable by default.
+7. Docs.
+
+Read that doc's *Flags* section before building — three build-order checkpoints are
+landing at once, and the interrupt is arriving at an interval the scope doc predicts
+is far too dense. Every layer is required to be independently disableable from
+tuning so clean readings are still obtainable.
+
+The reason it is next, unchanged: it is the last thing that could invalidate the
+design, and it is small. The station is a peer of the helm and tested (ADR 0048),
+the swept-segment hit testing already works against ship parts and rock lobes, and
+`FlightGeometry` already answers *where* along a shot something was reached, which
+is what a projectile needs. No ladder, no walking, no interior.
 
 **And take the engagement-envelope measurement** — see below. It is an observation,
 not a design act, and the entire exploration numbers chain is blocked on it.
@@ -211,6 +233,38 @@ They are the knobs most likely to be wrong.
   too hard, every shot lands on the hull and it also says nothing.
 - **`enemy/component_respawn_seconds` 8.0.** A harness value, not a design claim —
   it exists so the loop can be felt more than once per session.
+- **`controls/turret_mouse_sensitivity` 0.16 deg/px**, separate from the ship's
+  0.20 on purpose: aiming a gun and flying a hull are different hand movements.
+  This one is 1:1 — it moves the gun, not a reticle the gun then chases (ADR 0048),
+  so it is the *only* thing between the hand and the shot.
+- **`turret/mount_offset` (0, 18, −6) and the whole `camera/turret_*` group.**
+  Where the station sits on a 50 m hull and how the camera hangs behind it. How
+  much of your own ship is in frame is the main thing to judge; too little and the
+  turret could be anywhere, too much and it is in the way.
+- **`camera/turret_boom_pitch_share` 0.3.** 0 keeps the boom level and lets the gun
+  rise inside the frame; 1 pins it to the gun and dives through the hull at high
+  elevation. 0.3 is a guess at "reads as a boom, does not clip".
+- **`turret/elevation_limit_deg` 55 against `traverse_deg_per_sec` 90.** Every ship
+  is on one plane, so most of that elevation is aiming at nothing — the question is
+  whether the limit ever gets in the way when a target is close and above.
+- **`hud/turret_reticle_distance` 210 m.** The camera is behind the gun, not at the
+  muzzle, so the crosshair is only exactly right at the range it is drawn at. 210 is
+  `ship/standoff_distance`. If shots land consistently off the crosshair at some
+  other range, this is the number, not the aim.
+
+### Decided 2026-08-27 (from building the gun station)
+
+- **The gun station is a peer of the helm, and its aim is 1:1 in the arena frame**
+  (ADR 0048). Four things at once: `G` mans the guns and takes the helm away, there
+  is no turret-to-missile edge (`fire()` itself refuses, not just the input
+  handler), the aim is an azimuth and an elevation in arena space so the hull turns
+  under a gun that stays put, and the mouse moves the gun directly — **ADR 0035's
+  reticle deliberately does not apply here**, because a reticle exists to give a
+  *vehicle* weight and one of the four weapons is hitscan on purpose.
+- **The turret camera's boom levels.** A rigid boom at 55° of elevation swings the
+  camera down and back through the hull the gun is bolted to, and the player ends
+  up aiming from inside their own ship. `camera/turret_boom_pitch_share` carries
+  it; 1.0 restores the rigid boom every other view has.
 
 ### Decided 2026-08-27 (from the POC verdict)
 
