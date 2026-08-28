@@ -2,6 +2,15 @@
 
 *Status: accepted · 2026-08-27 · from building stage 4 of `docs/TURRET_MODE_IMPLEMENTATION.md`*
 
+> **Amended 2026-08-28 (parameterisation only; the decision is unchanged).** Point 3
+> below described the star as a ring leaned towards the threat by a single
+> `flare/forward_bias`. It is now two separate speeds — `flare/launch_speed` moves
+> the whole wall along the throw, `flare/spread_speed` opens the ring — because one
+> speed and a blend could not express "throw it out quickly but keep it tight":
+> raising the speed to move the wall also opened it up, and the human's first
+> session reported exactly that as "too much spread". The shape decided here (a ring
+> across the threat axis, travelling towards it) is the same shape.
+
 ## Decision
 
 1. **A flare is a physical sphere.** A missile whose swept segment touches a flare

@@ -56,12 +56,12 @@ would pass.
 | Gray-box arena: 7³ marker lattice via one MultiMesh, rebuilt on reload | working |
 | Debug fly-cam (RMB look, WASD/QE, Shift boost) | working |
 | Asset pipeline: `.obj` model + `.png` texture, generated → imported → rendered | working |
-| `make check`: 661 headless assertions, exit code gated | working |
+| `make check`: 665 headless assertions, exit code gated | working |
 | Godot-3 API linter over all scripts, data-driven denylist | working |
 | `make shot`: render frames to PNG from the CLI for visual verification | working |
 | `make apiref`: this exact build's 771-class reference for API grounding | working |
 | `DESIGN.md` — distilled thesis, Target Experience verbatim | written |
-| `decisions/` — 53 ADRs, indexed, each with a *What this forbids* section | written |
+| `decisions/` — 54 ADRs, indexed, each with a *What this forbids* section | written |
 | **Combat arena** (`scenes/arena.tscn`, now the main scene) | working |
 | Mothership autopilot: slow arc at standoff, nose on target | working |
 | Dumb target ship: drifts, turns at its patrol bounds | working |
@@ -121,6 +121,9 @@ would pass.
 | Loud alert banner + a bracket on the missile, built to be tuned *down* | working |
 | Ship HP and hit counting, with `ship/invulnerable = true` for the pacing build | working |
 | Impact tint round the screen edge, which fires even while invulnerable | working |
+| **First-person gun station** with its own narrower FOV (ADR 0054) | working |
+| Off-screen arrow pointing at an incoming missile, not just a bracket | working |
+| A flare star has two speeds: one moves the wall, one opens it | working |
 
 ### Deliberately not built yet
 
@@ -301,6 +304,12 @@ They are the knobs most likely to be wrong.
   the scope doc warns about, and the one most likely to be badly wrong. Judge the
   lead against `missile/fuse_seconds` 6: it has to exceed a typical remaining ride
   or "win both" is arithmetically impossible.
+- **`camera/turret_fov` 52 against `camera/fov_base` 70.** How much magnification
+  the gun gets, traded against how much of the sky you can see from it. The reason
+  the interrupt was hard to shoot; the reason to stop narrowing it is losing track
+  of where things are.
+- **`camera/turret_follow_distance` 2.5 with height 0** — first person, near enough.
+  Raise it and the boom, its lag and ADR 0048's pitch share all come back.
 - **`enemy/missile_aim_error` 26 m against a hit sphere derived from a 50 m hull.**
   How often the interrupt would have hit anyway. Too small and every one must be
   shot down; too large and none of them matter.
@@ -323,9 +332,13 @@ They are the knobs most likely to be wrong.
   Worth watching whether being blocked reads as *your* mistake for flying straight
   at it, or as the game taking a shot away. If it is the second, the answer is a
   longer trigger range and more room, not a lower chance.
-- **`flare/radius` 5.5 with `blocker_flare_count` 6 and `forward_bias` 0.25.** How
-  threadable a star is. Six 5.5 m spheres on a ring is either a wall with gaps or a
-  wall — which one it is has never been felt.
+- **`flare/launch_speed` 15 against `flare/spread_speed` 6**, with `flare/radius`
+  5.5 and six flares. Six 5.5 m spheres opening at 6 m/s are shoulder to shoulder
+  for the first couple of seconds and a scatter with 30 m gaps by four. **This is
+  now a tighter, more solid wall than the one that was played**, which cuts both
+  ways: harder to thread while it is fresh, and easier to go around, because it
+  covers much less sky. Keep `spread_speed` well under `launch_speed` — equal or
+  above and the star turns inside out into a cone.
 - **`turret/unguided_magazine` 10 with `unguided_reload_seconds` 6.0 per round.**
   A full magazine back takes a minute. Whether ten shots is a session's worth or a
   minute's worth is the open question, and `unguided_reload_seconds = 0` (never
@@ -343,6 +356,31 @@ They are the knobs most likely to be wrong.
   lockout.** About 2.4 seconds of beam, then a wait. Whether that reads as a rhythm
   or as an interruption is the question; it is the only weapon with a limiter the
   player has to think about at all until the missile cooldown lands.
+
+### Decided 2026-08-28 (from the first turret playtest)
+
+> "there's too much spread on the blockers, they should move slightly faster toward
+> the direction of release and much less fast apart. it was really hard for me to
+> see and shoot the enemy missile. I think it would help if the turret was more like
+> a first person experience, maybe the FOV also needs to be adjusted for this as
+> well"
+
+- **A flare star has two speeds now, not one speed and a blend.**
+  `flare/launch_speed` moves the whole wall along the throw; `flare/spread_speed`
+  opens the ring. The old parameterisation could not express "throw it out quickly
+  but keep it tight" at all — raising the speed to move the wall also opened it up,
+  which is exactly the spread that was reported. ADR 0051's shape is unchanged; only
+  how it is dialled.
+- **The gun station is first person, with its own field of view** (ADR 0054). Not a
+  preference — a measurement problem. The target is a 2.6 m sphere at up to 200 m in
+  a field of 260 rocks: about three pixels at the shared 70°. First person removes
+  the eye-to-sight-line parallax, and 52° is about 1.4× magnification on every
+  linear dimension. `camera/fov_base` is untouched, because the helm and the ridden
+  missile want the wide value and criterion 1 already passed on it.
+- **The alert marker gained an arrow.** A narrow FOV means the incoming missile is
+  off screen more often, so "incoming" has to be a *direction* to turn towards. The
+  bracket also stopped pulsing in size — a marker that shrinks every second is a
+  marker that is hard to find.
 
 ### Decided 2026-08-27 (from building the interrupt)
 

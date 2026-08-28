@@ -54,7 +54,7 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"turret/unguided_blast_max_fraction", "turret/unguided_blast_falloff_power",
 	"turret/unguided_flash_seconds", "turret/unguided_flash_color",
 	"turret/blocker_cooldown_seconds", "turret/blocker_flare_count",
-	"flare/radius", "flare/speed", "flare/seconds", "flare/forward_bias",
+	"flare/radius", "flare/launch_speed", "flare/spread_speed", "flare/seconds",
 	"flare/player_color", "flare/enemy_color",
 	"flare/kill_flash_radius", "flare/kill_flash_seconds", "flare/kill_flash_color",
 	"turret/pulse_range", "turret/pulse_damage_per_second",
@@ -86,7 +86,7 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"camera/missile_follow_lag", "camera/missile_look_ahead",
 	"camera/turret_follow_distance", "camera/turret_follow_height",
 	"camera/turret_follow_lag", "camera/turret_look_ahead",
-	"camera/turret_boom_pitch_share",
+	"camera/turret_boom_pitch_share", "camera/turret_fov",
 	"camera/free_move_speed", "camera/free_boost_multiplier", "camera/free_look_sensitivity",
 	"camera/free_move_smoothing", "camera/start_position", "camera/start_look_at",
 	"controls/mouse_sensitivity", "controls/stick_reticle_speed_deg_per_sec",
@@ -101,7 +101,8 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"hud/tube_bar_width", "hud/tube_bar_height", "hud/tube_bar_bottom_margin",
 	"hud/tube_ready_color", "hud/tube_reloading_color",
 	"hud/alert_color", "hud/alert_font_size", "hud/alert_top_margin",
-	"hud/alert_pulse_hz", "hud/alert_bracket_size", "hud/alert_seconds",
+	"hud/alert_pulse_hz", "hud/alert_bracket_size", "hud/alert_arrow_size",
+	"hud/alert_seconds",
 	"hud/hit_flash_seconds", "hud/hit_flash_band", "hud/hit_flash_color",
 	"arena/marker_spacing", "arena/marker_count_per_axis", "arena/marker_size",
 	"arena/marker_color", "arena/background_color", "arena/ambient_energy",
@@ -1450,18 +1451,34 @@ func _test_flares_and_blockers() -> void:
 		Flare.Side.PLAYER, 6)
 	_expect(star.size() == 6, "a blocker throws the number of flares it was asked for",
 		"threw %d" % star.size())
-	var mean_along := 0.0
-	var spread := Vector3.ZERO
+	# The two components are separately tuned and each has a job: the launch speed
+	# moves the whole wall towards the threat, the spread speed opens the ring. A
+	# star with no spread is a clump; a star with no launch is dropped in place.
+	var sideways_total := Vector3.ZERO
+	var least_sideways := INF
+	var least_forward := INF
 	for thrown in star:
-		var heading := thrown.velocity().normalized()
-		mean_along += heading.dot(Vector3.FORWARD) / float(star.size())
-		spread += heading
-	_expect(mean_along < 0.9,
-		"…as a ring across the threat axis, not a cone down it",
-		"every flare is going %.2f of the way straight at the threat" % mean_along)
-	_expect(spread.length() < float(star.size()) * 0.6,
-		"…and evenly spread around it, so the sideways parts cancel",
-		"the star is lopsided: %s" % spread)
+		var velocity := thrown.velocity()
+		var forward_part := velocity.dot(Vector3.FORWARD)
+		var sideways := velocity - Vector3.FORWARD * forward_part
+		sideways_total += sideways
+		least_sideways = minf(least_sideways, sideways.length())
+		least_forward = minf(least_forward, forward_part)
+	_expect(least_forward > 0.0,
+		"…with the whole wall travelling towards the threat",
+		"a flare went backwards: %.2f m/s along the axis" % least_forward)
+	_expect(least_sideways > 0.0,
+		"…and every flare opening away from the others, so it is a wall not a clump",
+		"a flare had no sideways component at all")
+	_expect(sideways_total.length() < least_sideways * 0.01,
+		"…evenly, so the sideways parts cancel and the ring is not lopsided",
+		"the star leans by %s" % sideways_total)
+	_expect(is_equal_approx(least_sideways, Tuning.num("flare/spread_speed"))
+			and is_equal_approx(least_forward, Tuning.num("flare/launch_speed")),
+		"…at exactly the two tuned speeds",
+		"%.1f m/s out and %.1f along, tuned %.1f and %.1f" % [
+			least_sideways, least_forward,
+			Tuning.num("flare/spread_speed"), Tuning.num("flare/launch_speed")])
 
 	# A flare stops being a wall when it burns out.
 	var timed := Flare.new()
