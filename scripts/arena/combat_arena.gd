@@ -30,8 +30,14 @@ extends Node3D
 ## success criterion 2 — "still choosing to fire, never stuck waiting" — a question
 ## with an answer at all.
 ##
-## Deliberately absent, in build order: enemy return fire and ship HP (step 7); the
-## interrupt (step 8); death, respawn and the PiP toggle (step 9).
+## Steps 7 and 8 are in as well: the target answers missiles with flares, and on a
+## long telegraphed timer it sends one guided missile at the player — **the
+## interrupt**. The player is invulnerable for this build at the human's direction
+## (`ship/invulnerable`): hits are counted and flashed but cost nothing, so a pacing
+## reading is not mixed with a difficulty one.
+##
+## Deliberately absent: death, respawn and the PiP toggle (step 9), and ship damage,
+## which is the same single tuning flip.
 ## Do not add them here ahead of their step — each one has a feel checkpoint
 ## attached to it and adding it early destroys the reading.
 ##
@@ -122,6 +128,11 @@ func _build_ships() -> void:
 	_ship.target = _target
 	_ship.position = Vector3(0.0, 0.0, 1.0)   # a bearing; the standoff comes from tuning
 	_ship.snap_to_standoff()
+	# The interrupt needs someone to aim at. Without this the layer stays silent,
+	# which is also what `enemy/interrupt_interval_seconds = 0` does.
+	_target.player = _ship
+	_target.interrupt_warned.connect(_on_interrupt_warned)
+	_target.interrupt_launched.connect(_on_interrupt_launched)
 
 
 func _build_views() -> void:
@@ -163,6 +174,7 @@ func _build_views() -> void:
 	_overlay.missile_provider = func() -> Missile: return _views.piloted_missile()
 	_overlay.turret_provider = func() -> Turret: return _turret
 	_overlay.ship = _ship
+	_overlay.enemy = _target
 	var overlay_layer := CanvasLayer.new()
 	overlay_layer.name = "OverlayLayer"
 	overlay_layer.layer = 90   # under the debug HUD, which is 100
@@ -224,6 +236,18 @@ func _build_hud() -> void:
 	_hud.add_row("gun aim", func() -> String:
 		return "%+.0f deg bearing  ·  %+.0f deg elevation" % [
 			_turret.azimuth_degrees(), _turret.elevation_degrees()])
+	_hud.add_row("interrupt", func() -> String:
+		var due := _target.seconds_to_interrupt()
+		if due < 0.0:
+			return "off — enemy/interrupt_interval_seconds is 0"
+		var state := "  WARNED" if _target.interrupt_warned_already() else ""
+		return "%.0f s of %.0f%s" % [
+			due, Tuning.num("enemy/interrupt_interval_seconds"), state])
+	_hud.add_row("hull", func() -> String:
+		if _ship.is_invulnerable():
+			return "INVULNERABLE  ·  %d hits taken" % _ship.hits_taken()
+		return "%.0f of %.0f hp  ·  %d hits taken" % [
+			_ship.hp(), Tuning.num("ship/hp"), _ship.hits_taken()])
 	_hud.add_row("tube", func() -> String:
 		if _ship.missile_ready():
 			return "READY"
@@ -418,6 +442,42 @@ func _on_missile_detonated(missile: Missile, reason: int, hit: bool) -> void:
 ## direction — a real secondary explosion is art, and this is gray-box (ADR 0030).
 ## The darkening hit gets no flash: the shade change is the feedback, and a flash
 ## on both would make the two outcomes read the same.
+## The telegraph. Raised BEFORE the launch, not at it — see `TargetShip._tick_interrupt`.
+func _on_interrupt_warned() -> void:
+	_last_outcome = "MISSILE LAUNCH DETECTED"
+	if _overlay != null:
+		_overlay.alert_text = "MISSILE LAUNCH DETECTED"
+		_overlay.alert_seconds = Tuning.num("hud/alert_seconds")
+
+
+func _on_interrupt_launched(missile: EnemyMissile) -> void:
+	missile.ended.connect(_on_interrupt_ended)
+
+
+func _on_interrupt_ended(_missile: EnemyMissile, reason: int, where: Vector3) -> void:
+	match reason:
+		EnemyMissile.EndReason.HIT_SHIP:
+			_last_outcome = "SHIP HIT (%d total)" % _ship.hits_taken()
+		EnemyMissile.EndReason.SHOT_DOWN:
+			_last_outcome = "incoming missile SHOT DOWN"
+		EnemyMissile.EndReason.FLARE_INTERCEPT:
+			_last_outcome = "incoming missile blocked by a flare"
+		_:
+			_last_outcome = "incoming missile timed out"
+
+	if reason == EnemyMissile.EndReason.HIT_SHIP:
+		return
+	var flash := DetonationFlash.new()
+	flash.name = "InterceptFlash"
+	_arena_root.add_child(flash)
+	flash.position = where
+	flash.setup(
+		Tuning.num("turret/impact_flash_start_radius"),
+		Tuning.num("turret/impact_flash_end_radius"),
+		Tuning.num("turret/impact_flash_seconds"),
+		Tuning.color("turret/impact_flash_color"))
+
+
 func _on_component_damaged(index: int, where: Vector3, destroyed: bool) -> void:
 	_last_outcome = "component %d %s" % [index, "DESTROYED" if destroyed else "damaged"]
 	if not destroyed:

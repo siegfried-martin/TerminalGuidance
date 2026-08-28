@@ -130,7 +130,8 @@ func _process(delta: float) -> void:
 			_finish(Shot.Kind.NOTHING, position)
 			return
 
-	var result := Shot.resolve(_previous_position, position, _target, _rocks)
+	var result := Shot.resolve(
+		_previous_position, position, _target, _rocks, get_tree())
 	if Shot.stops_a_shot(result):
 		_land(result)
 		return
@@ -142,6 +143,9 @@ func _land(result: Dictionary) -> void:
 	var component := int(result["component"])
 	if component >= 0 and _target != null and is_instance_valid(_target):
 		_target.damage_component(component, _damage)
+	var struck := result["node"] as EnemyMissile
+	if struck != null:
+		struck.take_damage(_damage)
 	_burst(result["point"], component)
 	_finish(int(result["kind"]), result["point"])
 
@@ -171,13 +175,23 @@ func detonate() -> void:
 ## The warhead. Damage falls away steeply from the centre and can never be worth
 ## as much as landing the shot — ADR 0004, enforced in `Damage`, not here.
 func _burst(at: Vector3, direct_component: int) -> void:
-	if blast_radius <= 0.0 or _target == null or not is_instance_valid(_target):
+	if blast_radius <= 0.0:
+		return
+	if _target == null or not is_instance_valid(_target):
+		# No ship to damage, but an incoming missile is still in range of the blast.
+		EnemyMissile.splash(get_tree(), at, blast_radius,
+			Damage.capped_peak(Tuning.num(_prefix + "_blast_damage"), _damage,
+				Tuning.num(_prefix + "_blast_max_fraction")),
+			Tuning.num(_prefix + "_blast_falloff_power"))
 		return
 	var peak := Damage.capped_peak(
 		Tuning.num(_prefix + "_blast_damage"), _damage,
 		Tuning.num(_prefix + "_blast_max_fraction"))
-	_target.damage_in_radius(at, blast_radius, peak,
-		Tuning.num(_prefix + "_blast_falloff_power"), direct_component)
+	var falloff := Tuning.num(_prefix + "_blast_falloff_power")
+	_target.damage_in_radius(at, blast_radius, peak, falloff, direct_component)
+	# The other half of what the human asked this weapon for: "potentially useful
+	# for killing enemy missiles as well as damaging multiple components".
+	EnemyMissile.splash(get_tree(), at, blast_radius, peak, falloff)
 
 
 func _finish(kind: int, point: Vector3) -> void:

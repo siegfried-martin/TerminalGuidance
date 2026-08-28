@@ -2,12 +2,23 @@ class_name TargetShip
 extends Node3D
 ## The enemy target: a gray-box hull with destructible components bolted to it.
 ##
-## It still drifts in a straight line and turns at the edge of its patrol box, and
-## it still does not shoot — return fire and the interrupt are POC step 8. What it
-## *does* do now is answer an incoming missile with a star of flares, on a roll of
-## `enemy/blocker_chance` (ADR 0051). That is the first thing in the game that
-## reacts to the player, and it passes the target-experience guard because the
-## player chose to fire and the counter is a visible answer to their own action.
+## It drifts in a straight line, turns at the edge of its patrol box, answers an
+## incoming missile with a star of flares on a roll of `enemy/blocker_chance`
+## (ADR 0051), and — on a long timer — sends one guided missile at the player.
+##
+## That last one is **the interrupt** (POC step 8), and it is the most dangerous
+## thing in the build for the target experience. It is telegraphed a long way in
+## advance rather than announced as it happens, because `CLAUDE.md` is explicit
+## that stress here is a spike and never ambient: an interrupt you can miss is not
+## a spike, it is dread. See `EnemyMissile` for the two Pillar 2 rules it honours.
+##
+## `enemy/interrupt_interval_seconds = 0` removes the layer entirely, which is how
+## a clean reading of the steps before it is still obtainable.
+##
+## This is not an AI and must not become one. The blockers are a range test and a
+## roll; the interrupt is a timer. Neither leads, chooses a moment, or holds fire —
+## an NPC making decisions about the player is the shape ADR 0013 and ADR 0014
+## keep out of this game.
 ##
 ## What is new is the components (ADR 0042). Each one carries a pool of hit points
 ## and every weapon spends a damage number against it; it darkens as the pool
@@ -34,6 +45,9 @@ extends Node3D
 
 ## `destroyed` is false for the darkening hit and true for the killing one.
 signal component_damaged(index: int, position: Vector3, destroyed: bool)
+## Raised `enemy/interrupt_warning_lead_seconds` BEFORE the launch, not at it.
+signal interrupt_warned()
+signal interrupt_launched(missile: EnemyMissile)
 
 var radius: float = 0.0
 
@@ -48,6 +62,13 @@ var _hull_material: StandardMaterial3D
 ## tuned chance would mean nothing at all.
 var _blocker_cooldown: float = 0.0
 var _rolled_for: Dictionary = {}
+
+## The interrupt's clock. `_warned` makes the telegraph fire once per cycle rather
+## than once per frame for the whole lead.
+var _interrupt_elapsed: float = 0.0
+var _warned: bool = false
+## Who the interrupt is aimed at. Assigned by the arena; without it nothing fires.
+var player: Mothership
 
 ## Component state, parallel arrays indexed together. Offsets are in the ship's own
 ## frame, so the spin and the drift both come for free.
@@ -259,6 +280,7 @@ func _process(delta: float) -> void:
 	rotate_y(deg_to_rad(Tuning.num("enemy/spin_deg_per_sec")) * delta)
 	_tick_respawns(delta)
 	_tick_blockers(delta)
+	_tick_interrupt(delta)
 
 
 ## Destroyed components come back after a delay so a practice run does not run out
@@ -334,6 +356,63 @@ func _prune_rolls() -> void:
 
 func blocker_cooldown_remaining() -> float:
 	return _blocker_cooldown
+
+
+# --- the interrupt -----------------------------------------------------------
+
+## One guided missile at the player, on a timer, telegraphed first.
+##
+## The scope doc is emphatic that this parameter is "the single easiest way to turn
+## a relaxed game into a stressful one", and that the good value is probably much
+## larger than intuition suggests. It ships at the specified 60 s expecting to be
+## raised. `enemy/interrupt_interval_seconds = 0` disables it outright.
+func _tick_interrupt(delta: float) -> void:
+	var interval := Tuning.num("enemy/interrupt_interval_seconds")
+	if interval <= 0.0 or player == null or not is_instance_valid(player):
+		_interrupt_elapsed = 0.0
+		_warned = false
+		return
+
+	_interrupt_elapsed += delta
+	var lead := minf(Tuning.num("enemy/interrupt_warning_lead_seconds"), interval)
+	if not _warned and _interrupt_elapsed >= interval - lead:
+		# Telegraphed BEFORE it happens, so a player mid-ride can still detonate on
+		# target and make the turret in time. Pillar 2: it must be possible to win
+		# both. That constrains the lead against a typical remaining ride.
+		_warned = true
+		interrupt_warned.emit()
+	if _interrupt_elapsed < interval:
+		return
+
+	_interrupt_elapsed = 0.0
+	_warned = false
+	launch_interrupt()
+
+
+## Send one. Public so the gate can ask for an interrupt without waiting a minute.
+func launch_interrupt() -> EnemyMissile:
+	var world := get_parent_node_3d()
+	if world == null or player == null or not is_instance_valid(player):
+		return null
+	var missile := EnemyMissile.new()
+	missile.name = "EnemyMissile"
+	world.add_child(missile)
+	missile.launch(position, player, EnemyMissile.random_error())
+	interrupt_launched.emit(missile)
+	return missile
+
+
+## Seconds until the next interrupt, or -1 when the layer is switched off.
+func seconds_to_interrupt() -> float:
+	var interval := Tuning.num("enemy/interrupt_interval_seconds")
+	if interval <= 0.0 or player == null:
+		return -1.0
+	return maxf(interval - _interrupt_elapsed, 0.0)
+
+
+## Has the warning for the next one already gone out?
+func interrupt_warned_already() -> bool:
+	return _warned
 
 
 func set_drift_direction(direction: Vector3) -> void:

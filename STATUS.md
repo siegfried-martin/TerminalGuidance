@@ -22,21 +22,21 @@ Also endorsed, and now written down:
 - **Ship movement and the autopilot.** Good enough. Better trajectory-locking
   mechanics are wanted eventually; the heading hold is not blocking anything.
 
-### ⛔ Criteria 2 and 3 are still untested, and cannot be tested yet
+### ⏳ Criteria 2 and 3 are now testable — and untested
 
-**The turret has a station but no weapons.** Criterion 2 is the loop — "after 30
-minutes the developer is still choosing to fire, and never feels stuck waiting" —
-and criterion 3 is the ceiling. Both are questions about *what happens between
-missiles*, and there is still nothing to *do* in the between. `PROJECT_OVERVIEW.md`
-§Sequencing is blunt about it: "the loop under test is missile *and* turret, not
-missile alone."
+Criterion 2 is the loop — "after 30 minutes the developer is still choosing to
+fire, and never feels stuck waiting" — and criterion 3 is the ceiling. Both are
+questions about *what happens between missiles*, and until 2026-08-27 there was no
+between. `PROJECT_OVERVIEW.md` §Sequencing: "the loop under test is missile *and*
+turret, not missile alone."
 
-Stages 1 to 5 of `docs/TURRET_MODE_IMPLEMENTATION.md` landed on 2026-08-27: `G`
-mans the guns, the aim and the camera work, the loadouts switch, **all four weapons
-fire**, both sides throw flares, and **the launch tube has its 10 s cooldown**.
+**`docs/TURRET_MODE_IMPLEMENTATION.md` is built.** `G` mans the guns; all four
+weapons fire; both sides throw flares; the launch tube has its 10 s cooldown; and
+the target sends one telegraphed guided missile at the player on a long timer.
 
-**POC step 6 is complete, and criterion 2 is now testable.** What remains before the
-verdict session is the interrupt (step 8) and then death and respawn (step 9).
+**POC steps 5, 6, 7 and 8 are complete.** Only step 9 — death, respawn, the PiP
+toggle, and the 30-minute verdict session — is outstanding. Criteria 2 and 3 are
+now questions the build can answer, and nobody has played it yet.
 
 So the POC is half-verdicted. The half that passed is the half the doc predicted
 would pass.
@@ -56,12 +56,12 @@ would pass.
 | Gray-box arena: 7³ marker lattice via one MultiMesh, rebuilt on reload | working |
 | Debug fly-cam (RMB look, WASD/QE, Shift boost) | working |
 | Asset pipeline: `.obj` model + `.png` texture, generated → imported → rendered | working |
-| `make check`: 613 headless assertions, exit code gated | working |
+| `make check`: 661 headless assertions, exit code gated | working |
 | Godot-3 API linter over all scripts, data-driven denylist | working |
 | `make shot`: render frames to PNG from the CLI for visual verification | working |
 | `make apiref`: this exact build's 771-class reference for API grounding | working |
 | `DESIGN.md` — distilled thesis, Target Experience verbatim | written |
-| `decisions/` — 52 ADRs, indexed, each with a *What this forbids* section | written |
+| `decisions/` — 53 ADRs, indexed, each with a *What this forbids* section | written |
 | **Combat arena** (`scenes/arena.tscn`, now the main scene) | working |
 | Mothership autopilot: slow arc at standoff, nose on target | working |
 | Dumb target ship: drifts, turns at its patrol bounds | working |
@@ -115,6 +115,12 @@ would pass.
 | Shootable sets are Godot groups, so nothing keeps a registry that could rot | working |
 | **The 10 s launch cooldown** — the metronome of the loop (ADR 0052) | working |
 | Reload gauge on the flight overlay, readable from every view without F1 | working |
+| **The interrupt**: one guided missile on a long timer, telegraphed in advance | working |
+| Its aim error is sampled at launch and never corrected — the line is the tell | working |
+| Killable by the autocannon, the beam, an unguided blast, or a flare | working |
+| Loud alert banner + a bracket on the missile, built to be tuned *down* | working |
+| Ship HP and hit counting, with `ship/invulnerable = true` for the pacing build | working |
+| Impact tint round the screen edge, which fires even while invulnerable | working |
 
 ### Deliberately not built yet
 
@@ -125,32 +131,45 @@ forward, because adding one early destroys the reading on the one before it:
   missile's warhead; the ridden missile's early detonation, fuse expiry and impact
   all go off in a radius through the same falloff (ADR 0004).
 - ~~**Step 6**~~ — **done** on 2026-08-27: the station, all four weapons, and the
-  10 s launch cooldown. *This is the alternation the whole POC exists to test* —
-  success criterion 2 is now a question the build can answer.
-- **Step 7** — half landed: blockers on both sides are in. Still missing: enemy
-  return fire and ship HP.
-- **Step 8** — the interrupt, starting at zero and raised carefully.
-- **Step 9** — damage, death, respawn, the PiP camera toggle, verdict session.
+  10 s launch cooldown.
+- ~~**Step 7**~~ — **done**: blockers on both sides, enemy return fire, ship HP.
+  HP is present and counted but `ship/invulnerable` is true, at the human's
+  direction, so the pacing signal is not mixed with a difficulty one.
+- ~~**Step 8**~~ — **done**: the interrupt, at the specified 60 s and **expecting
+  to be raised** (see the flag in `docs/TURRET_MODE_IMPLEMENTATION.md`).
+- **Step 9** — target death and respawn, the PiP camera toggle, and the 30-minute
+  verdict session against all three criteria. This is all that is left of the POC.
 
 ## Next
 
-**Turret mode, stage 6: the interrupt.** Stages 1 to 5 are done and **POC step 6 is
-complete**. The remaining stages are listed in
-`docs/TURRET_MODE_IMPLEMENTATION.md` §Build stages:
+**Play it.** `docs/TURRET_MODE_IMPLEMENTATION.md` is built and the gate is green;
+what is missing is a human. Criteria 2 and 3 have never been felt, and no number in
+the turret, the blockers or the interrupt has been judged by anyone.
 
-6. The interrupt — enemy guided missile, the alert, invulnerable by default.
-7. Docs.
+**Read the layers one at a time.** Three build-order checkpoints landed together,
+and the scope doc warns that adding one early destroys the reading on the one
+before it. Every layer is independently disableable from `tuning.cfg`, so the
+readings are still obtainable — in this order:
 
-Read that doc's *Flags* section before building — three build-order checkpoints are
-landing at once, and the interrupt is arriving at an interval the scope doc predicts
-is far too dense. Every layer is required to be independently disableable from
-tuning so clean readings are still obtainable.
+| To read | Set |
+|---|---|
+| Step 6 alone: the turret and the cooldown | `enemy/interrupt_interval_seconds = 0`, `enemy/blocker_chance = 0` |
+| Step 7: add blockers | `enemy/blocker_chance = 0.5` |
+| Step 8: add the interrupt | `enemy/interrupt_interval_seconds = 60` |
+| Any weapon out of the mix | that loadout slot to `"none"` |
 
-The reason it is next, unchanged: it is the last thing that could invalidate the
-design, and it is small. The station is a peer of the helm and tested (ADR 0048),
-the swept-segment hit testing already works against ship parts and rock lobes, and
-`FlightGeometry` already answers *where* along a shot something was reached, which
-is what a projectile needs. No ladder, no walking, no interior.
+**Expect to raise `interrupt_interval_seconds`.** The scope doc calls it "the single
+easiest way to turn a relaxed game into a stressful one" and predicts the good value
+is much larger than intuition suggests. At 60 s against a 10 s tube it is an
+interrupt on roughly every sixth action — dense on purpose, because an interrupt you
+never see cannot be evaluated.
+
+**And take the engagement-envelope measurement while playing** — see below. It is an
+observation, not a design act, and the whole exploration numbers chain is blocked on
+it. It has now been deferred three times.
+
+Then **step 9**: target death and respawn, the PiP camera toggle, and the 30-minute
+verdict session.
 
 **And take the engagement-envelope measurement** — see below. It is an observation,
 not a design act, and the entire exploration numbers chain is blocked on it.
@@ -278,6 +297,17 @@ They are the knobs most likely to be wrong.
   the 203 m standoff. **That gap is the whole design of the two weapons**: the
   cannon works from where the autopilot parks you, the beam is a reason to close.
   If closing never feels worth it, the beam's damage or the cannon's is wrong.
+- **`enemy/interrupt_interval_seconds` 60 with an 8 s warning lead.** *The* number
+  the scope doc warns about, and the one most likely to be badly wrong. Judge the
+  lead against `missile/fuse_seconds` 6: it has to exceed a typical remaining ride
+  or "win both" is arithmetically impossible.
+- **`enemy/missile_aim_error` 26 m against a hit sphere derived from a 50 m hull.**
+  How often the interrupt would have hit anyway. Too small and every one must be
+  shot down; too large and none of them matter.
+- **`enemy/missile_hit_points` 20 against `turret/autocannon_damage` 9.** Three
+  rounds, so it is answerable from loadout 1 — which matters, because the player has
+  no way of knowing to switch loadout before an interrupt they have not been warned
+  about yet.
 - **`ship/missile_cooldown_seconds` 10 against a fuse of 6.** *The* number of this
   build. Below the fuse it does nothing — the tube is always ready by the time a
   long ride lands. At 10 a full-fuse ride leaves about four seconds at the gun and a
@@ -313,6 +343,26 @@ They are the knobs most likely to be wrong.
   lockout.** About 2.4 seconds of beam, then a wait. Whether that reads as a rhythm
   or as an interruption is the question; it is the only weapon with a limiter the
   player has to think about at all until the missile cooldown lands.
+
+### Decided 2026-08-27 (from building the interrupt)
+
+- **The interrupt is telegraphed before it happens, not announced as it arrives**
+  (ADR 0053). With no lead, the only way to survive one is to already be at the gun
+  — which means never committing to a ride, and that is ambient pressure with extra
+  steps. Pillar 2 requires that it be possible to **win both**, so the lead is
+  constrained against the fuse.
+- **The alert is built loud, to be tuned down.** The spec asked for "a small alert";
+  the scope doc asks for "loud, telegraphed, unambiguous". Building it small and
+  tuning up means shipping the failure mode and finding it by feel; building it
+  loud and tuning down is the safe direction to be wrong in.
+- **The miss is decided at launch.** The aim error is sampled once and never
+  corrected, so the missile's *line* is the information — it is visibly going to
+  pass wide, or visibly not — rather than a die roll at the end. Same reasoning as
+  ADR 0051's flares: the game's threats should be things you can look at.
+- **The enemy has a timer, not a decision.** No leading, no waiting for the player
+  to be mid-ride, no holding fire. ADR 0013 and ADR 0014 keep NPCs from making
+  decisions about the player's ship; this keeps them from making decisions about
+  the player's shot.
 
 ### Decided 2026-08-27 (from building the launch cooldown)
 
@@ -532,7 +582,8 @@ each mostly determines the next", and that the height:diameter ratio is an *outp
 So the exploration prototype cannot be scoped without this number, and guessing it
 means re-deriving cruise speeds and system size afterwards.
 
-It costs one playtest to observe and it has now been deferred twice.
+It costs one playtest to observe and it has now been deferred **three** times. The
+build it needs is finished; there is nothing left blocking it but a session.
 
 Current geometry, as built: standoff 203 m, missile reach ~350 m un-boosted, target
 patrol ±300 m, obstacle field from 70 m out, player hull 50 m. Manual flight makes
