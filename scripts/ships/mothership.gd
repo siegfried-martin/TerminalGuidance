@@ -2,10 +2,17 @@ class_name Mothership
 extends Node3D
 ## The player's ship. Two modes, and the player chooses which one is running.
 ##
-## **Autopilot** is the POC's original single behaviour: fly a slow arc around the
-## commanded target, holding standoff, nose along the direction of travel. ADR 0013
-## bounds it hard — a heading hold plus station-keeping, which does not path, avoid,
-## arrive, or make decisions. Do not grow it.
+## Which of the two is running is not a mode the player toggles: it follows from
+## whether they are the **pilot** or the **gunner** (ADR 0056). A ship nobody is
+## flying has to fly itself.
+##
+## **Autopilot** is the POC's original single behaviour: a slow arc around the
+## commanded target at standoff, nose along the direction of travel, now held on a
+## plane `ship/arc_depth` metres *below* it so the turret — which is mounted on the
+## spine — has a clear line over its own hull (ADR 0056). ADR 0013 bounds it hard:
+## a heading hold plus station-keeping, which does not path, avoid, arrive, or make
+## decisions. Flying under the target is a fixed geometric station, not a choice it
+## makes. Do not grow it.
 ##
 ## **Manual flight** (ADR 0040) is the human lifting a scope deferral, not a design
 ## reversal: COMBAT_POC_IMPLEMENTATION.md always said manual flight exists and was
@@ -32,6 +39,7 @@ var _velocity: Vector3 = Vector3.ZERO
 var _orbit_sign: float = 1.0
 var _hull: MeshInstance3D
 var _last_standoff: float = -1.0
+var _last_depth: float = -1.0
 ## 0 to 1. Held, not impulsive: this is the difference the human asked for between
 ## the ship's W and the missile's.
 var _throttle: float = 0.0
@@ -65,7 +73,10 @@ func _ready() -> void:
 	_hull.material_override = mat
 	add_child(_hull)
 
-	autopilot = Tuning.flag("ship/autopilot_on_start")
+	# The view controller sets this from the crew roster on the first frame; this is
+	# only so a Mothership built on its own (the headless gate does that) starts
+	# somewhere defined rather than on whatever the member's default happened to be.
+	autopilot = Tuning.text("ship/start_role").strip_edges().to_lower() == "gunner"
 	_reticle.reset(basis)
 	_apply_tuning()
 	Tuning.reloaded.connect(_on_tuning_reloaded)
@@ -80,7 +91,8 @@ func _on_tuning_reloaded() -> void:
 	if not autopilot:
 		return
 	var standoff := Tuning.num("ship/standoff_distance")
-	if not is_equal_approx(standoff, _last_standoff):
+	var depth := Tuning.num("ship/arc_depth")
+	if not is_equal_approx(standoff, _last_standoff) or not is_equal_approx(depth, _last_depth):
 		snap_to_standoff()
 
 
@@ -119,36 +131,50 @@ func _fly_autopilot(delta: float) -> void:
 
 	# Parent-relative throughout (ADR 0020): both ships share a parent, so a world
 	# recentre moves them together and none of this arithmetic notices.
-	var to_target := target.position - position
-	var range_now := to_target.length()
-	if range_now < 0.001:
-		return
-	var radial := to_target / range_now
-
 	var standoff := Tuning.num("ship/standoff_distance")
 	_last_standoff = standoff
-
-	# Tangent of the arc. Near-vertical geometry would make this degenerate, so
-	# fall back to a different reference axis rather than producing a zero vector.
-	var reference := Vector3.UP if absf(radial.dot(Vector3.UP)) < 0.95 else Vector3.RIGHT
-	var tangent := radial.cross(reference).normalized() * _orbit_sign
-
-	# Radial correction as an explicit speed, not as a share of one normalised
-	# heading. The earlier version blended tangent and radial and normalised the
-	# result, which meant the range authority collapsed towards zero exactly at
-	# the setpoint — a target drifting at a few m/s outran it and the held range
-	# wandered indefinitely.
-	var range_error := range_now - standoff
+	_last_depth = Tuning.num("ship/arc_depth")
 	var hold_seconds := maxf(Tuning.num("ship/range_hold_seconds"), 0.01)
 	var hold_max := Tuning.num("ship/range_hold_max_speed")
-	var radial_speed := clampf(range_error / hold_seconds, -hold_max, hold_max)
+
+	# The station is a horizontal circle, `arc_depth` below the target's plane.
+	# Keeping the ship UNDER the enemy is what gives the turret its shot: the gun
+	# sits on top of the spine, so from level or above it is looking across its own
+	# hull (ADR 0056). Standoff still means slant range to the target — the depth
+	# only decides where on that sphere the ship sits — so the missile-reach
+	# arithmetic against `standoff_distance` is unchanged.
+	var depth := clampf(Tuning.num("ship/arc_depth"), 0.0, standoff * 0.95)
+	var arc_radius := sqrt(maxf(standoff * standoff - depth * depth, 1.0))
+
+	var to_target := target.position - position
+	var flat := Vector3(to_target.x, 0.0, to_target.z)
+	var flat_range := flat.length()
+	# Directly under the target there is no bearing to arc on. Pick one rather than
+	# dividing by zero; a frame later there is a real one to use.
+	var radial := Vector3.RIGHT if flat_range < 0.001 else flat / flat_range
+
+	# The arc is horizontal by construction, which is the shared horizon of ADR 0045
+	# arriving in the autopilot. It also removes the old degenerate case: there used
+	# to be a fallback reference axis for near-vertical geometry, and there is no
+	# such geometry any more.
+	var tangent := radial.cross(Vector3.UP) * _orbit_sign
+
+	# Range and altitude corrections as explicit speeds, not as shares of one
+	# normalised heading. The earlier version blended tangent and radial and
+	# normalised the result, which meant the range authority collapsed towards zero
+	# exactly at the setpoint — a target drifting at a few m/s outran it and the
+	# held range wandered indefinitely.
+	var radial_speed := clampf((flat_range - arc_radius) / hold_seconds, -hold_max, hold_max)
+	var altitude_error := (target.position.y - depth) - position.y
+	var climb_speed := clampf(altitude_error / hold_seconds, -hold_max, hold_max)
 
 	# Clamped to the ship's own top speed. The autopilot may not fly the ship in a
 	# way the player could not: without this, `range_hold_max_speed` of 45 against a
 	# manual ceiling of 34 means handing control back produces a lurch the player
 	# has no way to produce themselves (ADR 0043).
-	_velocity = (tangent * Tuning.num("ship/arc_speed") + radial * radial_speed) \
-		.limit_length(manual_max_speed())
+	_velocity = (tangent * Tuning.num("ship/arc_speed")
+		+ radial * radial_speed
+		+ Vector3.UP * climb_speed).limit_length(manual_max_speed())
 	position += _velocity * delta
 
 	# The nose follows the direction of travel, not the target. Firing along the
@@ -327,6 +353,7 @@ func set_autopilot(on: bool) -> bool:
 		# manual flight would otherwise fire `snap_to_standoff` — a teleport — at the
 		# next unrelated hot reload.
 		_last_standoff = Tuning.num("ship/standoff_distance")
+		_last_depth = Tuning.num("ship/arc_depth")
 	else:
 		# Take over from where the autopilot left off rather than from a stop: the
 		# reticle starts on the nose, and the throttle starts at whatever speed the
@@ -346,29 +373,39 @@ func add_mouse_steer(relative: Vector2) -> void:
 
 # --- shared ------------------------------------------------------------------
 
-## Place the ship at exactly the tuned standoff along its current bearing.
-## Used for initial placement and after a standoff edit.
+## Place the ship on its station: the tuned standoff along its current bearing, on
+## the arc plane below the target. Used for initial placement and after a standoff
+## or depth edit.
 func snap_to_standoff() -> void:
 	if target == null:
 		return
-	var to_target := target.position - position
-	if to_target.length() < 0.001:
-		return
 	var standoff := Tuning.num("ship/standoff_distance")
-	position = target.position - to_target.normalized() * standoff
+	var depth := clampf(Tuning.num("ship/arc_depth"), 0.0, standoff * 0.95)
+	var arc_radius := sqrt(maxf(standoff * standoff - depth * depth, 1.0))
+
+	var to_target := target.position - position
+	var flat := Vector3(to_target.x, 0.0, to_target.z)
+	# No bearing to preserve — the ship is on the target's own vertical axis. Any
+	# bearing is as good as any other, so take one instead of refusing to place.
+	var radial := Vector3.RIGHT if flat.length() < 0.001 else flat.normalized()
+	position = target.position - radial * arc_radius - Vector3.UP * depth
 	_last_standoff = standoff
+	_last_depth = Tuning.num("ship/arc_depth")
 
 	# Face along the arc, so the first frame is not a snap from an arbitrary basis.
-	var radial := (target.position - position).normalized()
-	var reference := Vector3.UP if absf(radial.dot(Vector3.UP)) < 0.95 else Vector3.RIGHT
-	var tangent := radial.cross(reference).normalized() * _orbit_sign
-	look_at(global_position + tangent, Vector3.UP)
+	look_at(global_position + radial.cross(Vector3.UP) * _orbit_sign, Vector3.UP)
 	_reticle.reset(basis)
 
 
 ## Current distance to the commanded target, for the HUD and for tests.
 func range_to_target() -> float:
 	return 0.0 if target == null else position.distance_to(target.position)
+
+
+## How far below the target the ship currently sits. Positive is below, which is
+## where the autopilot holds it so the turret has a line over its own hull.
+func depth_below_target() -> float:
+	return 0.0 if target == null else target.position.y - position.y
 
 
 ## Where a missile leaves the ship, in the parent's frame.

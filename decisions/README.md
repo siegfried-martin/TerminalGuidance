@@ -86,7 +86,7 @@ The reasoning, including what the alternative was and why it lost.
 | [0037](0037-side-thrusters-bounded-slide.md) | ~~Side thrusters are a bounded slide~~ — superseded by 0039 |
 | [0038](0038-rocks-are-obstacles.md) | Reference rocks are obstacles, inside the engagement volume |
 | [0039](0039-dodge-brake-boost.md) | The missile's three verbs: boost, brake, and a dodge on a cooldown |
-| [0040](0040-manual-ship-flight.md) | Manual ship flight lands; the autopilot becomes a mode the player leaves |
+| [0040](0040-manual-ship-flight.md) | Manual ship flight lands; ~~the autopilot becomes a mode the player leaves~~ — the toggle is superseded by 0056 |
 | [0041](0041-rocks-are-sphere-clusters.md) | A rock is a cluster of ellipsoids, and the drawn shape is the hit shape |
 | [0042](0042-target-carries-components.md) | ~~The target carries destructible components, tested before the hull~~ — hull clauses superseded by 0043 |
 | [0043](0043-nearest-part-wins.md) | The target is hit as its parts, and the nearest one along the shot wins |
@@ -94,7 +94,7 @@ The reasoning, including what the alternative was and why it lost.
 | [0045](0045-shared-horizon-no-roll.md) | Every vehicle shares one horizon; nothing accumulates roll |
 | [0046](0046-two-playstyles-one-gradient.md) | Two supported playstyles, and the economy leans toward the gunboat |
 | [0047](0047-advanced-verbs-are-tiered.md) | Brake and boost are missile-tier equipment, not baseline verbs |
-| [0048](0048-turret-is-a-peer-station.md) | The gun station is a peer of the helm, and its aim is 1:1 in the arena frame |
+| [0048](0048-turret-is-a-peer-station.md) | The gun station is a peer of the helm, and its aim is 1:1 in the arena frame — helm-only launch superseded by 0056 |
 | [0049](0049-damage-is-a-pool.md) | Damage is a pool, every shot resolves in one place, and the guns are sighted |
 | [0050](0050-one-unguided-in-the-air.md) | One unguided missile in the air, and the second click is the mechanic |
 | [0051](0051-flares-are-objects-not-odds.md) | A flare is an object in the way, not a chance of being fooled |
@@ -102,5 +102,6 @@ The reasoning, including what the alternative was and why it lost.
 | [0053](0053-the-interrupt-is-telegraphed.md) | The interrupt is telegraphed before it happens, and the miss is decided at launch |
 | [0054](0054-turret-is-first-person.md) | The gun station is first person, with its own field of view |
 | [0055](0055-countermeasures-inherit-velocity.md) | Countermeasures inherit the launcher's velocity; aimed shots do not |
+| [0056](0056-pilot-or-gunner.md) | The player holds a job, not a mode; the autopilot follows from it |
 
-*Next number: 0056.*
+*Next number: 0057.*

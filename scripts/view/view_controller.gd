@@ -1,19 +1,29 @@
 class_name ViewController
 extends Node
-## The camera/control mode state machine.
+## The camera/control state machine, which is really a **crew roster** (ADR 0056).
 ##
-##     SHIP ←→ TURRET
-##      ↓ (fire)
-##     MISSILE → (impact | fuse | rock) → SHIP
+## The player holds one job at a time:
 ##
-## TURRET is a peer of SHIP, not a sub-state of it: the player is at the helm or
-## at the guns, never both. That is the sequential-attention rule in CLAUDE.md,
-## and it is why entering either one takes the ship's controls away rather than
-## sharing them.
+##     PILOT  ←T/G→  GUNNER          the two stations
+##       └── Q ──→ riding a missile ──→ back to whichever job they left
 ##
-## A missile is fired from the helm, so the only edge out of TURRET is back to
-## SHIP. There is no direct TURRET → MISSILE launch, and adding one would put the
-## player on two things at once for the frame it takes to leave.
+## `T` and `G` **pick a job**; they are not toggles and there is no third state.
+## Everything else follows from which job is held:
+##
+## - **Pilot** — the helm. The autopilot hands over; the player flies.
+## - **Gunner** — the guns. The autopilot takes the ship back, because a ship
+##   nobody is flying has to fly itself.
+##
+## The autopilot is therefore a *consequence of not being the pilot*, never a mode
+## of its own. That is the whole of ADR 0056 and it replaces ADR 0040's independent
+## toggle: one press used to mean "hand the ship over", and now it means "go to the
+## helm", which is the same act described from the player's side instead of the
+## ship's.
+##
+## Riding a missile is an excursion, not a job: the ship keeps whatever its roster
+## implies while the player is away — a gunner's ship keeps arcing, a pilot's ship
+## coasts on the velocity they left it with — and the ride ends back at the station
+## they fired from.
 ##
 ## Transitions are instant by design. `camera/missile_view_mode` is carried in
 ## tuning so the Descent-style picture-in-picture alternative can be felt back to
@@ -21,8 +31,12 @@ extends Node
 
 signal view_changed(view: int)
 
+## The jobs. Appended to, never reordered — there may be more of them later
+## (`docs/PROJECT_OVERVIEW.md` Pillar 6 has a crew in it).
+enum Role { PILOT, GUNNER }
 enum View { SHIP, MISSILE, TURRET }
 
+var _role: Role = Role.PILOT
 var _view: View = View.SHIP
 var _ship: Mothership
 var _turret: Turret
@@ -39,10 +53,9 @@ func _ready() -> void:
 			_apply_mouse_mode())
 
 
-## The pointer is captured whenever it is steering something: a ridden missile
-## always, the turret always, and the ship only while the player has it off
-## autopilot (ADR 0040). Under autopilot there is nothing for the mouse to fly, so
-## it stays free for the tuning panel.
+## The pointer is captured whenever it is steering something, which under the
+## roster is always: a pilot flies the ship, a gunner aims the guns, and a rider
+## flies the missile. It is released only for the tuning panel.
 func _apply_mouse_mode() -> void:
 	if DebugPanel.is_open():
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -58,8 +71,8 @@ func _steering() -> bool:
 	return _ship != null and not _ship.autopilot
 
 
-## Re-read the mouse mode. Called when the ship changes hands, which is the one
-## thing that can change the answer without a view change.
+## Re-read the mouse mode. Kept because the debug panel closing has to restore it,
+## and because a caller that changes the roster out of band should be able to say so.
 func refresh_mouse_mode() -> void:
 	_apply_mouse_mode()
 
@@ -84,14 +97,74 @@ func setup(ship: Mothership, ship_camera: ChaseCamera, missile_camera: ChaseCame
 	# The gun gets its own, narrower field of view. Aiming and flying want different
 	# ones: a helm wants to see what is around it, a gun wants magnification.
 	_turret_camera.set_fov_key("camera/turret_fov")
-	_enter_ship_view()
+	set_role(role_from_name(Tuning.text("ship/start_role")))
 
+
+# --- the roster --------------------------------------------------------------
+
+## Take a job. Idempotent on purpose: `T` while already the pilot does nothing,
+## which is what makes these selections rather than toggles — a player who has lost
+## track of which station they are at can press the one they want and be right,
+## instead of pressing it and ending up somewhere else.
+##
+## Refused while actually riding a missile: the player is not at either station,
+## and a job change that took effect when they landed would be a control acting
+## several seconds after it was pressed.
+##
+## The test is on the missile, not on the view, because the view stays MISSILE for
+## `camera/return_delay_sec` after a detonation while the flash is watched. During
+## that window there is nothing being flown, so a job press takes effect at once and
+## the pending return stands down.
+func set_role(role: Role) -> bool:
+	if _piloted_missile != null and is_instance_valid(_piloted_missile):
+		return false
+	_role = role
+	_apply_role()
+	if role == Role.GUNNER:
+		_enter_turret_view()
+	else:
+		_enter_ship_view()
+	return true
+
+
+## Hand the ship to the autopilot or to the player, from the roster and nothing
+## else. A ship nobody is flying has to fly itself; a ship the player is at the
+## helm of must not be flown out from under them (ADR 0056).
+func _apply_role() -> void:
+	if _ship == null:
+		return
+	_ship.set_autopilot(_role == Role.GUNNER)
+	# The station only takes input while it is manned. It keeps its bearing either
+	# way — an unmanned turret holds where it was left (ADR 0048).
+	if _turret != null:
+		_turret.active = _role == Role.GUNNER
+
+
+func role() -> Role:
+	return _role
+
+
+func role_name() -> String:
+	return "GUNNER" if _role == Role.GUNNER else "PILOT"
+
+
+## Tuning names the starting job in words rather than by index, so a typo reads as
+## something rather than as whichever job happens to share that number — the same
+## reasoning as the turret's weapon slots (ADR 0048).
+static func role_from_name(name_text: String) -> Role:
+	return Role.GUNNER if name_text.strip_edges().to_lower() == "gunner" else Role.PILOT
+
+
+# --- views -------------------------------------------------------------------
 
 func enter_missile_view(missile: Missile) -> void:
-	# The ship stops reading input the moment the player leaves it. Under autopilot
-	# this changes nothing; under manual flight it is what stops W and A from
+	# The player leaves their station the moment they are in the missile. Under
+	# the autopilot this changes nothing; at the helm it is what stops W and A from
 	# flying the ship and the missile at the same time.
-	_release_ship()
+	if _ship != null:
+		_ship.piloted = false
+	if _turret != null:
+		_turret.active = false
 	_piloted_missile = missile
 	missile.piloted = true
 	missile.detonated.connect(_on_missile_detonated)
@@ -100,34 +173,9 @@ func enter_missile_view(missile: Missile) -> void:
 	_missile_camera.snap()
 	_missile_camera.current = true
 	_view = View.MISSILE
-	# The mouse is the missile's stick while riding; release it when we return.
+	# The mouse is the missile's stick while riding; it returns to the station after.
 	_apply_mouse_mode()
 	view_changed.emit(_view)
-
-
-## Man the guns. Refused while riding a missile — that transition is what the
-## sequential-attention rule forbids, and the player already has a way back to the
-## ship (the missile ends).
-func enter_turret_view() -> bool:
-	if _view == View.MISSILE or _turret == null:
-		return false
-	_release_ship()
-	_turret.active = true
-	_turret_camera.snap()
-	_turret_camera.current = true
-	_view = View.TURRET
-	_apply_mouse_mode()
-	view_changed.emit(_view)
-	return true
-
-
-## `G` in either direction: to the guns from the helm, back to the helm from the
-## guns. A no-op while riding a missile.
-func toggle_turret() -> bool:
-	if _view == View.TURRET:
-		_enter_ship_view()
-		return true
-	return enter_turret_view()
 
 
 func _on_missile_detonated(_missile: Missile, _reason: int, _hit: bool) -> void:
@@ -136,14 +184,20 @@ func _on_missile_detonated(_missile: Missile, _reason: int, _hit: bool) -> void:
 	if delay > 0.0:
 		await get_tree().create_timer(delay).timeout
 	# A second missile may have been fired during the delay; do not steal its view.
-	if _piloted_missile == null:
+	# Nor if the player has already picked a station during it — a job press is a
+	# live instruction and outranks a timer that was started before it.
+	if _piloted_missile != null or _view != View.MISSILE:
+		return
+	# Back to the job they left, not to a default. The roster is what the player
+	# set; a ride is an excursion from it.
+	_apply_role()
+	if _role == Role.GUNNER:
+		_enter_turret_view()
+	else:
 		_enter_ship_view()
 
 
 func _enter_ship_view() -> void:
-	if _turret != null:
-		# The station keeps its bearing while unmanned — it just stops taking input.
-		_turret.active = false
 	if _ship != null:
 		_ship.piloted = true
 	_ship_camera.snap()
@@ -153,11 +207,16 @@ func _enter_ship_view() -> void:
 	view_changed.emit(_view)
 
 
-## Take the helm out of the player's hands without touching the autopilot. An
-## autopiloted ship keeps arcing; a manually flown one coasts on its velocity.
-func _release_ship() -> void:
+func _enter_turret_view() -> void:
 	if _ship != null:
+		# Nobody is at the helm. The autopilot has it, and `piloted` is what stops
+		# the ship reading the keys the gunner is pressing.
 		_ship.piloted = false
+	_turret_camera.snap()
+	_turret_camera.current = true
+	_view = View.TURRET
+	_apply_mouse_mode()
+	view_changed.emit(_view)
 
 
 ## Mouse motion goes to whatever is being flown or aimed. Routing it here keeps

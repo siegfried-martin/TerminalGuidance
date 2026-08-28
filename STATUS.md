@@ -56,12 +56,12 @@ would pass.
 | Gray-box arena: 7³ marker lattice via one MultiMesh, rebuilt on reload | working |
 | Debug fly-cam (RMB look, WASD/QE, Shift boost) | working |
 | Asset pipeline: `.obj` model + `.png` texture, generated → imported → rendered | working |
-| `make check`: 668 headless assertions, exit code gated | working |
+| `make check`: 673 headless assertions, exit code gated | working |
 | Godot-3 API linter over all scripts, data-driven denylist | working |
 | `make shot`: render frames to PNG from the CLI for visual verification | working |
 | `make apiref`: this exact build's 771-class reference for API grounding | working |
 | `DESIGN.md` — distilled thesis, Target Experience verbatim | written |
-| `decisions/` — 55 ADRs, indexed, each with a *What this forbids* section | written |
+| `decisions/` — 56 ADRs, indexed, each with a *What this forbids* section | written |
 | **Combat arena** (`scenes/arena.tscn`, now the main scene) | working |
 | Mothership autopilot: slow arc at standoff, nose on target | working |
 | Dumb target ship: drifts, turns at its patrol bounds | working |
@@ -79,7 +79,7 @@ would pass.
 | **Dodge**: A/D, one press, one displacement, then a cooldown (ADR 0039) | working |
 | **Rocks kill missiles**: 260 obstacles inside the fight (ADR 0038) | working |
 | **Rocks are ellipsoid clusters** — the drawn shape *is* the hit shape (ADR 0041) | working |
-| **Manual ship flight**: T toggles, W/S throttle, A/D thrusters, mouse steers (ADR 0040) | working |
+| **Manual ship flight**: W/S throttle, A/D thrusters, mouse steers (ADR 0040) | working |
 | Ship top speed clamped against `missile/base_speed` in code, not by comment | working |
 | **Target is a ship shape** — fuselage, nose, wings, fin, built from primitives | working |
 | **Destructible components**: 4 cylinders, darken then explode, respawn (ADR 0042) | working |
@@ -125,6 +125,9 @@ would pass.
 | Off-screen arrow pointing at an incoming missile, not just a bracket | working |
 | A flare star has two speeds: one moves the wall, one opens it | working |
 | A star carries the launching ship's motion; aimed shots do not (ADR 0055) | working |
+| **Crew roster**: T pilot, G gunner, and the autopilot follows (ADR 0056) | working |
+| **Q launches a missile**, from either station; Space/LMB only ever detonates | working |
+| The autopilot arcs on a plane 60 m under the target, so the gun clears the hull | working |
 
 ### Deliberately not built yet
 
@@ -305,6 +308,10 @@ They are the knobs most likely to be wrong.
   the scope doc warns about, and the one most likely to be badly wrong. Judge the
   lead against `missile/fuse_seconds` 6: it has to exceed a typical remaining ride
   or "win both" is arithmetically impossible.
+- **`ship/arc_depth` 60 at a 203 m standoff** — about 17° of look-up, against a
+  `turret/elevation_limit_deg` of 55. Deep enough to clear the hull; whether it is
+  deep enough to feel like a *position* rather than an accident is the question, and
+  it costs the arc horizontal radius (194 m instead of 203) to go deeper.
 - **`camera/turret_fov` 52 against `camera/fov_base` 70.** How much magnification
   the gun gets, traded against how much of the sky you can see from it. The reason
   the interrupt was hard to shoot; the reason to stop narrowing it is losing track
@@ -360,6 +367,34 @@ They are the knobs most likely to be wrong.
   lockout.** About 2.4 seconds of beam, then a wait. Whether that reads as a rhythm
   or as an interruption is the question; it is the only weapon with a limiter the
   player has to think about at all until the missile cooldown lands.
+
+### Decided 2026-08-28 (the crew roster)
+
+> "autopilot should always be engaged when in gun mode and always disengaged when
+> not. you can think of it that the player is either the pilot or the gunner (there
+> might be other jobs in the future), 'T' makes the player the pilot, 'G' makes the
+> player the gunner, 'Q' fires a missile"
+
+- **The player holds a job, not a mode** (ADR 0056). `T` and `G` *select* a station
+  rather than toggling anything, and the autopilot is a consequence of not being the
+  pilot. An independent toggle allowed two states that make no sense — at the helm
+  with the autopilot flying, and at the guns with nobody flying — and binding it to
+  the roster deletes both by construction. **"There might be other jobs in the
+  future" is why `Role` is an enum**, not a bool: Pillar 6 has a crew in it.
+- **`Q` launches, from either station.** This reverses ADR 0048's helm-only clause,
+  which did not survive the roster: launching moves the player into the missile in
+  the same frame, so sequential attention is intact, and a helm-only launch would
+  force the gunner to take the helm first and drop the autopilot *every time they
+  wanted to fire*. Launching also stopped sharing a button with detonating — one key
+  whose meaning depended on where you were standing.
+- **The autopilot arcs under the target** (`ship/arc_depth`, 60 m). The gun is
+  mounted on the spine, so from a level arc it looks across its own hull; ADR 0054's
+  first-person camera made that unmissable. Standoff still means *slant* range, so
+  the number compared against missile reach is unchanged. It also simplified the
+  code — the arc is horizontal by construction now, which is ADR 0045's shared
+  horizon arriving in the autopilot, and the degenerate near-vertical case is gone.
+- **Runs now start at the helm** (`ship/start_role = "pilot"`), where they used to
+  start watching the autopilot arc. `"gunner"` restores the old opening.
 
 ### Decided 2026-08-28 (from the first turret playtest)
 
