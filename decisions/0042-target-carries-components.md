@@ -1,6 +1,6 @@
 # ADR 0042 — The target carries destructible components, and they are tested before the hull
 
-*Status: accepted, hull clauses superseded by ADR 0043 · 2026-08-26 · a feel experiment the human asked for: "I want to see if something akin to target practice is better"*
+*Status: accepted, hull clauses superseded by ADR 0043, damage currency superseded by ADR 0049 · 2026-08-26 · a feel experiment the human asked for: "I want to see if something akin to target practice is better"*
 
 > **Superseded in part by ADR 0043.** The hull is no longer a single sphere, and
 > components no longer sit inside `enemy/radius` — they must stand proud of the
@@ -8,6 +8,11 @@
 > tested first. As written below, no component was ever reachable. Everything else
 > here — what components are, why they exist, two hits, respawn, no flash on the
 > darkening hit — stands.
+>
+> **Superseded in currency by ADR 0049.** `enemy/component_hits_to_destroy` is
+> gone; a component carries `enemy/component_hit_points` and every weapon spends a
+> damage number against it. The default numbers reproduce this ADR's two hits
+> exactly. The behaviour below is unchanged — only how it is counted.
 
 ## Decision
 

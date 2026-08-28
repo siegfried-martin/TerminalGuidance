@@ -153,8 +153,10 @@ func _draw_crosshair(camera: Camera3D) -> void:
 	if turret == null or not is_instance_valid(turret) or not turret.active:
 		return
 
+	# Drawn at the range the guns are sighted at, because that is the one range at
+	# which the crosshair and the shot agree (see `Turret.firing_direction`).
 	var aim_point := turret.global_position \
-		+ turret.aim_direction() * Tuning.num("hud/turret_reticle_distance")
+		+ turret.aim_direction() * Tuning.num("turret/convergence_distance")
 	if camera.is_position_behind(aim_point) or not _projectable(camera, aim_point):
 		return
 
@@ -166,6 +168,27 @@ func _draw_crosshair(camera: Camera3D) -> void:
 	for direction: Vector2 in [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]:
 		draw_line(point + direction * radius * 0.4, point + direction * radius, color, width)
 	draw_rect(Rect2(point - Vector2.ONE * width, Vector2.ONE * width * 2.0), color)
+	_draw_heat(turret, point)
+
+
+## The pulse beam's heat, under the crosshair rather than at the edge of the
+## screen: a gauge the player has to look away from is a gauge they do not read,
+## and overheating then arrives as a surprise instead of as a decision they made.
+## Hidden entirely at zero heat, so the other three weapons carry no clutter.
+func _draw_heat(turret: Turret, centre: Vector2) -> void:
+	var heat := turret.heat()
+	var overheated := turret.is_overheated()
+	if heat <= 0.0 and not overheated:
+		return
+
+	var bar_width := Tuning.num("hud/turret_heat_bar_width")
+	var bar_height := Tuning.num("hud/turret_heat_bar_height")
+	var origin := centre + Vector2(-bar_width * 0.5, Tuning.num("hud/turret_heat_bar_offset"))
+	var color := Tuning.color("hud/turret_overheat_color") if overheated \
+		else Tuning.color("hud/turret_heat_color")
+
+	draw_rect(Rect2(origin, Vector2(bar_width, bar_height)), Color(color, 0.25))
+	draw_rect(Rect2(origin, Vector2(bar_width * clampf(heat, 0.0, 1.0), bar_height)), color)
 
 
 ## Can `unproject_position` be asked about this point at all?

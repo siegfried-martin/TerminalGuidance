@@ -24,6 +24,7 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"missile/flash_seconds", "missile/flash_color", "missile/flash_color_dud",
 	"missile/boost_multiplier", "missile/boost_seconds", "missile/boost_regen_per_sec",
 	"missile/dodge_distance", "missile/dodge_seconds", "missile/dodge_cooldown_seconds",
+	"missile/damage",
 	"missile/brake_speed_multiplier", "missile/brake_turn_multiplier",
 	"ship/arc_speed", "ship/standoff_distance", "ship/muzzle_offset", "ship/hull_scale",
 	"ship/range_hold_seconds", "ship/range_hold_max_speed",
@@ -33,15 +34,28 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"ship/manual_turn_rate_deg_per_sec", "ship/manual_reticle_max_angle_deg",
 	"ship/autopilot_turn_rate_deg_per_sec",
 	"ship/manual_strafe_speed",
-	"turret/mount_offset", "turret/muzzle_offset", "turret/traverse_deg_per_sec",
+	"turret/mount_offset", "turret/muzzle_offset", "turret/muzzle_mount_offset",
+	"turret/convergence_distance", "turret/traverse_deg_per_sec",
 	"turret/elevation_limit_deg",
 	"turret/loadout_1_primary", "turret/loadout_1_secondary",
 	"turret/loadout_2_primary", "turret/loadout_2_secondary",
+	"turret/projectile_speed_floor_fraction",
+	"turret/autocannon_rounds_per_second", "turret/autocannon_damage",
+	"turret/autocannon_speed", "turret/autocannon_range",
+	"turret/autocannon_round_length", "turret/autocannon_round_width",
+	"turret/autocannon_round_color",
+	"turret/pulse_range", "turret/pulse_damage_per_second",
+	"turret/pulse_heat_per_second", "turret/pulse_cool_per_second",
+	"turret/pulse_overheat_lockout_seconds",
+	"turret/pulse_beam_width", "turret/pulse_beam_color", "turret/pulse_beam_fade_seconds",
+	"turret/impact_flash_start_radius", "turret/impact_flash_end_radius",
+	"turret/impact_flash_seconds", "turret/impact_flash_color",
+	"turret/impact_flash_color_dud",
 	"enemy/radius", "enemy/drift_speed", "enemy/spin_deg_per_sec",
 	"enemy/patrol_half_extent", "enemy/hull_color", "enemy/hull_emission",
 	"enemy/hull_length", "enemy/hull_width", "enemy/hull_height", "enemy/nose_length",
 	"enemy/wing_span", "enemy/wing_chord", "enemy/wing_thickness", "enemy/fin_height",
-	"enemy/component_count", "enemy/component_hits_to_destroy",
+	"enemy/component_count", "enemy/component_hit_points",
 	"enemy/component_radius", "enemy/component_length", "enemy/component_mount_radius",
 	"enemy/component_hit_radius", "enemy/component_damaged_darken",
 	"enemy/component_respawn_seconds", "enemy/component_color", "enemy/component_emission",
@@ -61,7 +75,9 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"hud/target_color", "hud/target_bracket_size", "hud/arrow_size", "hud/edge_margin",
 	"hud/reticle_color", "hud/reticle_size", "hud/reticle_distance",
 	"hud/reticle_lag_line_alpha",
-	"hud/turret_reticle_color", "hud/turret_reticle_size", "hud/turret_reticle_distance",
+	"hud/turret_reticle_color", "hud/turret_reticle_size",
+	"hud/turret_heat_bar_width", "hud/turret_heat_bar_height", "hud/turret_heat_bar_offset",
+	"hud/turret_heat_color", "hud/turret_overheat_color",
 	"arena/marker_spacing", "arena/marker_count_per_axis", "arena/marker_size",
 	"arena/marker_color", "arena/background_color", "arena/ambient_energy",
 	"arena/glow_enabled", "arena/glow_intensity",
@@ -110,6 +126,7 @@ func _ready() -> void:
 	_test_manual_flight()
 	_test_target_components()
 	_test_turret_station()
+	_test_turret_weapons()
 	_test_overlay_projection_guard()
 	_test_tuning_schema()
 	_test_tuning_writer()
@@ -825,26 +842,36 @@ func _test_target_components() -> void:
 		"the derived bound contains the nose tip",
 		"bound %.1f m against a tip at %.1f m" % [enemy.bound_radius(), nose_tip.length()])
 
-	var needed := Tuning.integer("enemy/component_hits_to_destroy")
-	for hit in needed - 1:
-		_expect(not enemy.damage_component(0),
-			"hit %d of %d damages without destroying" % [hit + 1, needed],
-			"destroyed early")
-		_expect(enemy.is_component_alive(0), "…and it is still alive", "already gone")
-	_expect(enemy.damage_component(0), "the last hit destroys it", "survived the full count")
+	# The damage pool (ADR 0049). Half the pool must not destroy; the second half
+	# must — which is ADR 0042's two-missile-hit behaviour, now expressed in the
+	# currency four weapons can share.
+	var pool := enemy.component_hit_points()
+	_expect(not enemy.damage_component(0, pool * 0.5),
+		"half a component's pool damages it without destroying it", "destroyed early")
+	_expect(enemy.is_component_alive(0), "…and it is still alive", "already gone")
+	_expect(is_equal_approx(enemy.component_health_fraction(0), 0.5),
+		"…and reads as half health",
+		"%.2f left" % enemy.component_health_fraction(0))
+	_expect(enemy.damage_component(0, pool * 0.5), "the rest of the pool destroys it",
+		"survived a full pool of damage")
 	_expect(not enemy.is_component_alive(0), "…and it reads as destroyed", "still alive")
 	_expect(enemy.components_alive() == expected - 1,
 		"the alive count drops", "%d alive" % enemy.components_alive())
-	_expect(int(damaged["count"]) == needed and int(damaged["destroyed"]) == 1,
-		"one signal per hit, and exactly one of them destroying",
+	_expect(int(damaged["count"]) == 2 and int(damaged["destroyed"]) == 1,
+		"one signal per damaging hit, and exactly one of them destroying",
 		"%d signals, %d destroying" % [damaged["count"], damaged["destroyed"]])
+	_expect(not enemy.damage_component(1, 0.0),
+		"zero damage is not a hit", "counted as one")
+	_expect(is_equal_approx(enemy.component_health_fraction(1), 1.0),
+		"…and left the component untouched",
+		"%.2f left" % enemy.component_health_fraction(1))
 
 	# A destroyed component is not a target any more. The shot still lands — on the
 	# hull behind where it used to be.
 	var after := enemy.hit_test(from, through)
 	_expect(int(after["component"]) != 0,
 		"a destroyed component stops catching shots", "still credited with hits")
-	_expect(not enemy.damage_component(0),
+	_expect(not enemy.damage_component(0, pool),
 		"…and cannot be damaged again", "took another hit")
 
 	# It comes back, so a practice run does not run out of things to shoot.
@@ -855,8 +882,8 @@ func _test_target_components() -> void:
 		_expect(enemy.is_component_alive(0),
 			"a destroyed component returns after component_respawn_seconds",
 			"still gone after %.1f s" % window)
-		_expect(enemy.component_hits(0) == 0,
-			"…undamaged", "came back with %d hits on it" % enemy.component_hits(0))
+		_expect(is_equal_approx(enemy.component_health_fraction(0), 1.0),
+			"…undamaged", "came back at %.2f health" % enemy.component_health_fraction(0))
 
 	enemy.queue_free()
 
@@ -983,6 +1010,175 @@ func _test_turret_station() -> void:
 	ship.free()
 
 
+
+## The turret's first two weapons (stage 2): the autocannon and the pulse beam.
+##
+## The geometry is set up so the gun looks straight down the axis at component 0
+## with nothing in the way, which makes every assertion below about the WEAPON
+## rather than about whether the shot happened to clear a wing.
+func _test_turret_weapons() -> void:
+	var world := Node3D.new()
+	add_child(world)
+
+	var enemy := TargetShip.new()
+	enemy.set_process(false)
+	world.add_child(enemy)
+	enemy.position = Vector3(0.0, 0.0, -160.0)
+	if enemy.component_count() == 0:
+		# enemy/component_count is a tuned A/B switch; with no components there is
+		# nothing for damage to land on and these assertions would be vacuous.
+		world.free()
+		return
+
+	var ship := Mothership.new()
+	ship.set_process(false)
+	world.add_child(ship)
+
+	var turret := Turret.new()
+	turret.ship = ship
+	turret.set_process(false)
+	world.add_child(turret)
+	turret.setup(world, enemy, null)
+
+	# The speed hierarchy is structural, not advisory (CLAUDE.md). A round has to
+	# outrun a BOOSTING missile — a boosting missile is still a missile.
+	var missile_top := Tuning.num("missile/base_speed") * Tuning.num("missile/boost_multiplier")
+	_expect(Projectile.resolved_speed("turret/autocannon") > missile_top,
+		"an autocannon round outruns a boosting missile",
+		"round %.0f m/s against a missile top of %.0f" % [
+			Projectile.resolved_speed("turret/autocannon"), missile_top])
+	Tuning.set_value("turret/autocannon_speed", 1.0)
+	_expect(Projectile.resolved_speed("turret/autocannon") > missile_top,
+		"…even when the round's own tuning says 1 m/s",
+		"clamp let %.1f m/s through" % Projectile.resolved_speed("turret/autocannon"))
+	Tuning.revert()
+
+	# Park the gun on component 0's axis, aimed straight down it, at the range the
+	# guns are sighted for. A travelling round leaves an offset muzzle and converges
+	# on the crosshair, so it is exact at exactly this range — putting the test
+	# anywhere else would be testing the parallax rather than the weapon.
+	var step := 1.0 / 60.0
+	turret.active = true
+	var aim_at := enemy.component_position(0)
+	var park := func(metres: float) -> void:
+		ship.position = aim_at + Vector3(0.0, 0.0, metres) \
+			- Tuning.vec3("turret/mount_offset")
+		turret._process(step)
+		turret.set_aim_direction(Vector3.FORWARD)
+	park.call(Tuning.num("turret/convergence_distance"))
+
+	var pool := enemy.component_hit_points()
+	var round_shot := Projectile.new()
+	world.add_child(round_shot)
+	round_shot.launch(turret.muzzle_position(), turret.firing_direction(),
+		"turret/autocannon", enemy, null)
+	for _i in 240:
+		round_shot._process(step)
+	_expect(enemy.component_health_fraction(0) < 1.0,
+		"an autocannon round damages the component it reaches",
+		"component 0 still at full health")
+	_expect(is_equal_approx(
+			enemy.component_health_fraction(0),
+			1.0 - Tuning.num("turret/autocannon_damage") / pool),
+		"…for exactly turret/autocannon_damage",
+		"took %.1f of a %.0f pool" % [
+			(1.0 - enemy.component_health_fraction(0)) * pool, pool])
+
+	# Fire rate. Two seconds of held trigger against the tuned rounds per second;
+	# a frame of quantisation either way is expected and does not matter.
+	_expect(turret.primary() == Turret.Weapon.AUTOCANNON,
+		"loadout 1's left button holds the autocannon",
+		"holds %s" % Turret.weapon_label(turret.primary()))
+	var before := turret.rounds_fired()
+	Input.action_press("fire_primary")
+	for _i in 120:
+		turret._process(step)
+	Input.action_release("fire_primary")
+	var fired := turret.rounds_fired() - before
+	var expected_rounds := Tuning.num("turret/autocannon_rounds_per_second") * 2.0
+	_expect(absf(float(fired) - expected_rounds) <= 1.0,
+		"the autocannon fires at turret/autocannon_rounds_per_second",
+		"%d rounds in 2 s, expected about %.0f" % [fired, expected_rounds])
+
+	var idle := turret.rounds_fired()
+	for _i in 120:
+		turret._process(step)
+	_expect(turret.rounds_fired() == idle,
+		"…and nothing at all with the trigger released",
+		"%d rounds fired while idle" % (turret.rounds_fired() - idle))
+
+	# The pulse beam. Hitscan, so it damages on the frame it is held — there is no
+	# travel time to wait out, which is the point of it. And unlike a round it is
+	# resolved along the sight line, so it is exact at ranges the autocannon is not:
+	# tested at 60% of its own range, well inside convergence_distance.
+	_expect(turret.secondary() == Turret.Weapon.PULSE,
+		"loadout 1's right button holds the pulse beam",
+		"holds %s" % Turret.weapon_label(turret.secondary()))
+	park.call(Tuning.num("turret/pulse_range") * 0.6)
+	var health_before := enemy.component_health_fraction(0)
+	Input.action_press("fire_secondary")
+	turret._process(step)
+	_expect(enemy.component_health_fraction(0) < health_before,
+		"the beam damages on the very frame it is held — no travel time",
+		"nothing landed in one frame")
+	_expect(turret.heat() > 0.0, "…and builds heat", "heat stayed at zero")
+
+	# The property that separates it from a travelling round: it lands where it is
+	# pointed at ANY range, not only where the guns are sighted.
+	park.call(Tuning.num("turret/pulse_range") * 0.25)
+	var near_health := enemy.component_health_fraction(0)
+	turret._process(step)
+	_expect(enemy.component_health_fraction(0) < near_health,
+		"…and it is exact at close range too, where a slung round would land low",
+		"nothing landed at a quarter of its range")
+
+	# Heat is the beam's whole limiter, so it has to actually lock out.
+	var to_overheat := int(ceil(60.0 / maxf(Tuning.num("turret/pulse_heat_per_second"), 0.01))) + 4
+	for _i in to_overheat:
+		turret._process(step)
+	Input.action_release("fire_secondary")
+	_expect(turret.is_overheated(), "holding the beam overheats it and locks it out",
+		"heat reached %.2f without locking out" % turret.heat())
+
+	var locked_health := enemy.component_health_fraction(0)
+	Input.action_press("fire_secondary")
+	turret._process(step)
+	Input.action_release("fire_secondary")
+	_expect(is_equal_approx(enemy.component_health_fraction(0), locked_health),
+		"an overheated beam does no damage however hard the button is held",
+		"still burning through the lockout")
+
+	var hot := turret.heat()
+	turret._process(step)
+	_expect(turret.heat() < hot, "…and it cools while locked out",
+		"heat stuck at %.2f" % turret.heat())
+
+	var lockout := Tuning.num("turret/pulse_overheat_lockout_seconds")
+	for _i in int(ceil(lockout * 60.0)) + 4:
+		turret._process(step)
+	_expect(not turret.is_overheated(),
+		"the lockout clears after turret/pulse_overheat_lockout_seconds",
+		"still locked out after %.1f s" % lockout)
+
+	# A slot set to "none" is how a weapon is taken out of a test run without a
+	# code change — part of the build's independently-disableable requirement.
+	Tuning.set_value("turret/loadout_1_primary", "none")
+	_expect(turret.primary() == Turret.Weapon.NONE,
+		"a loadout slot set to \"none\" arms nothing",
+		"holds %s" % Turret.weapon_label(turret.primary()))
+	var quiet := turret.rounds_fired()
+	Input.action_press("fire_primary")
+	for _i in 120:
+		turret._process(step)
+	Input.action_release("fire_primary")
+	_expect(turret.rounds_fired() == quiet,
+		"…and firing it does nothing",
+		"%d rounds from an empty slot" % (turret.rounds_fired() - quiet))
+	Tuning.revert()
+
+	world.free()
+
+
 func _test_overlay_projection_guard() -> void:
 	var overlay := FlightOverlay.new()
 	add_child(overlay)
@@ -1042,6 +1238,27 @@ func _test_reference_field() -> void:
 		var far_away := centre + Vector3(0.0, radius * 50.0, 0.0)
 		_expect(field.hit_test(far_away, far_away + Vector3(0.0, 1.0, 0.0)) == Vector3.INF,
 			"hit_test lets a clear segment through", "false positive")
+
+		# hit_entry answers *where*, which is what a turret round needs and a
+		# missile does not: a rock between the gun and the target has to stop the
+		# shot at the rock rather than let it score behind one.
+		var entry := field.hit_entry(above, below)
+		var t := float(entry["t"])
+		var entry_point: Vector3 = entry["point"]
+		_expect(t >= 0.0 and t <= 1.0, "hit_entry parameterises the same hit", "t=%f" % t)
+		_expect(entry_point.distance_to(above + (below - above) * t) < 0.001,
+			"…and its point lies on the segment",
+			"%s is not at t=%f" % [entry_point, t])
+		# The segment spans eight radii centred on the rock, so an entry anywhere on
+		# a lobe has to land in the middle quarter of it. An EXIT point would land
+		# past that, which is the mistake this guards against.
+		_expect(absf(t - 0.5) < 0.2, "…and it is the ENTRY, not the exit",
+			"t=%f — too far along to be where the shot first met the rock" % t)
+		_expect(entry_point.distance_to(centre) <= radius + 0.001,
+			"…inside the rock it belongs to",
+			"%s against a rock of radius %.1f" % [entry_point, radius])
+		_expect(float(field.hit_entry(far_away, far_away + Vector3(0.0, 1.0, 0.0))["t"]) < 0.0,
+			"hit_entry lets a clear segment through", "false positive")
 
 	# rock_collision is the escape hatch back to the pre-ADR-0038 arena, so it has
 	# to actually disarm the field rather than merely hiding the readout.

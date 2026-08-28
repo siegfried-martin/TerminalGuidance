@@ -95,5 +95,6 @@ The reasoning, including what the alternative was and why it lost.
 | [0046](0046-two-playstyles-one-gradient.md) | Two supported playstyles, and the economy leans toward the gunboat |
 | [0047](0047-advanced-verbs-are-tiered.md) | Brake and boost are missile-tier equipment, not baseline verbs |
 | [0048](0048-turret-is-a-peer-station.md) | The gun station is a peer of the helm, and its aim is 1:1 in the arena frame |
+| [0049](0049-damage-is-a-pool.md) | Damage is a pool, every shot resolves in one place, and the guns are sighted |
 
-*Next number: 0049.*
+*Next number: 0050.*

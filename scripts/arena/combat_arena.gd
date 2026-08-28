@@ -15,14 +15,15 @@ extends Node3D
 ## target (ADR 0042), which front-runs part of step 9's hit feedback. The target
 ## ship itself still has no hit points and never dies — that is still step 9.
 ##
-## Step 6 has begun: the gun station exists, `G` mans it, and it carries the
-## loadout state. Its weapons are stage 2 of docs/TURRET_MODE_IMPLEMENTATION.md
-## and are deliberately absent rather than stubbed, so the aim and the camera can
-## be felt on their own first.
+## Step 6 is under way: `G` mans the gun station (ADR 0048), and two of its four
+## weapons are live — the autocannon and the hitscan pulse beam. Component damage
+## is a pool now rather than a hit count (ADR 0049), because four weapons with four
+## damage numbers cannot share a counter.
 ##
-## Deliberately absent, in build order: splash damage (step 5); the turret's
-## weapons and the missile cooldown (step 6); blockers, enemy fire and ship HP
-## (step 7); the interrupt (step 8); death/respawn and the PiP toggle (step 9).
+## Deliberately absent, in build order: splash damage (step 5, landing with the
+## unguided missile); the unguided missile, the blockers and the missile cooldown
+## (step 6); enemy fire and ship HP (step 7); the interrupt (step 8); death,
+## respawn and the PiP toggle (step 9).
 ## Do not add them here ahead of their step — each one has a feel checkpoint
 ## attached to it and adding it early destroys the reading.
 ##
@@ -139,6 +140,9 @@ func _build_views() -> void:
 	_turret.name = "Turret"
 	_turret.ship = _ship
 	_arena_root.add_child(_turret)
+	# The guns are told what they can reach rather than looking it up, so a shot
+	# fired into a torn-down arena cannot resurrect it.
+	_turret.setup(_arena_root, _target, _rocks)
 
 	_views = ViewController.new()
 	_views.name = "ViewController"
@@ -211,6 +215,14 @@ func _build_hud() -> void:
 	_hud.add_row("gun aim", func() -> String:
 		return "%+.0f deg bearing  ·  %+.0f deg elevation" % [
 			_turret.azimuth_degrees(), _turret.elevation_degrees()])
+	_hud.add_row("guns", func() -> String:
+		var beam := "OVERHEATED %.1f s" % _turret.overheat_remaining() \
+			if _turret.is_overheated() else "heat %3.0f%%" % (_turret.heat() * 100.0)
+		return "%d rounds fired  ·  %s  ·  %s" % [
+			_turret.rounds_fired(),
+			"cannon ready" if _turret.autocannon_ready() else "cannon %.2f s" \
+				% _turret.autocannon_cooldown_remaining(),
+			beam])
 	_hud.add_row("components", func() -> String:
 		var total := _target.component_count()
 		if total == 0:
@@ -218,9 +230,10 @@ func _build_hud() -> void:
 		var parts: PackedStringArray = []
 		for i in total:
 			parts.append("×" if not _target.is_component_alive(i)
-				else str(_target.component_hits(i)))
-		return "%d of %d alive  [%s]" % [
-			_target.components_alive(), total, " ".join(parts)])
+				else "%.0f%%" % (_target.component_health_fraction(i) * 100.0))
+		return "%d of %d alive at %.0f hp  [%s]" % [
+			_target.components_alive(), total,
+			_target.component_hit_points(), " ".join(parts)])
 	_hud.add_row("aim off", func() -> String:
 		var missile := _views.piloted_missile()
 		return "—" if missile == null else "%.0f deg" % missile.aim_offset_degrees())
@@ -233,7 +246,7 @@ func _build_hud() -> void:
 			ViewController.View.MISSILE:
 				return "W boost · S brake · A/D dodge · mouse/stick aims · Space/LMB detonate · F1 hud · F2 tune"
 			ViewController.View.TURRET:
-				return "mouse/stick aims · 1/2 loadout · G back to the helm · F1 hud · F2 tune · Esc quit"
+				return "mouse/stick aims · LMB/RMB fire · 1/2 loadout · G back to the helm · F1 hud · F2 tune"
 		if _ship.autopilot:
 			return "LMB/Space fire · G man the guns · T fly manually · R reverse arc · F1 hud · F2 tune · F5 reload"
 		return "W/S throttle · A/D thrusters · mouse steers · LMB/Space fire · G guns · T autopilot · F1 hud · F2 tune")
@@ -278,9 +291,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			if event.is_action_pressed("fire"):
 				fire()
 		ViewController.View.TURRET:
-			# The four weapons are stage 2 of docs/TURRET_MODE_IMPLEMENTATION.md.
-			# Until then the buttons are bound and do nothing, on purpose: the aim
-			# and the camera are meant to be felt on their own first.
+			# The guns are held rather than clicked, so they are polled in the
+			# turret's own `_process` — there is nothing to do on the event.
 			pass
 
 	if event.is_action_pressed("quit"):

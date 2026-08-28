@@ -31,9 +31,12 @@ missiles*, and there is still nothing to *do* in the between. `PROJECT_OVERVIEW.
 §Sequencing is blunt about it: "the loop under test is missile *and* turret, not
 missile alone."
 
-Stage 1 of `docs/TURRET_MODE_IMPLEMENTATION.md` landed on 2026-08-27: `G` mans the
-guns, the aim and the camera work, the loadouts switch. The four weapons are stage
-2. Until they exist the criterion-2 reading is not available.
+Stages 1 and 2 of `docs/TURRET_MODE_IMPLEMENTATION.md` landed on 2026-08-27: `G`
+mans the guns, the aim and the camera work, the loadouts switch, and **two of the
+four weapons fire** — the autocannon and the hitscan pulse beam. What is still
+missing for criterion 2 is the *rhythm*: the unguided missile, the blockers, and
+above all the 10 s missile cooldown, which is what makes "am I ever stuck waiting?"
+a question with an answer.
 
 So the POC is half-verdicted. The half that passed is the half the doc predicted
 would pass.
@@ -53,12 +56,12 @@ would pass.
 | Gray-box arena: 7³ marker lattice via one MultiMesh, rebuilt on reload | working |
 | Debug fly-cam (RMB look, WASD/QE, Shift boost) | working |
 | Asset pipeline: `.obj` model + `.png` texture, generated → imported → rendered | working |
-| `make check`: 464 headless assertions, exit code gated | working |
+| `make check`: 521 headless assertions, exit code gated | working |
 | Godot-3 API linter over all scripts, data-driven denylist | working |
 | `make shot`: render frames to PNG from the CLI for visual verification | working |
 | `make apiref`: this exact build's 771-class reference for API grounding | working |
 | `DESIGN.md` — distilled thesis, Target Experience verbatim | written |
-| `decisions/` — 48 ADRs, indexed, each with a *What this forbids* section | written |
+| `decisions/` — 49 ADRs, indexed, each with a *What this forbids* section | written |
 | **Combat arena** (`scenes/arena.tscn`, now the main scene) | working |
 | Mothership autopilot: slow arc at standoff, nose on target | working |
 | Dumb target ship: drifts, turns at its patrol bounds | working |
@@ -92,6 +95,13 @@ would pass.
 | Gun crosshair, `turret` and `gun aim` HUD rows | working |
 | SHIP ↔ TURRET state machine; no turret-to-missile edge, and `fire()` enforces it | working |
 | `make shot SCENE=res://tools/shots/turret_shot.tscn` — captures the gun view | working |
+| **Autocannon**: 2/s, unlimited, a travelling round with a visible tracer | working |
+| **Pulse beam**: hitscan, damage per second, heat buildup and lockout | working |
+| One shot resolver — nearest of hull, component or rock wins (ADR 0049) | working |
+| Component damage is a pool; every weapon spends a number against it (ADR 0049) | working |
+| Projectile speed clamped *above* the missile's boosted top speed, in code | working |
+| Guns are sighted: muzzle off the sight line, shots converge at a tuned range | working |
+| Heat bar under the crosshair; `guns` HUD row with rate, cooldown and heat | working |
 
 ### Deliberately not built yet
 
@@ -101,21 +111,20 @@ forward, because adding one early destroys the reading on the one before it:
 - **Step 5** — only **splash damage** is left. Early detonate, boost, brake and
   dodge are all in (pulled forward by request). Splash needs the target to have hit
   points, which is really step 7's job, so it may land there instead.
-- **Step 6** — the turret's four weapons and the missile cooldown. The *station*
-  landed on 2026-08-27; what it fires did not. *This is the alternation the whole
-  POC exists to test* (success criterion 2).
+- **Step 6** — half landed on 2026-08-27: the station, the autocannon and the
+  pulse beam. Still missing: the unguided missile, the blockers, and the 10 s
+  missile cooldown. *The cooldown is the alternation the whole POC exists to test*
+  (success criterion 2), so step 6 is not done until it is in.
 - **Step 7** — blockers, enemy fire, ship HP.
 - **Step 8** — the interrupt, starting at zero and raised carefully.
 - **Step 9** — damage, death, respawn, the PiP camera toggle, verdict session.
 
 ## Next
 
-**Turret mode, stage 2: the autocannon and the pulse beam.** Stage 1 (the station
-itself) is done. The remaining stages are listed in
-`docs/TURRET_MODE_IMPLEMENTATION.md` §Build stages, in order:
+**Turret mode, stage 3: the unguided missile and its blast.** Stages 1 (the
+station) and 2 (the autocannon and the pulse beam) are done. The remaining stages
+are listed in `docs/TURRET_MODE_IMPLEMENTATION.md` §Build stages, in order:
 
-2. Autocannon and pulse beam — projectile and hitscan paths, the damage pool
-   conversion, and the speed-hierarchy clamp on projectiles.
 3. Unguided missile and blast — manual detonate and splash falloff (ADR 0004),
    which also closes the last of POC step 5.
 4. Flares — player blockers, enemy blockers at 50% on approach.
@@ -247,10 +256,41 @@ They are the knobs most likely to be wrong.
 - **`turret/elevation_limit_deg` 55 against `traverse_deg_per_sec` 90.** Every ship
   is on one plane, so most of that elevation is aiming at nothing — the question is
   whether the limit ever gets in the way when a target is close and above.
-- **`hud/turret_reticle_distance` 210 m.** The camera is behind the gun, not at the
-  muzzle, so the crosshair is only exactly right at the range it is drawn at. 210 is
-  `ship/standoff_distance`. If shots land consistently off the crosshair at some
-  other range, this is the number, not the aim.
+- **`turret/convergence_distance` 210 m against `turret/muzzle_mount_offset`
+  −3.5 m.** The range the guns are sighted at, and how far below the sight line they
+  sit. Together they set how wrong a travelling round is at other ranges: about
+  1.8 m low at 100 m, against a component hit radius of 2. Larger offset means more
+  visible tracers and a worse close-range gun; the crossover is the thing to find.
+  The pulse beam is unaffected — it is exact everywhere by design.
+- **`turret/autocannon_damage` 9.0 at 2 rounds a second, against a 100-point
+  component.** Six seconds of continuous fire per component, if every round lands.
+  Compare against `turret/pulse_damage_per_second` 45, which is the same component
+  in a little over two seconds — but only inside `pulse_range` 180, which is under
+  the 203 m standoff. **That gap is the whole design of the two weapons**: the
+  cannon works from where the autopilot parks you, the beam is a reason to close.
+  If closing never feels worth it, the beam's damage or the cannon's is wrong.
+- **`turret/pulse_heat_per_second` 0.42 with `cool_per_second` 0.3 and a 2.5 s
+  lockout.** About 2.4 seconds of beam, then a wait. Whether that reads as a rhythm
+  or as an interruption is the question; it is the only weapon with a limiter the
+  player has to think about at all until the missile cooldown lands.
+
+### Decided 2026-08-27 (from building the turret's first weapons)
+
+- **Damage is a pool, every shot resolves in one place, and the guns are sighted**
+  (ADR 0049). Three things stage 2 forced. `enemy/component_hits_to_destroy` became
+  `enemy/component_hit_points` with `missile/damage` beside it — the default numbers
+  reproduce ADR 0042's two missile hits exactly, but a beam applying
+  damage-per-second times delta cannot exist in a currency of hits. Every weapon
+  resolves through `Shot.resolve`, which compares one entry parameter across hull,
+  components and rocks, so "a rock stops the shot" is not a special case anywhere
+  and ADR 0043's ordering bug has one place to not happen instead of three.
+- **The muzzle is off the sight line, and shots converge.** Built the obvious way
+  first, photographed it, and the frame showed *nothing at all* between the trigger
+  and the impact flash: fire leaving the sight line travels straight down the
+  camera axis and projects to a dot. Dropping the muzzle below the sight puts the
+  tracers in frame; converging on the crosshair keeps the sight honest at the range
+  the fight is held at. The hitscan beam is exempt and exact at every range, which
+  is what its specification asks for.
 
 ### Decided 2026-08-27 (from building the gun station)
 

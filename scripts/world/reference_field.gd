@@ -200,6 +200,33 @@ func hit_test(a: Vector3, b: Vector3) -> Vector3:
 	return Vector3.INF
 
 
+## Where along the swept segment a→b it first meets a rock, as
+## `{"t": float, "point": Vector3}`. `t` is -1 for a clean miss.
+##
+## `hit_test` above answers *whether*, which is all a missile needs — it dies
+## either way and the rock it died on is the one it reached. A turret round needs
+## *where*, because a rock between the gun and the target has to stop the shot at
+## the rock rather than let it score behind one (ADR 0043's rule, applied to a
+## second kind of shooter).
+func hit_entry(a: Vector3, b: Vector3) -> Dictionary:
+	var miss := {"t": -1.0, "point": Vector3.INF}
+	if not _collide:
+		return miss
+	var best := 2.0
+	for rock in _bound_centres.size():
+		if not FlightGeometry.segment_hits_sphere(
+				a, b, _bound_centres[rock], _bound_radii[rock]):
+			continue
+		for lobe in range(_lobe_start[rock], _lobe_start[rock + 1]):
+			var t := FlightGeometry.segment_ellipsoid_entry(a, b, _lobe_centres[lobe],
+				_lobe_orientations[lobe], _lobe_radii[lobe] * _hit_scale)
+			if t >= 0.0 and t < best:
+				best = t
+	if best > 1.0:
+		return miss
+	return {"t": best, "point": a + (b - a) * best}
+
+
 ## Rock `index`'s cluster centre and enclosing radius, in the parent frame. These
 ## exist for the headless gate, which has to aim a segment at a rock it can name;
 ## nothing in the game reads them.

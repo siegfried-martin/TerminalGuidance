@@ -171,10 +171,10 @@ scenes/sandbox.tscn    asset/harness scene with the debug fly-cam (shell only)
 scripts/autoload/      Tuning, Bindings
 scripts/arena/         the combat arena builder
 scripts/ships/         mothership, target ship
-scripts/weapons/       missile
+scripts/weapons/       missile, turret rounds, and the one shot resolver
 scripts/view/          camera/control state machine, chase camera, the gun station
 scripts/world/         marker lattice, reference field
-scripts/effects/       detonation flash
+scripts/effects/       detonation flash, pulse-beam tracer
 scripts/lib/           pure helpers — no scene tree, no disk, unit tested:
                        FlightGeometry, TuningSchema, TuningWriter
 scripts/sandbox/       the asset harness scene

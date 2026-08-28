@@ -165,7 +165,7 @@ func _hit_target() -> bool:
 			return false
 		var part := int(result["component"])
 		if part >= 0:
-			enemy.damage_component(part)
+			enemy.damage_component(part, Tuning.num("missile/damage"))
 		return true
 	return FlightGeometry.segment_hits_sphere(
 		_previous_position, position, _target.position, _target_radius)
