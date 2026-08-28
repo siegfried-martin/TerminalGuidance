@@ -264,15 +264,42 @@ func _draw_alert(camera: Camera3D) -> void:
 	draw_string(font, at, banner, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size,
 		Color(color, pulse))
 
-	# A bracket on the missile itself, so "incoming" is a direction and not just a
-	# word. Without it the player has to sweep the whole sky to find the thing.
+	_draw_inbound_marker(camera, inbound, Color(color, pulse))
+
+
+## A bracket on the incoming missile, and an arrow at the screen edge when it is
+## not on screen.
+##
+## The arrow is the important half. A 2.6 m missile at two hundred metres is a few
+## pixels in a rock field, and at the turret's narrow field of view it is off screen
+## more often than not — "incoming" has to be a *direction* the player can turn
+## towards, or the answer to an interrupt is sweeping the sky and hoping.
+##
+## The bracket does not pulse in SIZE, only in brightness. A marker that shrinks
+## every second is a marker that is hard to find, which is the opposite of the job.
+func _draw_inbound_marker(camera: Camera3D, inbound: EnemyMissile, color: Color) -> void:
 	if inbound == null or not _projectable(camera, inbound.global_position):
 		return
-	if camera.is_position_behind(inbound.global_position):
+
+	var margin := Tuning.num("hud/edge_margin")
+	var bounds := Rect2(Vector2(margin, margin), size - Vector2(margin, margin) * 2.0)
+	var behind := camera.is_position_behind(inbound.global_position)
+	var point := camera.unproject_position(inbound.global_position)
+	if behind:
+		# unproject_position mirrors points behind the camera through the centre;
+		# flip it back so the arrow points the way the player must actually turn.
+		point = size * 0.5 - (point - size * 0.5)
+
+	if not behind and bounds.has_point(point):
+		_draw_brackets(point, Tuning.num("hud/alert_bracket_size") * 0.5, color)
 		return
-	var half := Tuning.num("hud/alert_bracket_size") * 0.5
-	_draw_brackets(camera.unproject_position(inbound.global_position),
-		half * pulse, Color(color, pulse))
+
+	var centre := size * 0.5
+	var direction := point - centre
+	if direction.length_squared() < 0.001:
+		direction = Vector2.DOWN
+	_draw_arrow(_clamp_to_bounds(centre, direction.normalized(), bounds),
+		direction.angle(), Tuning.num("hud/alert_arrow_size"), color)
 
 
 ## The closest live enemy missile, or null.

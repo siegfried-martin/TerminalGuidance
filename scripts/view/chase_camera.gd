@@ -23,12 +23,28 @@ var tuning_prefix: String = "camera/ship"
 ## view has always had; that is not a feel constant, it is the absence of this.
 var pitch_share_key: String = ""
 
+## Optional tuning key for this view's own field of view. Empty means the shared
+## `camera/fov_base`. The turret uses it: a narrow FOV is a zoom, and it is the
+## difference between a distant missile being a few pixels and being a target.
+var _fov_key: String = ""
+
 var _initialised: bool = false
 
 
 func _ready() -> void:
-	fov = Tuning.num("camera/fov_base")
-	Tuning.reloaded.connect(func() -> void: fov = Tuning.num("camera/fov_base"))
+	_apply_fov()
+	Tuning.reloaded.connect(_apply_fov)
+
+
+## Give this camera its own field of view. Applied immediately, because it is set
+## after the node is already in the tree.
+func set_fov_key(key: String) -> void:
+	_fov_key = key
+	_apply_fov()
+
+
+func _apply_fov() -> void:
+	fov = Tuning.num(_fov_key if not _fov_key.is_empty() else "camera/fov_base")
 
 
 ## Jump straight to the ideal pose. Called on a view change so the cut is a cut,

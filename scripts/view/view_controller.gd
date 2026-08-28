@@ -77,8 +77,13 @@ func setup(ship: Mothership, ship_camera: ChaseCamera, missile_camera: ChaseCame
 	_turret_camera.subject = turret
 	_turret_camera.tuning_prefix = "camera/turret"
 	# The gun elevates far enough that a rigid boom would swing back through the
-	# hull it is mounted on; see ChaseCamera.pitch_share_key.
+	# hull it is mounted on; see ChaseCamera.pitch_share_key. At the first-person
+	# distance the boom is too short for that to matter, but the mechanism stays so
+	# pulling the camera back does not reintroduce the problem.
 	_turret_camera.pitch_share_key = "camera/turret_boom_pitch_share"
+	# The gun gets its own, narrower field of view. Aiming and flying want different
+	# ones: a helm wants to see what is around it, a gun wants magnification.
+	_turret_camera.set_fov_key("camera/turret_fov")
 	_enter_ship_view()
 
 

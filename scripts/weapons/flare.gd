@@ -36,12 +36,15 @@ func _ready() -> void:
 	add_to_group(GROUP)
 
 
-## Throw one flare from `from` along `direction`. Positions are parent-relative
-## (ADR 0020), like everything else in the arena.
-func launch(from: Vector3, direction: Vector3, flare_side: int) -> void:
+## Throw one flare from `from` at `velocity`. A full velocity rather than a
+## direction and a speed, because a star's two components are tuned separately —
+## how fast the wall travels towards the threat, and how fast it opens up. Those
+## are different questions and one number could not answer both. Positions are
+## parent-relative (ADR 0020), like everything else in the arena.
+func launch(from: Vector3, velocity: Vector3, flare_side: int) -> void:
 	side = flare_side
 	radius = Tuning.num("flare/radius")
-	_velocity = direction.normalized() * Tuning.num("flare/speed")
+	_velocity = velocity
 	_life_left = Tuning.num("flare/seconds")
 	position = from
 	_build_body()
@@ -131,8 +134,19 @@ func velocity() -> Vector3:
 ## The star is a ring *perpendicular to the threat axis* rather than a cone along
 ## it: a missile arriving down that axis meets the whole ring edge-on, which is the
 ## shape that actually blocks something. A cone pointed at it would be a line of
-## flares the missile flies between. `flare/forward_bias` leans the ring towards the
-## threat so the wall is thrown out to meet it rather than dropped in place.
+## flares the missile flies between.
+##
+## The two components are tuned separately, and they answer different questions:
+##
+## - `flare/launch_speed` is how fast the whole wall travels towards the threat.
+##   It is the one that decides *where* the wall ends up meeting the missile.
+## - `flare/spread_speed` is how fast the ring opens. It is the one that decides
+##   whether the wall stays a wall — spread fast and it is a scatter of flares with
+##   room between them by the time anything arrives.
+##
+## They started as one speed and a blend factor, which could not express "throw it
+## out quickly but keep it tight" at all: raising the speed to move the wall also
+## opened it up.
 static func burst(world: Node3D, origin: Vector3, axis: Vector3, flare_side: int,
 		count: int) -> Array[Flare]:
 	var thrown: Array[Flare] = []
@@ -142,16 +156,16 @@ static func burst(world: Node3D, origin: Vector3, axis: Vector3, flare_side: int
 	if forward.length_squared() < 0.5:
 		forward = Vector3.FORWARD
 	var frame := FlightGeometry.basis_from_forward(forward)
-	var bias := clampf(Tuning.num("flare/forward_bias"), 0.0, 1.0)
+	var launch_speed := Tuning.num("flare/launch_speed")
+	var spread_speed := Tuning.num("flare/spread_speed")
 
 	for i in count:
 		var angle := TAU * float(i) / float(count)
 		var outward := frame.x * cos(angle) + frame.y * sin(angle)
-		var direction := (outward * (1.0 - bias) + forward * bias).normalized()
 		var flare := Flare.new()
 		flare.name = "Flare"
 		world.add_child(flare)
-		flare.launch(origin, direction, flare_side)
+		flare.launch(origin, forward * launch_speed + outward * spread_speed, flare_side)
 		thrown.append(flare)
 	return thrown
 
