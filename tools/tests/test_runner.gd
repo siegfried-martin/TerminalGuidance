@@ -52,6 +52,10 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"turret/unguided_blast_radius", "turret/unguided_blast_damage",
 	"turret/unguided_blast_max_fraction", "turret/unguided_blast_falloff_power",
 	"turret/unguided_flash_seconds", "turret/unguided_flash_color",
+	"turret/blocker_cooldown_seconds", "turret/blocker_flare_count",
+	"flare/radius", "flare/speed", "flare/seconds", "flare/forward_bias",
+	"flare/player_color", "flare/enemy_color",
+	"flare/kill_flash_radius", "flare/kill_flash_seconds", "flare/kill_flash_color",
 	"turret/pulse_range", "turret/pulse_damage_per_second",
 	"turret/pulse_heat_per_second", "turret/pulse_cool_per_second",
 	"turret/pulse_overheat_lockout_seconds",
@@ -63,6 +67,8 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"enemy/patrol_half_extent", "enemy/hull_color", "enemy/hull_emission",
 	"enemy/hull_length", "enemy/hull_width", "enemy/hull_height", "enemy/nose_length",
 	"enemy/wing_span", "enemy/wing_chord", "enemy/wing_thickness", "enemy/fin_height",
+	"enemy/blocker_chance", "enemy/blocker_trigger_range",
+	"enemy/blocker_cooldown_seconds", "enemy/blocker_flare_count",
 	"enemy/component_count", "enemy/component_hit_points",
 	"enemy/component_radius", "enemy/component_length", "enemy/component_mount_radius",
 	"enemy/component_hit_radius", "enemy/component_damaged_darken",
@@ -136,6 +142,7 @@ func _ready() -> void:
 	_test_turret_station()
 	_test_turret_weapons()
 	_test_splash_and_unguided()
+	_test_flares_and_blockers()
 	_test_overlay_projection_guard()
 	_test_tuning_schema()
 	_test_tuning_writer()
@@ -1370,6 +1377,154 @@ func _test_splash_and_unguided() -> void:
 	_expect(turret.unguided_remaining() == dry,
 		"a reload time of 0 means the magazine never refills in a session",
 		"gained %d rounds anyway" % (turret.unguided_remaining() - dry))
+	Tuning.revert()
+
+	world.free()
+
+
+
+## Flares and blockers (ADR 0051). The behaviour worth pinning down is not "a flare
+## can stop a missile" but the three things around it: it stops only the other
+## side's, it is spent doing so, and the enemy rolls for it once per missile rather
+## than once per frame — which is the difference between a tuned chance and a
+## chance that always fires on the first frame.
+func _test_flares_and_blockers() -> void:
+	var world := Node3D.new()
+	add_child(world)
+	var step := 1.0 / 60.0
+
+	var parked := Flare.new()
+	world.add_child(parked)
+	parked.launch(Vector3(0.0, 0.0, -60.0), Vector3.ZERO, Flare.Side.ENEMY)
+	var through_it_a := Vector3(0.0, 0.0, -40.0)
+	var through_it_b := Vector3(0.0, 0.0, -80.0)
+
+	_expect(Flare.intercept(get_tree(), through_it_a, through_it_b, Flare.Side.PLAYER) == parked,
+		"a flare stops a missile of the other side", "let it through")
+	_expect(Flare.intercept(get_tree(), through_it_a, through_it_b, Flare.Side.ENEMY) == null,
+		"…and never one of its own", "shot down its own side")
+	_expect(Flare.intercept(get_tree(), through_it_a + Vector3(500.0, 0.0, 0.0),
+			through_it_b + Vector3(500.0, 0.0, 0.0), Flare.Side.PLAYER) == null,
+		"a flare does nothing to a missile that misses it", "false positive")
+
+	# A ridden missile flying into one, through the real flight path.
+	var enemy := TargetShip.new()
+	enemy.set_process(false)
+	world.add_child(enemy)
+	enemy.position = Vector3(0.0, 0.0, -400.0)
+	var missile := Missile.new()
+	missile.set_process(false)
+	world.add_child(missile)
+	missile.launch(Vector3.ZERO, Basis.IDENTITY, Vector3.ZERO, enemy, enemy.radius, null)
+	var ended := {"reason": -1}
+	missile.detonated.connect(func(_m: Missile, reason: int, _hit: bool) -> void:
+		ended["reason"] = reason)
+	for _i in 600:
+		if int(ended["reason"]) >= 0:
+			break
+		missile._process(step)
+	_expect(int(ended["reason"]) == Missile.EndReason.FLARE_INTERCEPT,
+		"a missile flown into a flare is stopped by it",
+		"ended with reason %d" % int(ended["reason"]))
+	_expect(parked.is_spent(), "…and the flare is spent doing it",
+		"the same flare could stop another")
+	_expect(Flare.intercept(get_tree(), through_it_a, through_it_b, Flare.Side.PLAYER) == null,
+		"…and stops being a wall immediately", "a spent flare still blocks")
+
+	# The star. A ring ACROSS the threat axis is a wall; a cone down it is a line of
+	# flares the missile flies between.
+	var star := Flare.burst(world, Vector3(0.0, 0.0, 900.0), Vector3.FORWARD,
+		Flare.Side.PLAYER, 6)
+	_expect(star.size() == 6, "a blocker throws the number of flares it was asked for",
+		"threw %d" % star.size())
+	var mean_along := 0.0
+	var spread := Vector3.ZERO
+	for thrown in star:
+		var heading := thrown.velocity().normalized()
+		mean_along += heading.dot(Vector3.FORWARD) / float(star.size())
+		spread += heading
+	_expect(mean_along < 0.9,
+		"…as a ring across the threat axis, not a cone down it",
+		"every flare is going %.2f of the way straight at the threat" % mean_along)
+	_expect(spread.length() < float(star.size()) * 0.6,
+		"…and evenly spread around it, so the sideways parts cancel",
+		"the star is lopsided: %s" % spread)
+
+	# A flare stops being a wall when it burns out.
+	var timed := Flare.new()
+	world.add_child(timed)
+	timed.launch(Vector3(0.0, 0.0, 4000.0), Vector3.ZERO, Flare.Side.ENEMY)
+	for _i in int(ceil(Tuning.num("flare/seconds") * 60.0)) + 4:
+		timed._process(step)
+	_expect(timed.is_spent(), "a flare burns out after flare/seconds",
+		"%.2f s still on the clock" % timed.seconds_left())
+
+	# The roll, on its own, over enough trials for the tuned chance to mean something.
+	var wins := 0
+	for _i in 800:
+		if TargetShip.rolls_a_blocker(0.5):
+			wins += 1
+	_expect(absf(float(wins) / 800.0 - 0.5) < 0.08,
+		"the tuned blocker chance is honoured over many trials",
+		"%d of 800 — %.0f%%" % [wins, float(wins) / 8.0])
+	_expect(not TargetShip.rolls_a_blocker(0.0), "a chance of 0 never answers", "it did")
+	_expect(TargetShip.rolls_a_blocker(1.0), "a chance of 1 always does", "it did not")
+
+	# And in place, against something in the group. A bare node stands in for a
+	# missile: what is under test is the ship's decision, not the missile's flight.
+	var decoy := Node3D.new()
+	world.add_child(decoy)
+	decoy.add_to_group("player_missile")
+	decoy.position = enemy.position + Vector3(0.0, 0.0, 40.0)
+
+	var flare_count := func() -> int: return get_tree().get_nodes_in_group("flare").size()
+	Tuning.set_value("enemy/blocker_chance", 0.0)
+	var before_none := int(flare_count.call())
+	for _i in 30:
+		enemy._tick_blockers(step)
+	_expect(int(flare_count.call()) == before_none,
+		"enemy/blocker_chance = 0 takes the whole layer out of a run",
+		"threw flares anyway")
+
+	# A fresh missile, because the first one has already been rolled for.
+	decoy.remove_from_group("player_missile")
+	var decoy_two := Node3D.new()
+	world.add_child(decoy_two)
+	decoy_two.add_to_group("player_missile")
+	decoy_two.position = enemy.position + Vector3(0.0, 0.0, 40.0)
+
+	Tuning.set_value("enemy/blocker_chance", 1.0)
+	var before_star := int(flare_count.call())
+	enemy._tick_blockers(step)
+	var expected_star := Tuning.integer("enemy/blocker_flare_count")
+	_expect(int(flare_count.call()) == before_star + expected_star,
+		"an incoming missile inside blocker_trigger_range is answered with a star",
+		"threw %d flares" % (int(flare_count.call()) - before_star))
+
+	# Once per missile, not once per frame. The cooldown is zeroed so that it is the
+	# per-missile roll being tested and not the launcher being busy.
+	Tuning.set_value("enemy/blocker_cooldown_seconds", 0.0)
+	var after_star := int(flare_count.call())
+	for _i in 60:
+		enemy._tick_blockers(step)
+	_expect(int(flare_count.call()) == after_star,
+		"a missile is answered once, not once per frame",
+		"threw %d more flares over a second" % (int(flare_count.call()) - after_star))
+	Tuning.revert()
+
+	# Out of range is not answered at all.
+	var distant := Node3D.new()
+	world.add_child(distant)
+	distant.add_to_group("player_missile")
+	distant.position = enemy.position \
+		+ Vector3(0.0, 0.0, Tuning.num("enemy/blocker_trigger_range") * 4.0)
+	Tuning.set_value("enemy/blocker_chance", 1.0)
+	var before_far := int(flare_count.call())
+	for _i in 30:
+		enemy._tick_blockers(step)
+	_expect(int(flare_count.call()) == before_far,
+		"a missile beyond blocker_trigger_range is not answered",
+		"answered something %.0f m away" % enemy.position.distance_to(distant.position))
 	Tuning.revert()
 
 	world.free()

@@ -18,7 +18,7 @@ signal detonated(missile: Missile, reason: int, hit: bool)
 
 ## Appended to, never reordered — the headless gate and the arena's outcome text
 ## both compare against these by name, but savegames and logs may not.
-enum EndReason { FUSE_EXPIRED, IMPACT, EARLY_DETONATE, ROCK_IMPACT }
+enum EndReason { FUSE_EXPIRED, IMPACT, EARLY_DETONATE, ROCK_IMPACT, FLARE_INTERCEPT }
 
 var piloted: bool = false
 
@@ -47,6 +47,9 @@ var _rocks: ReferenceField
 
 
 func _ready() -> void:
+	# The enemy answers incoming missiles with flares (ADR 0051), and it finds them
+	# through this group rather than through a registry it would have to maintain.
+	add_to_group("player_missile")
 	_build_body()
 
 
@@ -143,6 +146,15 @@ func _process(delta: float) -> void:
 
 	if _rocks != null and _rocks.hit_test(_previous_position, position) != Vector3.INF:
 		_finish(EndReason.ROCK_IMPACT, false)
+		return
+
+	# A flare is a physical wall, not a die roll: the counter to it is flying around
+	# it, which is something the player can see and learn. No splash — a missile
+	# killed short of the target is killed, not detonated where it happened to die.
+	var flare := Flare.intercept(get_tree(), _previous_position, position, Flare.Side.PLAYER)
+	if flare != null:
+		flare.consume()
+		_finish(EndReason.FLARE_INTERCEPT, false)
 		return
 
 	_fuse_left -= delta

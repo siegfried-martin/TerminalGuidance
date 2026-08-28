@@ -3,8 +3,11 @@ extends Node3D
 ## The enemy target: a gray-box hull with destructible components bolted to it.
 ##
 ## It still drifts in a straight line and turns at the edge of its patrol box, and
-## it still does not shoot — blockers, return fire and the interrupt are POC steps
-## 7 and 8, not this one.
+## it still does not shoot — return fire and the interrupt are POC step 8. What it
+## *does* do now is answer an incoming missile with a star of flares, on a roll of
+## `enemy/blocker_chance` (ADR 0051). That is the first thing in the game that
+## reacts to the player, and it passes the target-experience guard because the
+## player chose to fire and the counter is a visible answer to their own action.
 ##
 ## What is new is the components (ADR 0042). Each one carries a pool of hit points
 ## and every weapon spends a damage number against it; it darkens as the pool
@@ -39,6 +42,12 @@ var _patrol_half_extent: float = 0.0
 var _parts: Node3D
 var _components: Node3D
 var _hull_material: StandardMaterial3D
+
+## Countermeasures. The roll happens ONCE per incoming missile, not once per frame
+## — at 60 fps a per-frame roll of 0.5 fires on the first frame every time, and the
+## tuned chance would mean nothing at all.
+var _blocker_cooldown: float = 0.0
+var _rolled_for: Dictionary = {}
 
 ## Component state, parallel arrays indexed together. Offsets are in the ship's own
 ## frame, so the spin and the drift both come for free.
@@ -249,6 +258,7 @@ func _process(delta: float) -> void:
 		_drift_direction = _drift_direction.normalized()
 	rotate_y(deg_to_rad(Tuning.num("enemy/spin_deg_per_sec")) * delta)
 	_tick_respawns(delta)
+	_tick_blockers(delta)
 
 
 ## Destroyed components come back after a delay so a practice run does not run out
@@ -265,6 +275,65 @@ func _tick_respawns(delta: float) -> void:
 			_component_damage[i] = 0.0
 			_component_meshes[i].visible = true
 			_apply_component_shade(i)
+
+
+## Answer an approaching missile with a star of flares, once, on a roll.
+##
+## "Approaching" is a range test, not a closing-velocity test: the player fires from
+## standoff and everything they fire is coming at this ship, so the interesting
+## question is when the answer is thrown, not whether it is warranted. That is
+## `enemy/blocker_trigger_range`, and it is the whole difficulty of the mechanic —
+## thrown too early the flares have dispersed, too late and there is no room to fly
+## around them.
+##
+## Set `enemy/blocker_chance` to 0 to take this layer out of a test run entirely.
+func _tick_blockers(delta: float) -> void:
+	_blocker_cooldown = maxf(_blocker_cooldown - delta, 0.0)
+	if not is_inside_tree():
+		return
+	var trigger_range := Tuning.num("enemy/blocker_trigger_range")
+	for node in get_tree().get_nodes_in_group("player_missile"):
+		var threat := node as Node3D
+		if threat == null or not is_instance_valid(threat):
+			continue
+		var id := threat.get_instance_id()
+		if _rolled_for.has(id) or position.distance_to(threat.position) > trigger_range:
+			continue
+		# Rolled for even when the launcher is still cooling: one answer per
+		# missile, whether or not this ship was in a position to give it.
+		_rolled_for[id] = true
+		if _blocker_cooldown > 0.0:
+			continue
+		if not rolls_a_blocker(Tuning.num("enemy/blocker_chance")):
+			continue
+		deploy_blocker(threat.position - position)
+	_prune_rolls()
+
+
+## Throw the star. Public so the headless gate can ask for one without having to
+## win a coin toss.
+func deploy_blocker(towards: Vector3) -> Array[Flare]:
+	_blocker_cooldown = Tuning.num("enemy/blocker_cooldown_seconds")
+	return Flare.burst(get_parent_node_3d(), position, towards, Flare.Side.ENEMY,
+		Tuning.integer("enemy/blocker_flare_count"))
+
+
+## One roll, isolated so the gate can check the tuned chance over many trials
+## without simulating a missile for each one.
+static func rolls_a_blocker(chance: float) -> bool:
+	return randf() < clampf(chance, 0.0, 1.0)
+
+
+## Missiles that have been answered but no longer exist. Left alone the dictionary
+## would grow for the whole session — small, but it is a leak with a name.
+func _prune_rolls() -> void:
+	for id: int in _rolled_for.keys():
+		if not is_instance_id_valid(id):
+			_rolled_for.erase(id)
+
+
+func blocker_cooldown_remaining() -> float:
+	return _blocker_cooldown
 
 
 func set_drift_direction(direction: Vector3) -> void:

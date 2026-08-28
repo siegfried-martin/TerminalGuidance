@@ -31,8 +31,11 @@ extends Node3D
 ##   detonates the one in the air. One at a time, which is what makes that second
 ##   click a decision rather than a spam button.
 ##
-## Blockers are stage 4 of docs/TURRET_MODE_IMPLEMENTATION.md and are deliberately
-## absent rather than stubbed; a loadout slot holding one simply does nothing yet.
+## - **Blockers** — clicked, on a cooldown rather than a magazine. They throw a star
+##   of flares, and anything of the other side that touches one dies (ADR 0051).
+##
+## All four are live. What is not here is the missile cooldown and the enemy's own
+## guided missile — stages 5 and 6 of docs/TURRET_MODE_IMPLEMENTATION.md.
 ##
 ## Every shot — travelling or hitscan — resolves through `Shot`, so a rock between
 ## the gun and the target stops it and a component mounted proud of the hull is
@@ -79,6 +82,11 @@ var _rounds_fired: int = 0
 var _unguided_left: int = 0
 var _unguided_reload: float = 0.0
 var _unguided_in_flight: Projectile
+
+## Blockers are rationed by a cooldown rather than a magazine: a countermeasure you
+## can run out of permanently is a trap, and one you can spam is not a decision.
+var _blocker_cooldown: float = 0.0
+var _flares_thrown: int = 0
 
 ## Last frame's trigger states, so a click can be told from a hold without
 ## `Input.is_action_just_pressed`. That call is keyed to the engine's frame
@@ -246,6 +254,7 @@ func firing_direction() -> Vector3:
 func _run_weapons(delta: float) -> void:
 	_autocannon_cooldown = maxf(_autocannon_cooldown - delta, 0.0)
 	_overheat_left = maxf(_overheat_left - delta, 0.0)
+	_blocker_cooldown = maxf(_blocker_cooldown - delta, 0.0)
 	_tick_reload(delta)
 
 	var requested := requested_weapons()
@@ -253,6 +262,8 @@ func _run_weapons(delta: float) -> void:
 		_fire_autocannon()
 	if requested.has(Weapon.UNGUIDED):
 		_fire_unguided()
+	if requested.has(Weapon.BLOCKER):
+		_fire_blocker()
 
 	# The beam is the only weapon whose *not* firing is a state change, because
 	# that is when it cools. Everything else simply does nothing.
@@ -328,6 +339,18 @@ func _fire_unguided() -> void:
 		return
 	_unguided_left -= 1
 	_unguided_in_flight = _spawn_round("turret/unguided")
+
+
+## A star of flares, thrown along the aim. Aim it at what is coming, not at what
+## you are shooting: the ring is perpendicular to the axis it is given, so it is a
+## wall across that direction rather than a cone down it (see `Flare.burst`).
+func _fire_blocker() -> void:
+	if _blocker_cooldown > 0.0 or _world == null:
+		return
+	_blocker_cooldown = Tuning.num("turret/blocker_cooldown_seconds")
+	var count := Tuning.integer("turret/blocker_flare_count")
+	Flare.burst(_world, muzzle_position(), aim_local(), Flare.Side.PLAYER, count)
+	_flares_thrown += count
 
 
 func _fire_autocannon() -> void:
@@ -437,6 +460,19 @@ func autocannon_cooldown_remaining() -> float:
 ## HUD; the autocannon has unlimited ammo by specification.
 func rounds_fired() -> int:
 	return _rounds_fired
+
+
+func blocker_ready() -> bool:
+	return _blocker_cooldown <= 0.0
+
+
+func blocker_cooldown_remaining() -> float:
+	return _blocker_cooldown
+
+
+## Flares this station has thrown. A readout for the gate and the HUD.
+func flares_thrown() -> int:
+	return _flares_thrown
 
 
 ## Unguided missiles left in the magazine.

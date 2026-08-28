@@ -56,6 +56,11 @@ func launch(from: Vector3, direction: Vector3, prefix: String,
 	position = from
 	_previous_position = from
 	basis = FlightGeometry.basis_from_forward(_direction)
+	# A round with a warhead is a missile as far as countermeasures are concerned,
+	# and a solid round is not. That is why the group is joined here rather than in
+	# `_ready` — which weapon this is only becomes known at launch.
+	if blast_radius > 0.0:
+		add_to_group("player_missile")
 	_build_body()
 
 
@@ -112,6 +117,18 @@ func _process(delta: float) -> void:
 	_previous_position = position
 	position += _direction * step
 	_range_left -= step
+
+	# Flares first: a countermeasure that only worked when nothing else was in the
+	# way would be no countermeasure at all. A round killed by one does not go off —
+	# stopping it short is the entire point of throwing it.
+	if blast_radius > 0.0:
+		var flare := Flare.intercept(
+			get_tree(), _previous_position, position, Flare.Side.PLAYER)
+		if flare != null:
+			flare.consume()
+			blast_radius = 0.0
+			_finish(Shot.Kind.NOTHING, position)
+			return
 
 	var result := Shot.resolve(_previous_position, position, _target, _rocks)
 	if Shot.stops_a_shot(result):
