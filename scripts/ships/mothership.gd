@@ -36,6 +36,9 @@ var _last_standoff: float = -1.0
 ## the ship's W and the missile's.
 var _throttle: float = 0.0
 var _reticle := ReticleSteering.new()
+## Seconds until the launch tube can put another missile out. The tube belongs to
+## the ship, not to the arena that happens to be wiring it up.
+var _missile_cooldown: float = 0.0
 
 
 func _ready() -> void:
@@ -81,6 +84,10 @@ func _apply_tuning() -> void:
 func _process(delta: float) -> void:
 	if delta <= 0.0:
 		return
+	# The tube reloads regardless of who is flying, or whether anyone is: the
+	# cooldown is the rhythm of the whole loop and it must not depend on which
+	# station the player happens to be standing at.
+	_missile_cooldown = maxf(_missile_cooldown - delta, 0.0)
 	if autopilot:
 		_fly_autopilot(delta)
 	elif piloted:
@@ -197,6 +204,40 @@ func _fly_manual(delta: float) -> void:
 	_velocity = (-basis.z * (_throttle * manual_max_speed()) + basis.x * strafe) \
 		.limit_length(manual_max_speed())
 	position += _velocity * delta
+
+
+# --- the launch tube ---------------------------------------------------------
+
+## Can another missile be launched?
+##
+## This is POC step 6's other half and the reason success criterion 2 is
+## answerable at all: "after 30 minutes the developer is still choosing to fire,
+## and never feels stuck waiting". Without a cooldown there is no between-missiles
+## to have an opinion about, and the turret has nothing to be an answer to.
+func missile_ready() -> bool:
+	return _missile_cooldown <= 0.0
+
+
+func missile_cooldown_remaining() -> float:
+	return _missile_cooldown
+
+
+## 0 to 1, how far through the reload the tube is. What the overlay draws.
+func missile_charge() -> float:
+	var total := Tuning.num("ship/missile_cooldown_seconds")
+	if total <= 0.0:
+		return 1.0
+	return clampf(1.0 - _missile_cooldown / total, 0.0, 1.0)
+
+
+## Start the clock. Called at LAUNCH, not at detonation, and that is a design
+## choice rather than an implementation convenience: it means a second spent in the
+## missile is a second off the gun, which is the trade `PROJECT_OVERVIEW.md` names
+## as the loop's opportunity cost. Ending a ride early buys turret time; riding the
+## fuse out spends it. Starting the clock at detonation would invert that and make
+## a long ride free.
+func note_missile_launched() -> void:
+	_missile_cooldown = maxf(Tuning.num("ship/missile_cooldown_seconds"), 0.0)
 
 
 ## Hand the ship between the autopilot and the player. Returns the mode now in

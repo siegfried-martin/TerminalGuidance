@@ -31,11 +31,12 @@ missiles*, and there is still nothing to *do* in the between. `PROJECT_OVERVIEW.
 §Sequencing is blunt about it: "the loop under test is missile *and* turret, not
 missile alone."
 
-Stages 1 to 4 of `docs/TURRET_MODE_IMPLEMENTATION.md` landed on 2026-08-27: `G`
+Stages 1 to 5 of `docs/TURRET_MODE_IMPLEMENTATION.md` landed on 2026-08-27: `G`
 mans the guns, the aim and the camera work, the loadouts switch, **all four weapons
-fire**, and both sides throw flares. What is still missing for criterion 2 is the
-*rhythm* — **the 10 s missile cooldown**, which is what makes "am I ever stuck
-waiting?" a question with an answer.
+fire**, both sides throw flares, and **the launch tube has its 10 s cooldown**.
+
+**POC step 6 is complete, and criterion 2 is now testable.** What remains before the
+verdict session is the interrupt (step 8) and then death and respawn (step 9).
 
 So the POC is half-verdicted. The half that passed is the half the doc predicted
 would pass.
@@ -55,12 +56,12 @@ would pass.
 | Gray-box arena: 7³ marker lattice via one MultiMesh, rebuilt on reload | working |
 | Debug fly-cam (RMB look, WASD/QE, Shift boost) | working |
 | Asset pipeline: `.obj` model + `.png` texture, generated → imported → rendered | working |
-| `make check`: 597 headless assertions, exit code gated | working |
+| `make check`: 613 headless assertions, exit code gated | working |
 | Godot-3 API linter over all scripts, data-driven denylist | working |
 | `make shot`: render frames to PNG from the CLI for visual verification | working |
 | `make apiref`: this exact build's 771-class reference for API grounding | working |
 | `DESIGN.md` — distilled thesis, Target Experience verbatim | written |
-| `decisions/` — 51 ADRs, indexed, each with a *What this forbids* section | written |
+| `decisions/` — 52 ADRs, indexed, each with a *What this forbids* section | written |
 | **Combat arena** (`scenes/arena.tscn`, now the main scene) | working |
 | Mothership autopilot: slow arc at standoff, nose on target | working |
 | Dumb target ship: drifts, turns at its patrol bounds | working |
@@ -112,6 +113,8 @@ would pass.
 | A flare is a physical object, not a chance of being fooled (ADR 0051) | working |
 | One flare stops one missile and is spent; the star is exactly what is drawn | working |
 | Shootable sets are Godot groups, so nothing keeps a registry that could rot | working |
+| **The 10 s launch cooldown** — the metronome of the loop (ADR 0052) | working |
+| Reload gauge on the flight overlay, readable from every view without F1 | working |
 
 ### Deliberately not built yet
 
@@ -121,9 +124,9 @@ forward, because adding one early destroys the reading on the one before it:
 - ~~**Step 5**~~ — **done** on 2026-08-27. Splash landed with the unguided
   missile's warhead; the ridden missile's early detonation, fuse expiry and impact
   all go off in a radius through the same falloff (ADR 0004).
-- **Step 6** — all four weapons landed on 2026-08-27. Still missing: **the 10 s
-  missile cooldown**. *That cooldown is the alternation the whole POC exists to
-  test* (success criterion 2), so step 6 is not done until it is in.
+- ~~**Step 6**~~ — **done** on 2026-08-27: the station, all four weapons, and the
+  10 s launch cooldown. *This is the alternation the whole POC exists to test* —
+  success criterion 2 is now a question the build can answer.
 - **Step 7** — half landed: blockers on both sides are in. Still missing: enemy
   return fire and ship HP.
 - **Step 8** — the interrupt, starting at zero and raised carefully.
@@ -131,12 +134,10 @@ forward, because adding one early destroys the reading on the one before it:
 
 ## Next
 
-**Turret mode, stage 5: the missile cooldown.** Stages 1 (the station), 2 (the
-autocannon and the pulse beam), 3 (the unguided missile, its blast, and splash) and
-4 (flares on both sides) are done. The remaining stages are listed in
-`docs/TURRET_MODE_IMPLEMENTATION.md` §Build stages, in order:
+**Turret mode, stage 6: the interrupt.** Stages 1 to 5 are done and **POC step 6 is
+complete**. The remaining stages are listed in
+`docs/TURRET_MODE_IMPLEMENTATION.md` §Build stages:
 
-5. The 10 s missile cooldown — what makes criterion 2 answerable at all.
 6. The interrupt — enemy guided missile, the alert, invulnerable by default.
 7. Docs.
 
@@ -277,6 +278,12 @@ They are the knobs most likely to be wrong.
   the 203 m standoff. **That gap is the whole design of the two weapons**: the
   cannon works from where the autopilot parks you, the beam is a reason to close.
   If closing never feels worth it, the beam's damage or the cannon's is wrong.
+- **`ship/missile_cooldown_seconds` 10 against a fuse of 6.** *The* number of this
+  build. Below the fuse it does nothing — the tube is always ready by the time a
+  long ride lands. At 10 a full-fuse ride leaves about four seconds at the gun and a
+  quick detonation about nine, and that gap is the mechanic. Watch for the two
+  failure modes named in the criterion: bored at the gun (too long) and never
+  reaching the gun at all (too short).
 - **`enemy/blocker_trigger_range` 120 m against a 203 m standoff and a flare that
   lives 4 s and spreads at 26 m/s.** *When* the wall goes up is the whole difficulty
   of the mechanic: thrown early the flares have dispersed by the time the missile
@@ -306,6 +313,17 @@ They are the knobs most likely to be wrong.
   lockout.** About 2.4 seconds of beam, then a wait. Whether that reads as a rhythm
   or as an interruption is the question; it is the only weapon with a limiter the
   player has to think about at all until the missile cooldown lands.
+
+### Decided 2026-08-27 (from building the launch cooldown)
+
+- **The tube's clock starts at launch, not at detonation** (ADR 0052). This is what
+  makes "every second in the missile is a second off the gun" literally true:
+  detonate early and you buy turret time, ride the fuse out and you spend it.
+  Starting at detonation would make a long ride free, deleting the price on a
+  decision ADR 0002 makes the difficulty dial.
+- **The reload gauge lives on the flight overlay, not in the debug HUD.** Criterion
+  2 is a question about that bar, and it is not answerable if reading it requires
+  F1. It is drawn in every view — helm, guns, and inside a missile.
 
 ### Decided 2026-08-27 (from building the blockers)
 

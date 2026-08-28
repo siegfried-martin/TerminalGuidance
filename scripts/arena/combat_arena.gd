@@ -26,9 +26,12 @@ extends Node3D
 ## Half of step 7 is in too: the target answers an incoming missile with a star of
 ## flares, on a roll of `enemy/blocker_chance` (ADR 0051).
 ##
-## Deliberately absent, in build order: the missile cooldown (step 6); enemy return
-## fire and ship HP (step 7); the interrupt (step 8); death, respawn and the PiP
-## toggle (step 9).
+## Step 6 is complete: the launch tube has its cooldown, which is what makes
+## success criterion 2 — "still choosing to fire, never stuck waiting" — a question
+## with an answer at all.
+##
+## Deliberately absent, in build order: enemy return fire and ship HP (step 7); the
+## interrupt (step 8); death, respawn and the PiP toggle (step 9).
 ## Do not add them here ahead of their step — each one has a feel checkpoint
 ## attached to it and adding it early destroys the reading.
 ##
@@ -159,6 +162,7 @@ func _build_views() -> void:
 	_overlay.target = _target
 	_overlay.missile_provider = func() -> Missile: return _views.piloted_missile()
 	_overlay.turret_provider = func() -> Turret: return _turret
+	_overlay.ship = _ship
 	var overlay_layer := CanvasLayer.new()
 	overlay_layer.name = "OverlayLayer"
 	overlay_layer.layer = 90   # under the debug HUD, which is 100
@@ -220,6 +224,12 @@ func _build_hud() -> void:
 	_hud.add_row("gun aim", func() -> String:
 		return "%+.0f deg bearing  ·  %+.0f deg elevation" % [
 			_turret.azimuth_degrees(), _turret.elevation_degrees()])
+	_hud.add_row("tube", func() -> String:
+		if _ship.missile_ready():
+			return "READY"
+		return "reloading — %.1f s of %.0f" % [
+			_ship.missile_cooldown_remaining(),
+			Tuning.num("ship/missile_cooldown_seconds")])
 	_hud.add_row("blockers", func() -> String:
 		var mine := "ready" if _turret.blocker_ready() \
 			else "%.1f s" % _turret.blocker_cooldown_remaining()
@@ -337,10 +347,15 @@ func _unhandled_input(event: InputEvent) -> void:
 		_views.refresh_mouse_mode()
 
 
-## Launch along the ship's current heading and ride it. One missile at a time —
-## that falls out of riding, and is not a cooldown. Cooldown is step 6.
+## Launch along the ship's current heading and ride it.
+##
+## Refused for three reasons, and they are different reasons: one missile is ridden
+## at a time (which falls out of riding), a missile is launched from the helm and
+## not from the guns (ADR 0048), and the tube has a cooldown (`Mothership`).
 func fire() -> Missile:
 	if _views.piloted_missile() != null:
+		return null
+	if not _ship.missile_ready():
 		return null
 	# A missile is launched from the helm. There is no turret-to-missile edge in
 	# the state machine, and the gate lives here rather than in the input handler
@@ -355,6 +370,7 @@ func fire() -> Missile:
 		_target, _target.radius, _rocks)
 	missile.detonated.connect(_on_missile_detonated)
 
+	_ship.note_missile_launched()
 	_shots += 1
 	_views.enter_missile_view(missile)
 	return missile
