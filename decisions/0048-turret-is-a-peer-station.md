@@ -1,6 +1,14 @@
 # ADR 0048 — The gun station is a peer of the helm, and its aim is 1:1 in the arena frame
 
-*Status: accepted · 2026-08-27 · from building stage 1 of `docs/TURRET_MODE_IMPLEMENTATION.md`*
+*Status: accepted, the helm-only launch clause superseded by ADR 0056 · 2026-08-27 · from building stage 1 of `docs/TURRET_MODE_IMPLEMENTATION.md`*
+
+> **Superseded in part by ADR 0056.** Point 2 below — no TURRET → MISSILE edge —
+> is reversed: `Q` launches from either station. The sequential-attention reasoning
+> does not survive the crew roster, because launching moves the player *into* the
+> missile in the same frame, and a helm-only launch would force the gunner to take
+> the helm first and drop the autopilot every time they wanted to fire. Everything
+> else here — the station as a peer of the helm, the aim in the arena frame, the
+> 1:1 mouse, the levelled boom — stands.
 
 ## Decision
 

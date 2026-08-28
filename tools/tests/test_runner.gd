@@ -30,7 +30,8 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"ship/arc_speed", "ship/standoff_distance", "ship/muzzle_offset", "ship/hull_scale",
 	"ship/range_hold_seconds", "ship/range_hold_max_speed",
 	"ship/hull_tint", "ship/metallic", "ship/roughness",
-	"ship/autopilot_on_start", "ship/manual_accel_seconds", "ship/manual_brake_seconds",
+	"ship/start_role", "ship/arc_depth",
+	"ship/manual_accel_seconds", "ship/manual_brake_seconds",
 	"ship/manual_max_speed", "ship/manual_speed_ceiling_fraction",
 	"ship/manual_turn_rate_deg_per_sec", "ship/manual_reticle_max_angle_deg",
 	"ship/autopilot_turn_rate_deg_per_sec",
@@ -123,10 +124,11 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 ]
 
 const REQUIRED_ACTIONS: Array[String] = [
-	"fire", "detonate", "boost", "brake", "dodge_left", "dodge_right",
+	"fire_missile", "detonate", "boost", "brake", "dodge_left", "dodge_right",
 	"aim_left", "aim_right", "aim_up", "aim_down",
-	"throttle_up", "throttle_down", "strafe_left", "strafe_right", "toggle_autopilot",
-	"turret_mode", "fire_primary", "fire_secondary", "loadout_1", "loadout_2",
+	"throttle_up", "throttle_down", "strafe_left", "strafe_right",
+	"role_pilot", "role_gunner",
+	"fire_primary", "fire_secondary", "loadout_1", "loadout_2",
 	"cam_forward", "cam_back", "cam_left", "cam_right", "cam_up", "cam_down",
 	"cam_boost", "cam_look",
 	"debug_toggle_hud", "debug_toggle_panel", "debug_reload_tuning",
@@ -518,6 +520,10 @@ func _test_autopilot_holds_standoff() -> void:
 	add_child(ship)
 	ship.set_process(false)   # stepped by hand below
 	ship.target = target
+	# Explicitly, rather than relying on `ship/start_role`: this test is about the
+	# autopilot, and it should not start passing or failing because the tuned
+	# starting job changed (ADR 0056).
+	ship.set_autopilot(true)
 	ship.position = Vector3(0.0, 0.0, 1.0)   # a bearing to snap along, as the arena does
 	ship.snap_to_standoff()
 
@@ -526,20 +532,33 @@ func _test_autopilot_holds_standoff() -> void:
 		"snap_to_standoff lands exactly on the tuned distance",
 		"%.1f m vs %.1f m" % [ship.range_to_target(), standoff])
 
+	# The station is under the target, so the turret has a line over its own hull
+	# (ADR 0056). Standoff still means SLANT range, so the assertion above is
+	# unchanged by it — the depth only decides where on that sphere the ship sits.
+	var depth := Tuning.num("ship/arc_depth")
+	_expect(absf(ship.depth_below_target() - depth) < 0.01,
+		"…on the arc plane below the target, not level with it",
+		"%.1f m below, tuned %.1f" % [ship.depth_below_target(), depth])
+
 	var step := 1.0 / 60.0
 	var drift := Tuning.num("enemy/drift_speed")
 	var worst := 0.0
+	var worst_depth := 0.0
 	for i in 1800:   # 30 simulated seconds
 		target.position += Vector3(1.0, 0.0, 0.3).normalized() * drift * step
 		ship._process(step)
 		if i > 240:   # let it settle first
 			worst = maxf(worst, absf(ship.range_to_target() - standoff))
+			worst_depth = maxf(worst_depth, absf(ship.depth_below_target() - depth))
 
 	# Steady-state error is bounded by drift * range_hold_seconds; allow headroom.
 	var allowed := drift * Tuning.num("ship/range_hold_seconds") * 2.5
 	_expect(worst <= allowed,
 		"autopilot holds standoff against a drifting target over 30 s",
 		"drifted %.1f m off, budget is %.1f m" % [worst, allowed])
+	_expect(worst_depth <= allowed,
+		"…and holds the arc plane under it just as well",
+		"drifted %.1f m off the plane, budget is %.1f m" % [worst_depth, allowed])
 
 	# And a standoff edit must be visible at once, not converged towards.
 	ship.position = target.position + Vector3(0.0, 0.0, standoff * 3.0)
@@ -673,8 +692,10 @@ func _test_manual_flight() -> void:
 	ship.position = Vector3(0.0, 0.0, 1.0)
 	ship.snap_to_standoff()
 
-	_expect(ship.autopilot == Tuning.flag("ship/autopilot_on_start"),
-		"the ship starts in the tuned mode", "started in %s" % ship.mode_name())
+	_expect(ship.autopilot == (Tuning.text("ship/start_role") == "gunner"),
+		"the ship starts in the mode its tuned crew role implies",
+		"start_role is %s but the ship is on %s" % [
+			Tuning.text("ship/start_role"), ship.mode_name()])
 
 	# The speed hierarchy is structural, not advisory (CLAUDE.md): whatever the
 	# ship's own top speed says, it may not reach a missile's.
@@ -2087,42 +2108,62 @@ func _test_arena_builds() -> void:
 	_expect(ship != null and ship.target != null,
 		"autopilot has a commanded target", "target not assigned")
 
-	# The guns are a peer of the helm, not a sub-state of it, and a missile is
-	# launched from the helm only — taking a turret-to-missile edge would put the
-	# player on two things at once for the frame it takes to leave.
+	# The crew roster (ADR 0056): the player holds one job, T and G select it, and
+	# the autopilot is a consequence of not being the pilot rather than a mode.
 	var station := arena.call("turret") as Turret
 	_expect(station != null and not station.active,
-		"the station starts unmanned", "manned before anyone went there")
-	if views != null and station != null:
-		_expect(views.toggle_turret(), "G mans the guns", "refused")
-		_expect(views.view_name() == "TURRET", "manning the guns enters turret view",
+		"the station starts unmanned when the player is the pilot",
+		"manned before anyone went there")
+	if views != null and station != null and ship != null:
+		_expect(views.set_role(ViewController.Role.GUNNER), "G takes the guns", "refused")
+		_expect(views.view_name() == "TURRET", "…and that is the turret view",
 			"view=%s" % views.view_name())
-		_expect(station.active, "…and the station starts taking input", "still unmanned")
-		_expect(ship != null and not ship.piloted,
-			"the helm stops reading input while the guns are manned", "ship still piloted")
-		_expect(arena.call("fire") == null,
-			"a missile cannot be launched from the turret", "launched one anyway")
-		_expect(int(arena.call("shots_fired")) == 0, "…and no shot was counted",
-			"shots=%d" % int(arena.call("shots_fired")))
-		views.toggle_turret()
-		_expect(views.view_name() == "SHIP", "G goes back to the helm",
+		_expect(station.active, "…the station starts taking input", "still unmanned")
+		_expect(ship.autopilot,
+			"…and the autopilot takes the ship, because nobody is flying it",
+			"the ship is unattended and not on autopilot")
+		_expect(not ship.piloted,
+			"…while the helm stops reading input", "ship still piloted")
+
+		# Selections, not toggles: pressing the job you already hold is a no-op,
+		# so a player who has lost track can press what they want and be right.
+		views.set_role(ViewController.Role.GUNNER)
+		_expect(views.view_name() == "TURRET" and ship.autopilot,
+			"G again keeps the guns rather than toggling back",
 			"view=%s" % views.view_name())
-		_expect(not station.active, "leaving the guns unmans the station", "still manned")
+
+		# A missile launches from either station now (ADR 0056 supersedes ADR
+		# 0048's helm-only clause): a helm-only launch would drop the autopilot
+		# every time the gunner wanted to fire.
+		var from_guns := arena.call("fire") as Missile
+		_expect(from_guns != null, "Q launches a missile from the guns", "refused")
+		_expect(views.view_name() == "MISSILE", "…and the ride starts",
+			"view=%s" % views.view_name())
+		_expect(not views.set_role(ViewController.Role.PILOT),
+			"a job cannot be changed mid-ride — the player is at neither station",
+			"changed jobs while in a missile")
+		arena.call("detonate_current")
+
+		views.set_role(ViewController.Role.PILOT)
+		_expect(views.view_name() == "SHIP", "T takes the helm",
+			"view=%s" % views.view_name())
+		_expect(not ship.autopilot,
+			"…and the autopilot hands over, because the player is flying now",
+			"still on autopilot at the helm")
+		_expect(not station.active, "…leaving the guns unmanned", "still manned")
+		Tuning.set_value("ship/missile_cooldown_seconds", 0.0)
+		ship.note_missile_launched()
+		Tuning.revert()
 
 	var missile := arena.call("fire") as Missile
 	_expect(missile != null, "fire() launches a missile", "returned null")
-	_expect(int(arena.call("shots_fired")) == 1, "fire() counts the shot",
+	_expect(int(arena.call("shots_fired")) == 2, "fire() counts the shot",
 		"shots=%d" % int(arena.call("shots_fired")))
 	if views != null:
 		_expect(views.view_name() == "MISSILE", "firing enters missile view",
 			"view=%s" % views.view_name())
 	_expect(arena.call("fire") == null,
 		"a second fire() is refused while riding", "launched two piloted missiles")
-	if views != null:
-		_expect(not views.enter_turret_view(),
-			"the guns cannot be manned while riding a missile", "took both stations at once")
-		_expect(views.view_name() == "MISSILE", "…and the view did not change",
-			"view=%s" % views.view_name())
 
 	_expect(arena.has_node("OverlayLayer/FlightOverlay"),
 		"arena builds the flight overlay", "reticle and target indicator missing")

@@ -222,9 +222,13 @@ func _build_hud() -> void:
 	_hud.add_row("rocks", func() -> String:
 		return "%d rocks · %d lobes · %d hittable" % [
 			_rocks.rock_count(), _rocks.lobe_count(), _rocks.hittable_count()])
+	_hud.add_row("job", func() -> String:
+		return "%s  ·  %s has the ship" % [
+			_views.role_name(), "autopilot" if _ship.autopilot else "you"])
 	_hud.add_row("flight", func() -> String:
 		if _ship.autopilot:
-			return "AUTOPILOT  ·  %.0f m/s" % _ship.speed()
+			return "AUTOPILOT  ·  %.0f m/s  ·  %.0f m under the target" % [
+				_ship.speed(), _ship.depth_below_target()]
 		return "MANUAL  ·  throttle %3.0f%%  ·  %.0f m/s of %.0f" % [
 			_ship.throttle() * 100.0, _ship.speed(), _ship.manual_max_speed()])
 	_hud.add_row("turret", func() -> String:
@@ -292,18 +296,17 @@ func _build_hud() -> void:
 		var missile := _views.piloted_missile()
 		return "—" if missile == null else "%.0f deg" % missile.aim_offset_degrees())
 	_hud.add_row("standoff", func() -> String:
-		return "%.0f m held / %.0f m tuned" % [
-			_ship.range_to_target(), Tuning.num("ship/standoff_distance")])
+		return "%.0f m held / %.0f m tuned  ·  %.0f m deep / %.0f tuned" % [
+			_ship.range_to_target(), Tuning.num("ship/standoff_distance"),
+			_ship.depth_below_target(), Tuning.num("ship/arc_depth")])
 	_hud.add_row("last", func() -> String: return _last_outcome)
 	_hud.add_row("keys", func() -> String:
 		match _views.view():
 			ViewController.View.MISSILE:
-				return "W boost · S brake · A/D dodge · mouse/stick aims · Space/LMB detonate · F1 hud · F2 tune"
+				return "W boost · S brake · A/D dodge · mouse aims · Space/LMB detonate · F1 hud · F2 tune"
 			ViewController.View.TURRET:
-				return "mouse/stick aims · LMB/RMB fire · 1/2 loadout · G back to the helm · F1 hud · F2 tune"
-		if _ship.autopilot:
-			return "LMB/Space fire · G man the guns · T fly manually · R reverse arc · F1 hud · F2 tune · F5 reload"
-		return "W/S throttle · A/D thrusters · mouse steers · LMB/Space fire · G guns · T autopilot · F1 hud · F2 tune")
+				return "mouse aims · LMB/RMB fire · 1/2 loadout · Q missile · T take the helm · F1 hud · F2 tune"
+		return "W/S throttle · A/D thrusters · mouse steers · Q missile · G take the guns · R reverse arc · F1 hud · F2 tune")
 
 
 func _apply_tuning() -> void:
@@ -332,22 +335,18 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_tree().quit()
 		return
 
-	# The same button fires, detonates and shoots; which one it means depends on
-	# the view. Riding a missile, the only thing left to decide is when it ends.
-	# A missile is launched from the helm only — there is no turret-to-missile
-	# edge in the state machine, because taking it would put the player on two
-	# things at once for the frame it takes to leave.
-	match _views.view():
-		ViewController.View.MISSILE:
-			if event.is_action_pressed("detonate"):
-				detonate_current()
-		ViewController.View.SHIP:
-			if event.is_action_pressed("fire"):
-				fire()
-		ViewController.View.TURRET:
-			# The guns are held rather than clicked, so they are polled in the
-			# turret's own `_process` — there is nothing to do on the event.
-			pass
+	# Q launches, and nothing else does. It used to share a button with detonate,
+	# which meant one key meant two things depending on where you were standing;
+	# now launching has a key of its own and Space/LMB only ever ends a ride. Q
+	# works from EITHER station (ADR 0056 supersedes ADR 0048's helm-only clause) —
+	# see `fire()` for why that does not break sequential attention.
+	if _views.view() == ViewController.View.MISSILE:
+		if event.is_action_pressed("detonate"):
+			detonate_current()
+	elif event.is_action_pressed("fire_missile"):
+		fire()
+	# The turret's own weapons are held rather than clicked, so they are polled in
+	# its `_process` and there is nothing to do for them on the event.
 
 	if event.is_action_pressed("quit"):
 		get_tree().quit()
@@ -358,33 +357,34 @@ func _unhandled_input(event: InputEvent) -> void:
 		Tuning.reload()
 	elif event.is_action_pressed("debug_reverse_arc"):
 		_ship.reverse_arc()
-	elif event.is_action_pressed("turret_mode"):
-		_views.toggle_turret()
 	elif event.is_action_pressed("loadout_1"):
 		_turret.set_loadout(1)
 	elif event.is_action_pressed("loadout_2"):
 		_turret.set_loadout(2)
-	elif event.is_action_pressed("toggle_autopilot"):
-		_ship.set_autopilot(not _ship.autopilot)
-		# Manual flight steers with the mouse, so handing the ship over changes who
-		# owns the pointer. Nothing else can change that without a view change.
-		_views.refresh_mouse_mode()
+	# T and G pick a job rather than toggling anything (ADR 0056). The autopilot
+	# follows from the choice, so there is no separate key for it any more.
+	elif event.is_action_pressed("role_pilot"):
+		_views.set_role(ViewController.Role.PILOT)
+	elif event.is_action_pressed("role_gunner"):
+		_views.set_role(ViewController.Role.GUNNER)
 
 
 ## Launch along the ship's current heading and ride it.
 ##
-## Refused for three reasons, and they are different reasons: one missile is ridden
-## at a time (which falls out of riding), a missile is launched from the helm and
-## not from the guns (ADR 0048), and the tube has a cooldown (`Mothership`).
+## Fired from **either** station. ADR 0048 originally allowed it only from the helm,
+## on sequential-attention grounds; under the crew roster that reasoning no longer
+## holds and the rule became actively wrong. Launching moves the player *into* the
+## missile in the same frame, so they are never on two things at once — and with the
+## autopilot bound to the roster (ADR 0056), a helm-only launch would force the
+## gunner to take the helm first, dropping the autopilot every single time they
+## wanted to fire. The ride ends back at whichever station they left.
+##
+## Refused for two reasons, and they are different ones: only one missile is ridden
+## at a time (which falls out of riding), and the tube has a cooldown (`Mothership`).
 func fire() -> Missile:
 	if _views.piloted_missile() != null:
 		return null
 	if not _ship.missile_ready():
-		return null
-	# A missile is launched from the helm. There is no turret-to-missile edge in
-	# the state machine, and the gate lives here rather than in the input handler
-	# so it holds however fire() is reached — including from the headless gate.
-	if _views.view() == ViewController.View.TURRET:
 		return null
 
 	var missile := Missile.new()

@@ -1,6 +1,12 @@
 # ADR 0040 — Manual ship flight lands; the autopilot becomes a mode the player leaves
 
-*Status: accepted · 2026-08-26 · the human lifting their own scope deferral, not a design reversal*
+*Status: accepted, the autopilot toggle superseded by ADR 0056 · 2026-08-26 · the human lifting their own scope deferral, not a design reversal*
+
+> **Superseded in part by ADR 0056.** `T` no longer toggles the autopilot: it makes
+> the player the **pilot**, and the autopilot is a consequence of not holding that
+> job rather than a mode of its own. Everything else below — the throttle that stays
+> where it is put, the held thrusters, the shared reticle, the speed clamp, and the
+> ship coasting while a missile is ridden — is unchanged and still in force.
 
 ## Decision
 

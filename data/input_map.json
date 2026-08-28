@@ -3,12 +3,14 @@
 
   "_note_wasd": "W/A/S/D mean different things depending on what is being flown, so they are bound to several actions at once and each vehicle polls only its own. Riding a missile: W boost (held), S brake (held), A/D dodge (one press, on a cooldown) — ADR 0039. Flying the ship: W throttle up, S throttle down, both held and both persistent, A/D lateral thrusters — ADR 0040. The two never poll in the same frame because the ship stops reading input the moment a missile is launched. The cam_* actions are the sandbox fly-cam's and the fly-cam only exists in sandbox.tscn.",
 
+  "_note_roles": "T and G pick a JOB, not a toggle (ADR 0056). The player is the pilot or the gunner: T takes the helm and the autopilot hands over, G takes the guns and the autopilot takes the ship back. Pressing the one you already hold does nothing. There is no independent autopilot key any more — the autopilot is a consequence of not being the pilot, not a mode of its own.",
+
   "_note_aim": "aim_* is the reticle, shared by the missile, by manual ship flight and by the gun station. It was called missile_* until manual flight landed.",
 
   "_note_turret": "G mans the guns exactly as T takes the helm, and the two are peers — the player is at one station or the other, never both. fire_primary/fire_secondary are the turret's own triggers rather than a reuse of 'fire', because 'fire' launches a ridden missile and that only happens from the helm; sharing the binding would make one button mean two things in two views. 1 and 2 switch loadout, which is what makes four weapons cost something to reach across two buttons.",
 
   "actions": {
-    "fire":           ["key:Space", "mouse:left", "joyaxis:trigger_right+"],
+    "fire_missile":   ["key:Q", "joybutton:a"],
     "detonate":       ["key:Space", "mouse:left", "key:X", "joybutton:b"],
 
     "aim_left":       ["key:Left",  "joyaxis:right_x-"],
@@ -25,8 +27,8 @@
     "throttle_down":  ["key:S", "joyaxis:trigger_left+"],
     "strafe_left":    ["key:A", "joybutton:lb"],
     "strafe_right":   ["key:D", "joybutton:rb"],
-    "toggle_autopilot": ["key:T", "joybutton:y"],
-    "turret_mode":    ["key:G", "joybutton:x"],
+    "role_pilot":     ["key:T", "joybutton:y"],
+    "role_gunner":    ["key:G", "joybutton:x"],
 
     "fire_primary":   ["mouse:left",  "joyaxis:trigger_right+"],
     "fire_secondary": ["mouse:right", "joyaxis:trigger_left+"],
