@@ -22,7 +22,34 @@ Also endorsed, and now written down:
 - **Ship movement and the autopilot.** Good enough. Better trajectory-locking
   mechanics are wanted eventually; the heading hold is not blocking anything.
 
-### ⏳ Criteria 2 and 3 are now testable — and untested
+### 🟢 Combat reads right — 2026-08-29, first session with the whole loop
+
+> "I think the combat looks right. There are a lot of good mechanics here, and I
+> don't need to incorporate all of them in every fight for every player. This is a
+> good dynamic system and can also let the players have some more agency."
+
+**This is not yet the formal verdict.** Criterion 2 is *"after 30 minutes of
+continuous play"* and criterion 3 is *"a felt difference between an early missile
+and a late one"* — both want the session that step 9 is supposed to frame, and the
+target still cannot die, so a fight has no terminus to play past. What this reading
+does settle is the thing the POC existed to risk: **nothing here says rethink.**
+
+The second sentence is the load-bearing one and it is a design finding, not a
+compliment. The combat system has come out as a *space of configurations* rather
+than one configuration: four weapons over two loadouts, three missile verbs that
+ADR 0047 already tiers as equipment, blockers on both sides, an interrupt with an
+interval. No single fight needs all of it. That is ADR 0018 (difficulty banded by
+faction) and ADR 0025 (difficulty selected through mechanics, never a menu) turning
+out to be *implementable in the tuning file* rather than needing a difficulty
+system built for them.
+
+**The architectural consequence is not yet built:** `tuning.cfg` is one global set
+of values. "Will look different for different factions" means those numbers have to
+become **per-ship and per-faction data**, not globals — the first concrete
+requirement for the equipment layer, and it is not on `ROADMAP.md` yet. Flagged
+here rather than acted on.
+
+### ⏳ Criteria 2 and 3 are not formally read
 
 Criterion 2 is the loop — "after 30 minutes the developer is still choosing to
 fire, and never feels stuck waiting" — and criterion 3 is the ceiling. Both are
@@ -30,7 +57,7 @@ questions about *what happens between missiles*, and until 2026-08-27 there was 
 between. `PROJECT_OVERVIEW.md` §Sequencing: "the loop under test is missile *and*
 turret, not missile alone."
 
-**`docs/TURRET_MODE_IMPLEMENTATION.md` is built.** `G` mans the guns; all four
+**`docs/TURRET_MODE_IMPLEMENTATION.md` is built and has been played.** `G` mans the guns; all four
 weapons fire; both sides throw flares; the launch tube has its 10 s cooldown; and
 the target sends one telegraphed guided missile at the player on a long timer.
 
@@ -149,9 +176,24 @@ forward, because adding one early destroys the reading on the one before it:
 
 ## Next
 
-**Play it.** `docs/TURRET_MODE_IMPLEMENTATION.md` is built and the gate is green;
-what is missing is a human. Criteria 2 and 3 have never been felt, and no number in
-the turret, the blockers or the interrupt has been judged by anyone.
+**Step 9, and make the envelope measure itself.** Combat has been played and reads
+right (above). Two things are left before the combat bet is closed, and they are
+both small:
+
+1. **`ship.max_engagement_envelope` — deferred four times now, and blocking the
+   entire exploration chain.** It should stop being something a human has to
+   remember to eyeball: the arena can *record* the largest distance a fight sprawls
+   across and put it on the HUD. That is building the instrument rather than asking
+   for the observation, and it turns a deferred chore into a number that is simply
+   there at the end of a session.
+2. **POC step 9 — the target can die.** It has never had hull hit points; components
+   strip and respawn and the ship drifts on regardless. That is why criterion 2's
+   *"after 30 minutes"* has no natural shape to it — **a fight with no terminus
+   cannot be played past**, so there is nothing to observe about the loop resetting.
+   Ship damage is one flip of `ship/invulnerable`, already plumbed and tested.
+
+The PiP camera toggle is also step 9, and is the one piece worth questioning: the
+hard cut has been played for a week and nobody has complained about it.
 
 **Read the layers one at a time.** Three build-order checkpoints landed together,
 and the scope doc warns that adding one early destroys the reading on the one
@@ -175,8 +217,20 @@ never see cannot be evaluated.
 observation, not a design act, and the whole exploration numbers chain is blocked on
 it. It has now been deferred three times.
 
-Then **step 9**: target death and respawn, the PiP camera toggle, and the 30-minute
-verdict session.
+**Then the fork, and it is a real one:**
+
+- **The exploration prototype** (`ROADMAP.md` §3) — the second and last bet that can
+  still return *rethink*. Cruise feel, the travel gauntlet, whether an off-route gray
+  blip is worth diverting for. Blocked on the envelope number, which is why item 1
+  above comes first.
+- **Per-ship and per-faction tuning data** — the architectural consequence of
+  2026-08-29's "will look different for different factions". Not on `ROADMAP.md`.
+  It is the first real piece of the equipment layer, and doing it before exploration
+  would mean building the content system before knowing what the content is worth.
+
+The recommendation is exploration first, on `ROADMAP.md`'s own reasoning: it is the
+last thing that can invalidate the design, and the faction data layer is priced off
+travel time like everything else in §5.
 
 **And take the engagement-envelope measurement** — see below. It is an observation,
 not a design act, and the entire exploration numbers chain is blocked on it.
@@ -367,6 +421,29 @@ They are the knobs most likely to be wrong.
   lockout.** About 2.4 seconds of beam, then a wait. Whether that reads as a rhythm
   or as an interruption is the question; it is the only weapon with a limiter the
   player has to think about at all until the missile cooldown lands.
+
+### Feel direction taken 2026-08-29, deliberately not acted on
+
+Both are the human's, and both were explicitly deferred by them — *"those are tweaks
+we can still add and will look different for different factions potentially."*
+Recorded because feel direction is expensive to re-derive and cheap to lose.
+
+1. **Player blockers should be faster, so they can be *shot at* an incoming
+   missile.** The intent named is skill: a flare star aimed and led like a weapon,
+   rather than a wall dropped in front of you. `flare/launch_speed` (15 m/s) is the
+   knob, and it is already relative to the ship (ADR 0055) so raising it is a clean
+   change. Worth checking `flare/spread_speed` at the same time — a star thrown as a
+   projectile probably wants to stay tighter for longer than one thrown as a wall.
+2. **Facing enemy blockers, there is not enough time to dodge the missile past them
+   and still hit the ship.** `enemy/blocker_trigger_range` (120 m) is the knob, and
+   this is the failure `STATUS.md` predicted for it in advance: *"thrown late there
+   is no room to fly around them."* Raising it throws the wall earlier and further
+   out, which buys the room. Note it interacts with `flare/seconds` (4.0) — thrown
+   too early and the flares are gone before the missile arrives.
+
+**Both are reachable from `tuning.cfg` with no code change**, which is the
+feel-parameter law paying for itself. Neither has been touched: feel verdicts are
+human-only and these are the human's knobs to turn.
 
 ### Decided 2026-08-28 (the crew roster)
 
