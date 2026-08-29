@@ -21,6 +21,10 @@ var _planet: Planet
 var _ship: Mothership
 var _camera: ChaseCamera
 var _hud: DebugHud
+## The way you arrive somewhere (ADR 0012). Mounted on the planet here; the same
+## node goes on the portals' ramp stations in step 6.
+var _approach: ApproachEnvelope
+var _dock: DockScreen
 ## Everything in system space hangs off one node, so the floating origin is a move
 ## of this and nothing else has to know (ADR 0020). The disc, the planet and the
 ## ship are all its children — including the boundary, which is why leaning on a
@@ -83,6 +87,19 @@ func _build_world() -> void:
 	_planet = Planet.new()
 	_planet.name = "Planet"
 	_root.add_child(_planet)
+
+	_approach = ApproachEnvelope.new()
+	_approach.name = "ApproachEnvelope"
+	_approach.host = _planet
+	_approach.position = _planet.position
+	_root.add_child(_approach)
+	_approach.arrived.connect(_on_arrived)
+	_approach.departed.connect(_on_departed)
+
+	_dock = DockScreen.new()
+	_dock.name = "DockScreen"
+	add_child(_dock)
+	_dock.departed.connect(func() -> void: _approach.depart())
 
 
 func _build_ship() -> void:
@@ -174,6 +191,7 @@ func _build_hud() -> void:
 		if is_equal_approx(_ship.speed_ceiling_scale, 1.0):
 			return "—"
 		return "outbound speed limit at %.0f%%" % (_ship.speed_ceiling_scale * 100.0))
+	_hud.add_row("approach", func() -> String: return _approach.state_label())
 	_hud.add_row("planet", func() -> String:
 		return "%.0f m below  ·  r %.0f  ·  %.0f m away" % [
 			-_planet.position.y, _planet.radius(),
@@ -203,18 +221,43 @@ func _apply_tuning() -> void:
 # --- flight ------------------------------------------------------------------
 
 func _process(delta: float) -> void:
-	_system.apply_to(_ship, delta)
+	# The envelope rides with the planet, which will move once systems do.
+	_approach.position = _planet.position
+	_system.observe(_ship, delta)
+	_approach.observe(_ship, delta)
+	# Composed here, and assigned once. Both the boundary and the approach constrain
+	# the same ceiling, and the tightest wins — so leaning on a face while an
+	# approach is running does the stricter of the two rather than whichever system
+	# happened to run second.
+	_ship.speed_ceiling_scale = minf(_system.speed_scale(), _approach.speed_scale())
+
+
+## Arriving takes the helm, because there is nowhere to fly from a docked ship. The
+## sequence never took the stick on the way in — it only capped what the throttle
+## could reach — so this is the first moment control actually changes hands, and it
+## happens after the countdown the player watched, not before it.
+func _on_arrived() -> void:
+	_ship.piloted = false
+	_dock.open("PLANET")
+
+
+func _on_departed() -> void:
+	_dock.close()
+	_ship.piloted = true
+	_apply_mouse_mode()
 
 
 ## The pointer steers the ship, and is released only for the tuning panel. With one
 ## station there is nothing else it could be doing.
 func _apply_mouse_mode() -> void:
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if DebugPanel.is_open() \
-		else Input.MOUSE_MODE_CAPTURED
+	if DebugPanel.is_open() or (_approach != null and _approach.is_docked()):
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		return
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if DebugPanel.is_open():
+	if DebugPanel.is_open() or _approach.is_docked():
 		return
 	if event is InputEventMouseMotion:
 		_ship.add_mouse_steer((event as InputEventMouseMotion).relative)
@@ -242,6 +285,14 @@ func _unhandled_input(event: InputEvent) -> void:
 func cycle_hull() -> void:
 	_ship.set_hull_class(HullClass.next(_ship.hull_class))
 	_camera.boom_scale = _ship.hull_scale()
+
+
+func approach() -> ApproachEnvelope:
+	return _approach
+
+
+func dock_screen() -> DockScreen:
+	return _dock
 
 
 func system() -> SystemDisc:

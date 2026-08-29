@@ -66,7 +66,40 @@ The fighter's 1.5 minutes is the number `EXPLORATION_DESIGN.md` §Two-Tier Netwo
 predicted for "system diameter, fighter alone" — so the ladder and the disc size
 agree without either having been fitted to the other.
 
+### Exploration step 4 is built — arriving somewhere
+
+`ApproachEnvelope` is reusable and mounted on the planet; the same node goes on the
+portals' ramp stations in step 6, which is where the fuel and market content
+actually lives. Fly into it, watch a countdown, arrive. Touch anything and it hands
+the ship straight back with the throttle you had.
+
+**How ADR 0012's two rules were reconciled.** It says *"no auto-steer, ever, for any
+reason, in any system"* and then *"any sequence that moves the ship must abort on any
+player input"*, which reads as a contradiction. It is the same distinction the system
+boundary already makes: **magnitude, never direction.** The sequence walks the ship's
+speed ceiling down to zero so it comes to rest along the vector the player was already
+flying, reusing `Mothership.speed_ceiling_scale` — so there is no code path in the
+approach that can produce a heading. The mechanism makes the guarantee; a comment
+would only have promised it.
+
+Both the boundary and the approach constrain that same ceiling, so the scene composes
+them and assigns the tightest. Two systems each writing the field would have fought,
+with the winner being whichever happened to run second.
+
+**The envelope is drawn as three rings, not a shell.** The first build used a
+translucent sphere and a rendered frame killed it: from just outside, an 840 m sphere
+fills the whole view and the planet, the disc and the markers are all seen through a
+colour filter. That is a tint, not a signpost. Rings mark the same boundary and leave
+the view alone.
+
+The docking screen has one service — `Depart`. Refuel is step 7's, the magazine needs
+missiles this scene does not carry, and dead placeholder buttons teach the player that
+the screen lies. It is built as a service list, so step 7 adds a row.
+
 ### 🔵 THE FIRST FEEL QUESTION IS OPEN
+
+Two now, and the second one is step 4's checkpoint: **does approach feel like
+arriving somewhere, or like a menu with a runway?**
 
 **Is 15.5 m/s the right taxi speed?** It anchors every number downstream of it — the
 whole ladder is derived from it, and cruise, leg times and system size all move when

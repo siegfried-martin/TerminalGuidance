@@ -49,6 +49,11 @@ var hull_class: HullClass.Kind = HullClass.DEFAULT
 ## The stick does exactly what was asked and the ship simply strains.
 ##
 ## It also shows: the HUD's speed row reads "of N", and N comes down.
+##
+## Several things constrain it — the disc's faces, the approach envelope — so the
+## scene composes them and assigns the tightest, rather than each writing this field
+## and the last one to run winning. Zero is reachable, and means docked: the
+## boundary never uses it, because ADR 0011's faces must never be a hard stop.
 var speed_ceiling_scale: float = 1.0
 
 var _velocity: Vector3 = Vector3.ZERO
@@ -224,7 +229,7 @@ func _fly_autopilot(delta: float) -> void:
 ## `HullClass` applies the clamp. What the invariant protects widens from "missiles
 ## outrun ships" to "a missile outruns its intended targets".
 func manual_max_speed() -> float:
-	return HullClass.max_speed(hull_class) * clampf(speed_ceiling_scale, 0.05, 1.0)
+	return HullClass.max_speed(hull_class) * clampf(speed_ceiling_scale, 0.0, 1.0)
 
 
 ## Read the class back out of tuning. Called at build and on every hot reload, so

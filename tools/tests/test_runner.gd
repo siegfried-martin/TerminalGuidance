@@ -158,6 +158,12 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/planet_radius", "exploration/planet_center_depth",
 	"exploration/planet_color", "exploration/planet_emission",
 	"exploration/marker_spacing", "exploration/marker_size", "exploration/marker_color",
+	"exploration/approach_envelope_radius", "exploration/approach_seconds",
+	"exploration/approach_relock_seconds", "exploration/approach_abort_mouse_speed",
+	"exploration/approach_color", "exploration/approach_ring_thickness",
+	"exploration/approach_alpha_far",
+	"exploration/approach_alpha_near",
+	"exploration/dock_title_font_size", "exploration/dock_title_color",
 	"exploration/corridor_diameter", "exploration/local_leg_length",
 	"exploration/trunk_leg_length", "exploration/debug_teleport_enabled",
 ]
@@ -197,6 +203,7 @@ func _ready() -> void:
 	_test_envelope_meter()
 	_test_disc_bounds()
 	_test_hull_roster()
+	_test_approach_envelope()
 	_test_target_components()
 	_test_turret_station()
 	_test_turret_weapons()
@@ -2643,13 +2650,13 @@ func _test_exploration_builds() -> void:
 	# so the wiring is covered too.
 	scene.ship().position.y = scene.system().ceiling_height() - 5.0
 	scene.ship()._velocity = Vector3(0.0, 10.0, 0.0)
-	scene.system().apply_to(scene.ship(), 1.0 / 60.0)
+	scene._process(1.0 / 60.0)
 	_expect(scene.ship().speed_ceiling_scale < 1.0,
 		"leaning on the ceiling strains the ship's speed limit",
 		"scale %.2f" % scene.ship().speed_ceiling_scale)
 	var strained := scene.ship().manual_max_speed()
 	scene.ship().position.y = 0.0
-	scene.system().apply_to(scene.ship(), 1.0 / 60.0)
+	scene._process(1.0 / 60.0)
 	_expect(is_equal_approx(scene.ship().speed_ceiling_scale, 1.0)
 			and scene.ship().manual_max_speed() > strained,
 		"…and coming back into the disc releases it",
@@ -2743,3 +2750,124 @@ func _test_hull_roster() -> void:
 	_expect(is_equal_approx(camera.boom_scale, 1.0),
 		"a chase camera defaults to an unscaled boom", "%.2f" % camera.boom_scale)
 	camera.free()
+
+## The approach envelope (ADR 0012). What is under test is the ADR's two hard rules:
+## the sequence never produces a heading, and any input hands the ship back.
+func _test_approach_envelope() -> void:
+	var host := Node3D.new()
+	add_child(host)
+	var envelope := ApproachEnvelope.new()
+	add_child(envelope)
+	envelope.host = host
+	var ship := Mothership.new()
+	add_child(ship)
+	ship.set_process(false)   # stepped by hand below
+	var step := 1.0 / 60.0
+
+	# "The envelope always resolves before the surface is reached" — at the FASTEST
+	# hull and with no deceleration at all, which is the conservative case. The
+	# sequence actually slows the ship, so the real margin is larger.
+	var clearance := Tuning.num("exploration/approach_envelope_radius") \
+		- Tuning.num("exploration/planet_radius")
+	var fastest := HullClass.max_speed(HullClass.Kind.FIGHTER)
+	_expect(clearance / fastest > Tuning.num("exploration/approach_seconds"),
+		"the countdown always resolves before the surface, even at fighter speed",
+		"%.1f s of clearance against a %.1f s countdown" % [clearance / fastest,
+			Tuning.num("exploration/approach_seconds")])
+	_expect(Tuning.num("exploration/approach_envelope_radius")
+			> Tuning.num("exploration/planet_radius"),
+		"…and the envelope is outside the planet rather than inside it",
+		"envelope %.0f, planet %.0f" % [
+			Tuning.num("exploration/approach_envelope_radius"),
+			Tuning.num("exploration/planet_radius")])
+
+	# Outside, nothing happens and nothing is constrained.
+	ship.position = Vector3(0.0, 0.0, envelope.radius() * 3.0)
+	envelope.observe(ship, step)
+	_expect(envelope.state() == ApproachEnvelope.State.CLEAR
+			and is_equal_approx(envelope.speed_scale(), 1.0),
+		"outside the envelope the ship is unconstrained",
+		"state %d, scale %.2f" % [envelope.state(), envelope.speed_scale()])
+
+	# Entering locks, and the ceiling walks DOWN rather than the ship being stopped.
+	ship.position = Vector3(0.0, 0.0, envelope.radius() * 0.5)
+	envelope.observe(ship, step)
+	_expect(envelope.state() == ApproachEnvelope.State.LOCKED,
+		"entering the envelope starts the sequence", "state %d" % envelope.state())
+	# Stepped until the state changes rather than for an exact frame count: at
+	# 1/60 s per frame the accumulated float lands a hair under the tuned seconds,
+	# and a count derived from it is one frame short.
+	var frames := int(Tuning.num("exploration/approach_seconds") / step) + 6
+	var previous := envelope.speed_scale()
+	var monotonic := true
+	for _i in frames:
+		envelope.observe(ship, step)
+		if envelope.state() != ApproachEnvelope.State.LOCKED:
+			break
+		if envelope.speed_scale() > previous + 0.0001:
+			monotonic = false
+		previous = envelope.speed_scale()
+	_expect(monotonic,
+		"the speed ceiling only ever walks down during an approach — magnitude, "
+			+ "never direction (ADR 0012)", "it went back up")
+	_expect(envelope.state() == ApproachEnvelope.State.DOCKED,
+		"…and the sequence resolves into docked", "state %d" % envelope.state())
+	_expect(is_zero_approx(envelope.speed_scale()),
+		"…with the ship at rest", "scale %.2f" % envelope.speed_scale())
+
+	# Departing relocks, so the envelope you are sitting in does not pull you back.
+	envelope.depart()
+	_expect(envelope.state() == ApproachEnvelope.State.RELOCKING,
+		"departing relocks rather than re-arming instantly",
+		"state %d" % envelope.state())
+	envelope.observe(ship, step)
+	_expect(envelope.state() == ApproachEnvelope.State.RELOCKING,
+		"…and staying inside does not re-arm it either",
+		"state %d" % envelope.state())
+	for _i in int(Tuning.num("exploration/approach_relock_seconds") / step) + 6:
+		envelope.observe(ship, step)
+	_expect(envelope.state() == ApproachEnvelope.State.RELOCKING,
+		"…it stays relocked until the player has actually left",
+		"re-armed while still inside")
+	ship.position = Vector3(0.0, 0.0, envelope.radius() * 3.0)
+	envelope.observe(ship, step)
+	_expect(envelope.state() == ApproachEnvelope.State.CLEAR,
+		"…and clears once outside", "state %d" % envelope.state())
+
+	# THE rule of ADR 0012: any input aborts, and the ship is handed straight back.
+	# Driven through real Input actions, which work headlessly.
+	ship.position = Vector3(0.0, 0.0, envelope.radius() * 0.5)
+	envelope.observe(ship, step)
+	envelope.observe(ship, step)
+	_expect(envelope.state() == ApproachEnvelope.State.LOCKED,
+		"the sequence is running again", "state %d" % envelope.state())
+	Input.action_press("throttle_up")
+	envelope.observe(ship, step)
+	Input.action_release("throttle_up")
+	_expect(envelope.state() == ApproachEnvelope.State.RELOCKING,
+		"any flight input aborts the approach (ADR 0012)",
+		"state %d" % envelope.state())
+	_expect(is_equal_approx(envelope.speed_scale(), 1.0),
+		"…and the ship is unconstrained the same frame — no drag on the way out",
+		"scale %.2f" % envelope.speed_scale())
+
+	# Flying out the far side is not an abort: nothing refused, the geometry just
+	# did not resolve. It must clear rather than relock, or passing through a system
+	# on your way somewhere else would leave the envelope disarmed behind you.
+	for _i in int(Tuning.num("exploration/approach_relock_seconds") / step) + 6:
+		ship.position = Vector3(0.0, 0.0, envelope.radius() * 3.0)
+		envelope.observe(ship, step)
+	ship.position = Vector3(0.0, 0.0, envelope.radius() * 0.5)
+	envelope.observe(ship, step)
+	_expect(envelope.state() == ApproachEnvelope.State.LOCKED,
+		"re-entering after the relock starts a fresh sequence",
+		"state %d" % envelope.state())
+	ship.position = Vector3(0.0, 0.0, envelope.radius() * 3.0)
+	envelope.observe(ship, step)
+	_expect(envelope.state() == ApproachEnvelope.State.CLEAR,
+		"flying out the far side clears rather than relocking — nothing was refused",
+		"state %d" % envelope.state())
+
+	ship.free()
+	envelope.free()
+	host.free()

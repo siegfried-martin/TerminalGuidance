@@ -35,6 +35,9 @@ var _markers: MultiMeshInstance3D
 var _seconds_outside: float = 0.0
 ## Live, for the HUD. The player is told the timer is running before it costs them.
 var _warning: float = 0.0
+## What the boundary wants the ship's speed ceiling multiplied by this frame. Never
+## reaches zero — ADR 0011's faces slow the player, they never stop them.
+var _speed_scale: float = 1.0
 
 
 func _ready() -> void:
@@ -119,9 +122,10 @@ func _rebuild_markers(radius: float) -> void:
 ## Run the boundary against the ship for this frame.
 ##
 ## The order matters and is the whole treatment: paint first so the player is
-## looking at red before anything else happens, scale the speed limit second so the
-## ship strains rather than turns, and only then start counting toward damage.
-func apply_to(ship: Mothership, delta: float) -> void:
+## looking at red before anything else happens, work out the strain second so the
+## ship slows rather than turns, and only then start counting toward damage.
+func observe(ship: Mothership, delta: float) -> void:
+	_speed_scale = 1.0
 	if ship == null or not is_instance_valid(ship) or delta <= 0.0:
 		return
 	var y := ship.position.y
@@ -132,7 +136,10 @@ func apply_to(ship: Mothership, delta: float) -> void:
 	_warning = DiscBounds.warning(y, ceiling, depth, band)
 	_paint(_warning)
 
-	ship.speed_ceiling_scale = DiscBounds.speed_ceiling_scale(
+	# Stored rather than assigned: the approach envelope constrains the same field,
+	# and two systems both writing it would silently fight with the loser being
+	# whichever happened to run last. The scene composes and assigns the tightest.
+	_speed_scale = DiscBounds.speed_ceiling_scale(
 		y, ship.velocity().y, ceiling, depth, band,
 		Tuning.num("exploration/bounds_outbound_speed_fraction"))
 
@@ -184,6 +191,11 @@ func radius() -> float:
 ## For the HUD. Zero while clear, 1 at a face and beyond.
 func warning() -> float:
 	return _warning
+
+
+## What this frame's boundary state wants the ship's speed ceiling scaled by.
+func speed_scale() -> float:
+	return _speed_scale
 
 
 func seconds_outside() -> float:
