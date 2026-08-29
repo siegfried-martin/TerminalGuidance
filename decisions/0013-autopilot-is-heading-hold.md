@@ -1,5 +1,14 @@
 # ADR 0013 — Autopilot is a heading hold and nothing more
 
+*Status: accepted, clarified by ADR 0058*
+
+> **Not superseded.** `EXPLORATION_DESIGN.md` says "autopilot is your own character
+> flying while you are elsewhere", which describes a **hired crew pilot** — a future
+> NPC that happens to hold the same stick. The autopilot in this codebase is
+> unchanged and stays bounded exactly as below. Do not grow *this* one into that
+> one; a crew pilot arrives as its own system, and until it does the forbid clause
+> here holds without exception.
+
 *Status: accepted · 2026-08-23 · recorded from `docs/PROJECT_OVERVIEW.md` v3 and `docs/COMBAT_POC_IMPLEMENTATION.md` v3; the decision predates this repo*
 
 ## Decision

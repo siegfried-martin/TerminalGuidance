@@ -27,12 +27,12 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"missile/boost_multiplier", "missile/boost_seconds", "missile/boost_regen_per_sec",
 	"missile/dodge_distance", "missile/dodge_seconds", "missile/dodge_cooldown_seconds",
 	"missile/brake_speed_multiplier", "missile/brake_turn_multiplier",
-	"ship/arc_speed", "ship/standoff_distance", "ship/muzzle_offset", "ship/hull_scale",
+	"ship/arc_speed_fraction", "ship/standoff_distance", "ship/muzzle_offset", "ship/hull_scale",
 	"ship/range_hold_seconds", "ship/range_hold_max_speed",
 	"ship/hull_tint", "ship/metallic", "ship/roughness",
 	"ship/start_role", "ship/arc_depth",
 	"ship/manual_accel_seconds", "ship/manual_brake_seconds",
-	"ship/manual_max_speed", "ship/manual_speed_ceiling_fraction",
+	"ship/manual_max_speed", "ship/manual_speed_ceiling_fraction", "ship/hull_class",
 	"ship/manual_turn_rate_deg_per_sec", "ship/manual_reticle_max_angle_deg",
 	"ship/autopilot_turn_rate_deg_per_sec",
 	"ship/manual_strafe_speed", "ship/missile_cooldown_seconds",
@@ -66,7 +66,8 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"turret/impact_flash_start_radius", "turret/impact_flash_end_radius",
 	"turret/impact_flash_seconds", "turret/impact_flash_color",
 	"turret/impact_flash_color_dud",
-	"enemy/radius", "enemy/drift_speed", "enemy/spin_deg_per_sec",
+	"enemy/radius", "enemy/drift_speed_fraction", "enemy/hull_class",
+	"enemy/spin_deg_per_sec",
 	"enemy/patrol_half_extent", "enemy/hull_color", "enemy/hull_emission",
 	"enemy/hull_length", "enemy/hull_width", "enemy/hull_height", "enemy/nose_length",
 	"enemy/wing_span", "enemy/wing_chord", "enemy/wing_thickness", "enemy/fin_height",
@@ -121,6 +122,29 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"arena/rock_elongation",
 	"probe/scale", "probe/spin_deg_per_sec", "probe/bob_amplitude", "probe/bob_period_sec",
 	"probe/hull_tint", "probe/metallic", "probe/roughness",
+	# The travel layer (docs/EXPLORATION_POC_IMPLEMENTATION.md). The speed ladder,
+	# the lane, the portal, fuel, traffic and the test map.
+	"exploration/taxi_max_speed", "exploration/fighter_max_speed",
+	"exploration/capital_max_speed", "exploration/cruise_speed",
+	"exploration/taxi_speed_ceiling_fraction", "exploration/fighter_speed_ceiling_fraction",
+	"exploration/capital_speed_ceiling_fraction", "exploration/start_hull_class",
+	"exploration/taxi_has_cruise_drive", "exploration/fighter_has_cruise_drive",
+	"exploration/capital_has_cruise_drive",
+	"exploration/cruise_turn_clamp_deg", "exploration/cruise_turn_rate_deg_per_sec",
+	"exploration/lane_width", "exploration/lane_height", "exploration/lane_edge_softness",
+	"exploration/lane_edge_speed_penalty", "exploration/lane_edge_push_accel",
+	"exploration/deck_separation",
+	"exploration/portal_width", "exploration/portal_height",
+	"exploration/portal_flare_length", "exploration/portal_entry_seconds",
+	"exploration/portal_sheen_color", "exploration/portal_denied_color",
+	"exploration/portal_emission", "exploration/portal_sheen_scroll_hz",
+	"exploration/cruise_fuel_capacity", "exploration/cruise_fuel_per_km",
+	"exploration/cruise_fuel_start_fraction",
+	"exploration/road_traffic_per_km", "exploration/road_traffic_speed_spread",
+	"exploration/open_traffic_per_100km3", "exploration/traffic_despawn_distance",
+	"exploration/system_diameter", "exploration/system_height",
+	"exploration/corridor_diameter", "exploration/local_leg_length",
+	"exploration/trunk_leg_length", "exploration/debug_teleport_enabled",
 ]
 
 const REQUIRED_ACTIONS: Array[String] = [
@@ -132,7 +156,7 @@ const REQUIRED_ACTIONS: Array[String] = [
 	"cam_forward", "cam_back", "cam_left", "cam_right", "cam_up", "cam_down",
 	"cam_boost", "cam_look",
 	"debug_toggle_hud", "debug_toggle_panel", "debug_reload_tuning",
-	"debug_reverse_arc", "quit",
+	"debug_reverse_arc", "debug_cycle_hull", "quit",
 ]
 
 var _failures: PackedStringArray = []
@@ -153,6 +177,8 @@ func _ready() -> void:
 	_test_reference_field()
 	_test_dodge_and_brake()
 	_test_manual_flight()
+	_test_hull_classes()
+	_test_lane_geometry()
 	_test_target_components()
 	_test_turret_station()
 	_test_turret_weapons()
@@ -541,7 +567,7 @@ func _test_autopilot_holds_standoff() -> void:
 		"%.1f m below, tuned %.1f" % [ship.depth_below_target(), depth])
 
 	var step := 1.0 / 60.0
-	var drift := Tuning.num("enemy/drift_speed")
+	var drift := TargetShip.tuned_drift_speed()
 	var worst := 0.0
 	var worst_depth := 0.0
 	for i in 1800:   # 30 simulated seconds
@@ -704,7 +730,10 @@ func _test_manual_flight() -> void:
 		"a manually flown ship cannot reach missile speed",
 		"ship %.1f m/s vs missile %.1f m/s" % [ship.manual_max_speed(), missile_speed])
 
-	Tuning.set_value("ship/manual_max_speed", missile_speed * 10.0)
+	# Raised on the CLASS key, which is what the ship actually reads now — raising
+	# the shared `ship/manual_max_speed` fallback would prove nothing, because a
+	# class with an entry of its own never consults it.
+	Tuning.set_value("exploration/taxi_max_speed", missile_speed * 10.0)
 	_expect(ship.manual_max_speed() < missile_speed,
 		"…even when the ship's own tuning is raised past it",
 		"clamp let %.1f m/s through" % ship.manual_max_speed())
@@ -2258,3 +2287,156 @@ func _expect(condition: bool, what: String, detail: String) -> void:
 
 func _fail(msg: String) -> void:
 	_failures.append(msg)
+
+## The hull-class table (EXPLORATION_DESIGN.md invariants 2 and 5). The mechanism
+## is what is expensive to retrofit, so it is tested before the table has more than
+## three rows in it.
+func _test_hull_classes() -> void:
+	for kind in HullClass.all():
+		var text := HullClass.name_of(kind)
+		_expect(HullClass.from_name(text) == kind,
+			"hull class '%s' survives a round trip through its name" % text,
+			"got %s" % HullClass.name_of(HullClass.from_name(text)))
+		_expect(HullClass.from_name(text.to_upper()) == kind,
+			"…and is read case-insensitively", text)
+
+	# A name rather than an index, so a typo reads as something. It must land on the
+	# default rather than on whichever class happens to be enum member 0 by accident.
+	_expect(HullClass.from_name("frigate") == HullClass.DEFAULT,
+		"an unknown hull class falls back to the default rather than erroring",
+		"got %s" % HullClass.name_of(HullClass.from_name("frigate")))
+
+	# THE speed ladder. These orderings are the whole of EXPLORATION_DESIGN.md's
+	# §Speed Ladder, and every consequence in it — missiles are anti-capital, turrets
+	# are the anti-fighter answer, capitals cannot outrun anything — falls out of
+	# them rather than being imposed by a rule anywhere.
+	var missile_speed := Tuning.num("missile/base_speed")
+	var taxi := HullClass.max_speed(HullClass.Kind.TAXI)
+	var fighter := HullClass.max_speed(HullClass.Kind.FIGHTER)
+	var capital := HullClass.max_speed(HullClass.Kind.CAPITAL)
+	_expect(capital < taxi and taxi < fighter,
+		"the speed ladder is ordered: capital < taxi < fighter",
+		"capital %.1f, taxi %.1f, fighter %.1f" % [capital, taxi, fighter])
+	_expect(fighter < missile_speed,
+		"…and the fastest hull is still slower than a missile (CLAUDE.md hierarchy)",
+		"fighter %.1f vs missile %.1f" % [fighter, missile_speed])
+	_expect(fighter > missile_speed * 0.6,
+		"…while the fighter clears the old global 0.6 ceiling that could not fit it",
+		"fighter %.1f is %.2f of missile speed" % [fighter, fighter / missile_speed])
+
+	# The ceiling is a clamp, not a suggestion, for EVERY class — a tuning session
+	# must not be able to produce a ship that matches a missile by accident.
+	for kind in HullClass.all():
+		var key := "exploration/%s_max_speed" % HullClass.name_of(kind)
+		Tuning.set_value(key, missile_speed * 10.0)
+		_expect(HullClass.max_speed(kind) < missile_speed,
+			"%s speed is clamped below a missile however high it is tuned" % key,
+			"clamp let %.1f m/s through" % HullClass.max_speed(kind))
+		Tuning.revert()
+
+	# A fighter has no cruise drive, and that ONE property is why no portal opens
+	# for it. If this ever becomes a separate rule about portals, this is the test
+	# that should have stopped it.
+	_expect(HullClass.has_cruise_drive(HullClass.Kind.TAXI),
+		"a taxi carries the cruise drive", "it does not")
+	_expect(not HullClass.has_cruise_drive(HullClass.Kind.FIGHTER),
+		"a fighter does not, which is the whole of why it cannot use a portal",
+		"it does")
+
+	# The fallback path: a class with no entry of its own resolves to the shared key,
+	# and a class with one ignores it. This is the half of `num()` that lets the
+	# table grow a row at a time without an edit at any call site.
+	_expect(is_equal_approx(
+			HullClass.num(HullClass.Kind.TAXI, "not_a_real_property",
+				"ship/manual_turn_rate_deg_per_sec"),
+			Tuning.num("ship/manual_turn_rate_deg_per_sec")),
+		"a property no class overrides resolves to the shared fallback",
+		"it did not")
+	_expect(is_equal_approx(
+			HullClass.num(HullClass.Kind.FIGHTER, "max_speed", "ship/manual_max_speed"),
+			Tuning.num("exploration/fighter_max_speed")),
+		"…and a property the class DOES override ignores the fallback",
+		"it did not")
+
+	# Invariants 3 and 4: the autopilot and the enemy move as fractions of their own
+	# hull's maximum, never as absolutes. The failure these catch is silent — an
+	# absolute that was fine at 34 m/s inverts at 15.5 and nothing errors.
+	var ship := Mothership.new()
+	add_child(ship)
+	var arc := ship.manual_max_speed() \
+		* clampf(Tuning.num("ship/arc_speed_fraction"), 0.0, 0.95)
+	_expect(arc < ship.manual_max_speed(),
+		"the autopilot arc is slower than flying the ship yourself (Pillar 1)",
+		"arc %.1f vs manual %.1f" % [arc, ship.manual_max_speed()])
+	_expect(arc > ship.manual_max_speed() * 0.25,
+		"…but not so much slower that delegating is a punishment",
+		"arc is %.2f of manual" % (arc / ship.manual_max_speed()))
+	ship.free()
+
+	_expect(TargetShip.tuned_drift_speed() < HullClass.max_speed(HullClass.Kind.TAXI),
+		"an enemy of the player's class cannot simply outrun the ship sent at it",
+		"enemy drifts at %.1f, player tops out at %.1f" % [
+			TargetShip.tuned_drift_speed(), HullClass.max_speed(HullClass.Kind.TAXI)])
+
+
+## Lane, deck and portal geometry. These are the relationships that have to hold
+## whatever the numbers are tuned to; the numbers themselves are the human's.
+func _test_lane_geometry() -> void:
+	var lane_width := Tuning.num("exploration/lane_width")
+	var lane_height := Tuning.num("exploration/lane_height")
+	_expect(lane_height < lane_width,
+		"the lane is wider than it is tall — monitor aspect, and roll is locked",
+		"%.0f wide x %.0f tall" % [lane_width, lane_height])
+	_expect(Tuning.num("exploration/deck_separation") > lane_height,
+		"the two decks are separated by more than one deck's height, so they do not intersect",
+		"separation %.0f vs height %.0f" % [
+			Tuning.num("exploration/deck_separation"), lane_height])
+	_expect(Tuning.num("exploration/lane_edge_softness") < lane_width * 0.5,
+		"the soft edge is a gradient, not the whole lane",
+		"softness %.0f against a half-width of %.0f" % [
+			Tuning.num("exploration/lane_edge_softness"), lane_width * 0.5])
+	_expect(Tuning.num("exploration/lane_edge_speed_penalty") > 0.0,
+		"outside the lane is SLOWER, never stopped — the boundary is soft (ADR 0014)",
+		"a zero penalty is a wall")
+
+	# The portal is the on-ramp mouth and is deliberately NARROWER than the road it
+	# feeds. What must hold is that it clears the hull: a ship that cannot fit
+	# through an "unmissable, drive in, no ceremony" opening is the failure here.
+	var hull := load("res://assets/models/carrier.obj") as Mesh
+	var box := hull.get_aabb().size * Tuning.num("ship/hull_scale")
+	var portal_width := Tuning.num("exploration/portal_width")
+	var portal_height := Tuning.num("exploration/portal_height")
+	_expect(portal_width > box.x * 1.5,
+		"the portal aperture clears the hull's width with margin",
+		"portal %.0f m against a %.1f m hull" % [portal_width, box.x])
+	_expect(portal_height > box.y * 1.5,
+		"…and its height",
+		"portal %.0f m against a %.1f m hull" % [portal_height, box.y])
+	_expect(portal_width <= lane_width,
+		"the portal is the ramp mouth, no wider than the road it feeds",
+		"portal %.0f vs lane %.0f" % [portal_width, lane_width])
+	_expect(is_zero_approx(Tuning.num("exploration/portal_entry_seconds")),
+		"portal entry is instant — a local leg is 41 s and cannot afford ceremony",
+		"%.1f s of entry sequence" % Tuning.num("exploration/portal_entry_seconds"))
+
+	# The corridor has to hold both decks with room around them, or "the lane is
+	# visually open" is not true and the tube has become a tunnel.
+	var stack := Tuning.num("exploration/deck_separation") + lane_height
+	_expect(Tuning.num("exploration/corridor_diameter") > stack * 1.5,
+		"the bounded corridor is bigger than the road stacked inside it",
+		"corridor %.0f against a %.0f m stack" % [
+			Tuning.num("exploration/corridor_diameter"), stack])
+	_expect(Tuning.num("exploration/system_height")
+			< Tuning.num("exploration/system_diameter"),
+		"a system is a DISC: floor and ceiling closer than the diameter (ADR 0011)",
+		"%.0f tall in a %.0f disc" % [Tuning.num("exploration/system_height"),
+			Tuning.num("exploration/system_diameter")])
+
+	# The speed ladder's whole purpose is that the highway beats flying it yourself
+	# by a lot at range and by little up close. If cruise ever stops beating a
+	# fighter, the road has no reason to exist.
+	_expect(Tuning.num("exploration/cruise_speed")
+			> HullClass.max_speed(HullClass.Kind.FIGHTER) * 2.0,
+		"cruise is at least twice the fastest hull, or the road buys nothing",
+		"cruise %.1f vs fighter %.1f" % [Tuning.num("exploration/cruise_speed"),
+			HullClass.max_speed(HullClass.Kind.FIGHTER)])

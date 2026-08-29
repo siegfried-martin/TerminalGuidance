@@ -7,6 +7,8 @@
 
   "_note_aim": "aim_* is the reticle, shared by the missile, by manual ship flight and by the gun station. It was called missile_* until manual flight landed.",
 
+  "_note_hulls": "H cycles the player's hull class (taxi/fighter/capital). The speed ladder is per class (ADR 0059) and the classes only mean anything felt back to back, so this is the exploration POC's debug roster arriving early — 'is 15.5 m/s the right taxi speed' is the anchor for every number downstream of it and is answerable in the arena that already exists.",
+
   "_note_turret": "G mans the guns exactly as T takes the helm, and the two are peers — the player is at one station or the other, never both. fire_primary/fire_secondary are the turret's own triggers rather than a reuse of 'fire', because 'fire' launches a ridden missile and that only happens from the helm; sharing the binding would make one button mean two things in two views. 1 and 2 switch loadout, which is what makes four weapons cost something to reach across two buttons.",
 
   "actions": {
@@ -48,6 +50,7 @@
     "debug_toggle_panel":   ["key:F2"],
     "debug_reload_tuning":  ["key:F5"],
     "debug_reverse_arc":    ["key:R"],
+    "debug_cycle_hull":     ["key:H"],
     "quit":                 ["key:Escape"]
   }
 }

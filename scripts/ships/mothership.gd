@@ -35,6 +35,10 @@ var autopilot: bool = true
 var piloted: bool = true
 var target: Node3D
 
+## Which hull this is. Everything about how the ship flies resolves from here, so
+## switching class at runtime is one assignment and not a rebuild (POC step 4).
+var hull_class: HullClass.Kind = HullClass.DEFAULT
+
 var _velocity: Vector3 = Vector3.ZERO
 var _orbit_sign: float = 1.0
 var _hull: MeshInstance3D
@@ -77,6 +81,7 @@ func _ready() -> void:
 	# only so a Mothership built on its own (the headless gate does that) starts
 	# somewhere defined rather than on whatever the member's default happened to be.
 	autopilot = Tuning.text("ship/start_role").strip_edges().to_lower() == "gunner"
+	adopt_tuned_hull_class()
 	_reticle.reset(basis)
 	_apply_tuning()
 	Tuning.reloaded.connect(_on_tuning_reloaded)
@@ -172,7 +177,12 @@ func _fly_autopilot(delta: float) -> void:
 	# way the player could not: without this, `range_hold_max_speed` of 45 against a
 	# manual ceiling of 34 means handing control back produces a lurch the player
 	# has no way to produce themselves (ADR 0043).
-	_velocity = (tangent * Tuning.num("ship/arc_speed")
+	# A fraction of this hull's own top speed, never an absolute: at the corrected
+	# taxi speed the old absolute 13.8 would put the autopilot at 89% of manual and
+	# make flying yourself decoration (EXPLORATION_DESIGN.md invariant 3).
+	var arc_speed := manual_max_speed() \
+		* clampf(Tuning.num("ship/arc_speed_fraction"), 0.0, 0.95)
+	_velocity = (tangent * arc_speed
 		+ radial * radial_speed
 		+ Vector3.UP * climb_speed).limit_length(manual_max_speed())
 	position += _velocity * delta
@@ -196,15 +206,26 @@ func _fly_autopilot(delta: float) -> void:
 
 ## The top speed the ship may reach, whatever the ship's own numbers say.
 ##
-## This is the speed hierarchy made structural (CLAUDE.md): a ship that can match
-## a missile makes the missile pointless, and the failure would show up as "the
-## POC stopped being fun" rather than as a bug. Clamping here means a tuning
-## session cannot produce that state by accident, and the fraction is itself
-## tunable so the margin is a decision rather than a magic number.
+## This is the speed hierarchy made structural (CLAUDE.md), and it now resolves
+## through the hull class: a taxi at 0.27 of missile speed and a fighter at 0.67
+## cannot share one global fraction, so each class declares its own headroom and
+## `HullClass` applies the clamp. What the invariant protects widens from "missiles
+## outrun ships" to "a missile outruns its intended targets".
 func manual_max_speed() -> float:
-	var ceiling := Tuning.num("missile/base_speed") \
-		* clampf(Tuning.num("ship/manual_speed_ceiling_fraction"), 0.0, 0.95)
-	return minf(Tuning.num("ship/manual_max_speed"), ceiling)
+	return HullClass.max_speed(hull_class)
+
+
+## Read the class back out of tuning. Called at build and on every hot reload, so
+## editing `ship/hull_class` changes the ship in place, and so the debug roster
+## (POC step 4) can put it back.
+func adopt_tuned_hull_class() -> void:
+	hull_class = HullClass.from_name(Tuning.text("ship/hull_class"))
+
+
+## Can this hull use a portal at all? The fighter cannot, and that is the single
+## property `<class>_has_cruise_drive` rather than a rule about portals.
+func has_cruise_drive() -> bool:
+	return HullClass.has_cruise_drive(hull_class)
 
 
 func _fly_manual(delta: float) -> void:

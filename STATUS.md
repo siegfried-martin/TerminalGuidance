@@ -1,6 +1,60 @@
 # STATUS
 
-*Updated 2026-08-27.*
+*Updated 2026-08-29.*
+
+## The project has moved to the exploration bet
+
+The human called the combat POC a success and handed over two new documents —
+`docs/EXPLORATION_DESIGN.md` (locked decisions for the travel layer) and
+`docs/EXPLORATION_POC_IMPLEMENTATION.md` (the three-system test map). **Both
+supersede prior decisions where they conflict**, at the human's explicit direction.
+Four ADRs landed with that:
+
+- **0057** the highway is a place, not a travel mode — supersedes 0009
+- **0058** NPCs are worse than an engaged player at *every* station — supersedes the
+  gunner half of 0007
+- **0059** every ship number is keyed by hull class, with a shared default
+- **0060** a portal opens for a cruise drive, and its colour says so
+
+ADR 0013 is **not** superseded and carries a note saying why: the design doc's
+"autopilot is your own character flying" describes a *hired crew pilot*, a system
+that does not exist. The autopilot in this codebase stays the bounded heading hold.
+
+### The speed ladder landed, and it changes combat
+
+Everything derives from `missile/base_speed`, the one number the combat POC
+validated. The player's gunboat is now **taxi class at 15.5 m/s, down from 34** —
+a deliberate re-opening the human asked for ("I had thought the taxi type ships
+might be too fast so we will test with the new numbers"), not a side effect.
+
+Two absolutes became fractions, because both inverted at the corrected speed and
+neither would have errored:
+
+| | Was | Now | What the absolute would have done |
+|---|---|---|---|
+| `ship/arc_speed` | 13.8 m/s | `arc_speed_fraction` 0.45 | 0.89 of manual top speed — flying yourself becomes decoration |
+| `enemy/drift_speed` | 20 m/s | `drift_speed_fraction` 0.45 | an enemy of the player's own class could simply leave |
+
+`H` cycles hull class live in the combat arena, and the HUD carries a `class` row.
+That is the exploration POC's step-3 roster arriving in step 1 on purpose: *"is
+15.5 m/s the right taxi speed"* anchors every number downstream and is answerable
+in the scene that already exists. **This is the first feel question waiting on the
+human.**
+
+### Open, and flagged rather than resolved
+
+- **`ship.max_engagement_envelope` is still unmeasured**, and the exploration POC
+  did not wait for it. `system_diameter` was handed down as 3500 m rather than
+  derived, so `PROJECT_OVERVIEW` §Open Questions 1's chain — envelope → disc height
+  at 5–10x → cruise → diameter — is now resolved from the wrong end. A 500 m
+  envelope would want a disc taller than it is wide. It may bite when a real system
+  gets sized.
+- **ADR 0011's boundary treatment has never been built.** The POC doc's step 2 says
+  "existing boundary treatment"; there is none. Hard faces, the red volume, the
+  telegraphed timer and the magnitude-only outbound clamp are all new work.
+- **Per-ship / per-faction tuning data** is not on `ROADMAP.md`. ADR 0059 landed the
+  mechanism; the rows are the work.
+
 
 ## Where the build is
 

@@ -13,6 +13,20 @@ file is only about *order*.
 
 ---
 
+> **Superseded in part, 2026-08-29.** Stage 1's combat bet returned *nothing here
+> says rethink* and the project has moved to stage 3, the exploration prototype,
+> now specified in `docs/EXPLORATION_DESIGN.md` and
+> `docs/EXPLORATION_POC_IMPLEMENTATION.md`. Two things this file predicted did not
+> happen in the order it gave: **the engagement envelope is still unmeasured**, and
+> the exploration POC did not wait for it — `system_diameter` was handed down rather
+> than derived, so the numbers chain in `PROJECT_OVERVIEW` §Open Questions 1 is now
+> resolved from the wrong end. Stage 4 (the headless faction-war sim) and stage 5
+> are unchanged and still downstream.
+>
+> **New and not on this list:** per-ship / per-faction tuning data. `tuning.cfg` is
+> one global set of values, and "different for different factions" makes those
+> numbers per-hull data. ADR 0059 landed the mechanism; the rows are the work.
+
 ## Where the project actually is
 
 | | State |

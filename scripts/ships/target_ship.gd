@@ -269,7 +269,7 @@ func _recompute_bound() -> void:
 # --- flight ------------------------------------------------------------------
 
 func _process(delta: float) -> void:
-	position += _drift_direction * Tuning.num("enemy/drift_speed") * delta
+	position += velocity() * delta
 	# Parent-relative bounds, so a world recentre does not teleport the patrol box.
 	if absf(position.x) > _patrol_half_extent:
 		_drift_direction.x = -signf(position.x)
@@ -418,8 +418,28 @@ func interrupt_warned_already() -> bool:
 
 
 ## How fast this ship is moving, in the parent frame. Its flares inherit it.
+##
+## A fraction of its hull class's top speed, never an absolute. The old absolute
+## 20 m/s was set against a 34 m/s player ship; at the corrected taxi speed of 15.5
+## it would let an enemy of the same class simply LEAVE, outrunning the ship sent to
+## fight it with no rule anywhere saying it may (EXPLORATION_DESIGN.md invariant 4).
+func drift_speed() -> float:
+	return tuned_drift_speed()
+
+
+## The same number without needing an instance, so a test — or anything sizing an
+## arena against it — reads it from one place rather than restating the formula.
+static func tuned_drift_speed() -> float:
+	return HullClass.max_speed(tuned_hull_class()) \
+		* clampf(Tuning.num("enemy/drift_speed_fraction"), 0.0, 0.95)
+
+
+static func tuned_hull_class() -> HullClass.Kind:
+	return HullClass.from_name(Tuning.text("enemy/hull_class"))
+
+
 func velocity() -> Vector3:
-	return _drift_direction * Tuning.num("enemy/drift_speed")
+	return _drift_direction * drift_speed()
 
 
 func set_drift_direction(direction: Vector3) -> void:

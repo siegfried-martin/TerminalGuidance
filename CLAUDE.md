@@ -11,7 +11,9 @@ session; the rules below are not suggestions.
 | Decisions already made, and what each one forbids | `decisions/` |
 | What is built, what is next, open feel questions | `STATUS.md` |
 | What is being built first, and its scope boundary | `docs/COMBAT_POC_IMPLEMENTATION.md` |
-| What is being built *right now*, in detail | `docs/TURRET_MODE_IMPLEMENTATION.md` |
+| What is being built *right now*, in detail | `docs/EXPLORATION_POC_IMPLEMENTATION.md` |
+| The travel layer's locked decisions — roads, portals, the speed ladder, crew | `docs/EXPLORATION_DESIGN.md` |
+| The combat bet, now built | `docs/TURRET_MODE_IMPLEMENTATION.md` |
 | What comes after the combat bet, and in what order | `docs/ROADMAP.md` |
 | The full design of record | `docs/PROJECT_OVERVIEW.md` |
 
@@ -142,9 +144,20 @@ protect is not implemented yet.
   and it is deliberately rejected here.
 - **Autopilot is a heading hold.** It points the nose at a designated object; the
   player owns the throttle. It does not path, avoid, arrive, or make decisions.
-  Do not grow it.
-- **Speed hierarchy** is structural: lasers > missiles > ships. Nothing may violate
-  it by construction.
+  Do not grow it. `EXPLORATION_DESIGN.md`'s "autopilot is your own character flying"
+  describes a **hired crew pilot**, which is a different system that has not been
+  built (ADR 0013's note, ADR 0058). Do not grow this one into that one.
+- **Speed hierarchy** is structural: lasers > missiles > ships. It is now **keyed by
+  hull class** — one global fraction cannot express a taxi at 0.27 of missile speed
+  and a fighter at 0.67 — so what it guarantees is *"a missile outruns its intended
+  targets"* (ADR 0059). Read ship numbers through `HullClass`, never straight out of
+  `Tuning` at a site that knows the class, and never express a speed relationship
+  between two ships as an absolute.
+- **The highway is a place, not a mode** (ADR 0057, superseding 0009). The cruise
+  drive works on the road and nowhere else, and there is no personal equivalent for
+  open space. Inside the tube: no camera cut, no scene load, no non-interactive
+  transit, the surrounding space stays rendered, and floating origin and
+  LOD/collision rules apply exactly as everywhere else.
 
 ## Testing convention
 
@@ -176,7 +189,8 @@ scripts/view/          camera/control state machine, chase camera, the gun stati
 scripts/world/         marker lattice, reference field
 scripts/effects/       detonation flash, pulse-beam tracer
 scripts/lib/           pure helpers — no scene tree, no disk, unit tested:
-                       FlightGeometry, ReticleSteering, Damage, TuningSchema,
+                       FlightGeometry, ReticleSteering, Damage, HullClass,
+                       TuningSchema,
                        TuningWriter
 scripts/sandbox/       the asset harness scene
 scripts/debug/         HUD, debug fly-cam, the F2 tuning panel
