@@ -38,6 +38,15 @@ var target: Node3D
 ## Which hull this is. Everything about how the ship flies resolves from here, so
 ## switching class at runtime is one assignment and not a rebuild (POC step 4).
 var hull_class: HullClass.Kind = HullClass.DEFAULT
+## Scaled below 1 while the ship leans on a system boundary (ADR 0011, SystemDisc).
+##
+## The clamp is on the SPEED LIMIT, never on the velocity vector. That is what makes
+## "magnitude only, never direction" structural: there is no code path anywhere that
+## can turn the player's ship, because nothing on this side ever receives a heading.
+## The stick does exactly what was asked and the ship simply strains.
+##
+## It also shows: the HUD's speed row reads "of N", and N comes down.
+var speed_ceiling_scale: float = 1.0
 
 var _velocity: Vector3 = Vector3.ZERO
 var _orbit_sign: float = 1.0
@@ -212,7 +221,7 @@ func _fly_autopilot(delta: float) -> void:
 ## `HullClass` applies the clamp. What the invariant protects widens from "missiles
 ## outrun ships" to "a missile outruns its intended targets".
 func manual_max_speed() -> float:
-	return HullClass.max_speed(hull_class)
+	return HullClass.max_speed(hull_class) * clampf(speed_ceiling_scale, 0.05, 1.0)
 
 
 ## Read the class back out of tuning. Called at build and on every hot reload, so

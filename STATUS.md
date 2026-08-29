@@ -60,9 +60,26 @@ human.**
   348 m, the target patrols a 600 m box — while the rock field the human has been
   flying in is already **3,134 m across and 440 m thick**. The scenery is roughly
   3–4x the fight in both dimensions. Whether that comes down is a feel call.
-- **ADR 0011's boundary treatment has never been built.** The POC doc's step 2 says
-  "existing boundary treatment"; there is none. Hard faces, the red volume, the
-  telegraphed timer and the magnitude-only outbound clamp are all new work.
+### Exploration step 2 is built — the first system disc
+
+`make run SCENE=res://scenes/exploration.tscn`. A 3500 m disc, 1150 m tall (400 up,
+750 down), a planet 450 m below the combat plane, and manual flight. No missiles,
+no turret, no roster — only the pilot exists here.
+
+**ADR 0011 was built for the first time.** The combat arena has always been an
+unbounded marker lattice; there was no "existing boundary treatment" for the POC doc
+to reuse. The disc now has hard flat faces, an open rim, a red volume, a telegraphed
+grace period, ramping damage and the outbound speed clamp.
+
+The clamp is **on the speed limit, not on the velocity vector**, which is what makes
+ADR 0011's *"magnitude only, never direction"* structural: `DiscBounds` returns a
+scale and never sees a heading it could return, so no code path exists that can turn
+the player's ship. It shows on the HUD — the speed row's "of N" comes down.
+
+Verified by rendering both states. `tools/shots/bounds_shot.tscn` parks the ship past
+the ceiling, because *"the volume is visibly red"* is the one thing in that ADR no
+test can check. It reads as a translucent membrane — markers and the planet are
+visible through it — rather than as a wall.
 - **Per-ship / per-faction tuning data** is not on `ROADMAP.md`. ADR 0059 landed the
   mechanism; the rows are the work.
 

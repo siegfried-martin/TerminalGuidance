@@ -11,7 +11,7 @@ SHOTS ?= .shots
 help:  ## Show this help
 	@grep -E '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
 
-run:  ## Play the combat arena in a window (SCENE=res://scenes/sandbox.tscn for the asset harness)
+run:  ## Play the combat arena in a window (SCENE=res://scenes/exploration.tscn for the travel POC, sandbox.tscn for the asset harness)
 	$(GODOT) --scene $(SCENE)
 
 check: import  ## Headless gate: compiles, Godot-3 API lint, tuning keys, assets, scene build
