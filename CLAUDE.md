@@ -145,8 +145,10 @@ protect is not implemented yet.
 - **Autopilot is a heading hold.** It points the nose at a designated object; the
   player owns the throttle. It does not path, avoid, arrive, or make decisions.
   Do not grow it. `EXPLORATION_DESIGN.md`'s "autopilot is your own character flying"
-  describes a **hired crew pilot**, which is a different system that has not been
-  built (ADR 0013's note, ADR 0058). Do not grow this one into that one.
+  describes **what it already is** — every station is a person who keeps working,
+  worse, while the player is elsewhere. A better hired pilot is a better *number*,
+  never more authority, and is still worse than the player (ADR 0058). "Hiring a
+  better pilot" is not a reason to add pathfinding, avoidance, or arrival.
 - **Speed hierarchy** is structural: lasers > missiles > ships. It is now **keyed by
   hull class** — one global fraction cannot express a taxi at 0.27 of missile speed
   and a fighter at 0.67 — so what it guarantees is *"a missile outruns its intended

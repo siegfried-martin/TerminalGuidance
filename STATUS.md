@@ -16,9 +16,13 @@ Four ADRs landed with that:
 - **0059** every ship number is keyed by hull class, with a shared default
 - **0060** a portal opens for a cruise drive, and its colour says so
 
-ADR 0013 is **not** superseded and carries a note saying why: the design doc's
-"autopilot is your own character flying" describes a *hired crew pilot*, a system
-that does not exist. The autopilot in this codebase stays the bounded heading hold.
+ADR 0013 is **reframed, not superseded**. Every station is a person who keeps doing
+their job — worse — while the player is elsewhere, and the heading hold already *is*
+a pilot doing that job. A better hired pilot is a better number, never more
+authority, so 0013's bounds hold unchanged and hold harder.
+
+**Only the pilot matters in this POC.** The exploration scene carries the helm and
+the missile tube; no turret, no gunner station. This is not a combat POC.
 
 ### The speed ladder landed, and it changes combat
 

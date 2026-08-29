@@ -24,10 +24,14 @@ because sitting down at any station beats what was happening while you were away
 Skill-for-price is what makes crew a live money sink and a source of texture, and
 that only works if the top of the range is still visibly below the player.
 
-Also settled here: **autopilot is your own character flying while you are
-elsewhere** — a person's competence, not a system with a difficulty setting.
-Hiring a better pilot produces a better autopilot. See ADR 0059 for what that does
-and does not mean for the autopilot that exists today.
+Also settled here: **every station is a person, and they keep doing their job when
+the player switches away from it** — much worse, but continuously. "Autopilot" is
+not a system with a difficulty setting; it is the pilot character's competence,
+and hiring a better pilot raises that number.
+
+This reframes ADR 0013 rather than replacing it. The heading hold already *is* a
+pilot doing their job, and a better pilot is a better number, not more authority:
+0013's bounds hold unchanged, and this is the ceiling on the number inside them.
 
 ## What this forbids
 

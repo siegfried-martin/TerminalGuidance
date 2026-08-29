@@ -48,6 +48,11 @@ Where this section and the body below disagree, this section wins.
   boundary treatment"; there is none. The disc's hard faces, the red volume, the
   telegraphed timer and the magnitude-only outbound clamp are all new work in
   step 2.
+- **Only the pilot matters here.** Every station is a person who keeps doing their
+  job, much worse, when the player switches away — and the existing autopilot
+  already is that for the helm. This is not a combat POC, so the exploration scene
+  carries the helm and the missile tube and **no turret and no gunner station**.
+  The crew roster (ADR 0056) is not exercised; `T` is the only job there is.
 - **`tuning.cfg` is the source of truth for every number below.** The block in
   §Starting Tuning Values is v1's proposal, kept for its reasoning; read the values
   from the file.
