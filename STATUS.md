@@ -2,6 +2,30 @@
 
 *Updated 2026-08-29.*
 
+---
+
+## START HERE
+
+**The combat POC is done and the project is on the exploration bet.** Read
+`docs/EXPLORATION_DESIGN.md` (locked decisions) then
+`docs/EXPLORATION_POC_IMPLEMENTATION.md` (the build order, with ✅ marks on what is
+built). Those two documents **supersede prior decisions where they conflict**, at
+the human's explicit direction.
+
+| | |
+|---|---|
+| Branch | `feat/exploration-tuning-and-hud`, PR #14 |
+| Gate | `make check` — 870 checks, 0 failed |
+| Run it | `make run SCENE=res://scenes/exploration.tscn` |
+| Built | Exploration POC steps 1–4 |
+| **Do next** | **The system border.** Fully designed and agreed, not yet written — see §SETTLED, NOT YET BUILT below. Then POC step 5. |
+
+Everything under §Where the build is and below is the **combat POC's history**,
+kept for its reasoning. It is not a to-do list, and its §Next is superseded by the
+line above.
+
+---
+
 ## The project has moved to the exploration bet
 
 The human called the combat POC a success and handed over two new documents —
@@ -374,7 +398,13 @@ forward, because adding one early destroys the reading on the one before it:
 - **Step 9** — target death and respawn, the PiP camera toggle, and the 30-minute
   verdict session against all three criteria. This is all that is left of the POC.
 
-## Next
+## Next — SUPERSEDED 2026-08-29, kept for its reasoning
+
+> Both items below are **done**. The envelope measures itself now (`EnvelopeMeter`,
+> with an `envelope` row on the combat HUD). Step 9 was overtaken: the human called
+> the combat POC a success and moved the project to the exploration bet, so the
+> target's death and the PiP toggle were never built and are **not** on the current
+> path. See §START HERE for what to do instead.
 
 **Step 9, and make the envelope measure itself.** Combat has been played and reads
 right (above). Two things are left before the combat bet is closed, and they are
@@ -454,7 +484,10 @@ Still open from the first feel session, and worth judging while playing step 6:
    If it is, the fix is a second sparse non-colliding layer (ADR 0038), not moving
    these back out.
 
-## Where to start — the dependency chain
+## Where to start — the dependency chain (as of the combat POC)
+
+> Stages 1 and 2 are done; the project is on stage 3, the exploration prototype.
+> `docs/ROADMAP.md` carries the same supersede note.
 
 *Full version, with what each stage is blocked on: `docs/ROADMAP.md`.
 The current build's detailed spec: `docs/TURRET_MODE_IMPLEMENTATION.md`.*
@@ -931,7 +964,15 @@ back to the file without disturbing a single comment; *Revert* throws it away.
 Editing the file in a text editor still hot-reloads, and disk wins over unsaved
 panel edits.
 
-### Engagement envelope — STILL UNMEASURED, and now it is the blocker
+### Engagement envelope — SUPERSEDED 2026-08-29
+
+> No longer unmeasured and no longer the blocker. `EnvelopeMeter` records it and the
+> combat HUD's `envelope` row reports span and vertical spread separately. It also
+> stopped gating anything: `system_diameter` was handed down at 3500 m rather than
+> derived through the chain below, so the exploration POC did not wait for it. The
+> reasoning is kept because the chain still explains *why* disc height is a multiple
+> of the vertical figure — "so the ceiling never enters a fight".
+
 
 `docs/COMBAT_POC_IMPLEMENTATION.md` asks for `ship.max_engagement_envelope` — the
 largest distance a fight sprawls across — to be observed rather than guessed,

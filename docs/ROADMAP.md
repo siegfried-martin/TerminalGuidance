@@ -13,6 +13,11 @@ file is only about *order*.
 
 ---
 
+> **Where the project actually is, 2026-08-29:** exploration POC steps 1–4 built,
+> on branch `feat/exploration-tuning-and-hud` (PR #14). Next is the system border,
+> then POC step 5. `STATUS.md` §START HERE is the live pointer; this file is the
+> ordering argument.
+>
 > **Superseded in part, 2026-08-29.** Stage 1's combat bet returned *nothing here
 > says rethink* and the project has moved to stage 3, the exploration prototype,
 > now specified in `docs/EXPLORATION_DESIGN.md` and
