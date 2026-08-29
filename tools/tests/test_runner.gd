@@ -179,6 +179,7 @@ func _ready() -> void:
 	_test_manual_flight()
 	_test_hull_classes()
 	_test_lane_geometry()
+	_test_envelope_meter()
 	_test_target_components()
 	_test_turret_station()
 	_test_turret_weapons()
@@ -2440,3 +2441,61 @@ func _test_lane_geometry() -> void:
 		"cruise is at least twice the fastest hull, or the road buys nothing",
 		"cruise %.1f vs fighter %.1f" % [Tuning.num("exploration/cruise_speed"),
 			HullClass.max_speed(HullClass.Kind.FIGHTER)])
+
+## The engagement-envelope meter. It is an instrument, so what is tested is that it
+## reports the truth and that nothing about it depends on where the origin happens
+## to be this frame (ADR 0020).
+func _test_envelope_meter() -> void:
+	var meter := EnvelopeMeter.new()
+
+	meter.observe([] as Array[Vector3])
+	_expect(is_zero_approx(meter.span) and meter.participants == 0,
+		"an empty fight has no envelope", "span %.1f" % meter.span)
+	meter.observe([Vector3.ZERO] as Array[Vector3])
+	_expect(is_zero_approx(meter.span) and meter.participants == 1,
+		"…and neither does one participant on its own — a span needs two",
+		"span %.1f" % meter.span)
+
+	# The span is the largest distance between ANY two participants, which on a
+	# diagonal is not an axis extent. A bounding box would be cheaper and wrong.
+	meter.observe([Vector3(-100.0, 0.0, 0.0), Vector3(100.0, 0.0, 0.0),
+		Vector3(0.0, 40.0, 300.0)] as Array[Vector3])
+	var diagonal := Vector3(-100.0, 0.0, 0.0).distance_to(Vector3(0.0, 40.0, 300.0))
+	_expect(is_equal_approx(meter.current_span, diagonal),
+		"the span is the longest pair, not the widest axis",
+		"got %.1f, longest pair is %.1f" % [meter.current_span, diagonal])
+	_expect(is_equal_approx(meter.current_vertical, 40.0),
+		"…and the vertical figure is the up-axis spread alone, reported separately",
+		"got %.1f" % meter.current_vertical)
+
+	# A high-water mark: a fight that closes back up does not un-measure how far it
+	# sprawled, because the disc has to hold the largest moment, not the last one.
+	var widest := meter.span
+	meter.observe([Vector3.ZERO, Vector3(1.0, 0.0, 0.0)] as Array[Vector3])
+	_expect(is_equal_approx(meter.span, widest),
+		"the record survives the fight closing back up",
+		"record fell from %.1f to %.1f" % [widest, meter.span])
+	_expect(meter.current_span < meter.span,
+		"…while the live figure follows the fight down",
+		"live %.1f, record %.1f" % [meter.current_span, meter.span])
+
+	# Floating origin: the reading is of distances BETWEEN participants, so shifting
+	# every participant by the same amount must change nothing. If this ever fails,
+	# the envelope number has been silently measuring distance-from-origin.
+	var shifted := EnvelopeMeter.new()
+	var shift := Vector3(9000.0, -4000.0, 12000.0)
+	var points: Array[Vector3] = [Vector3(-100.0, 0.0, 0.0), Vector3(100.0, 0.0, 0.0),
+		Vector3(0.0, 40.0, 300.0)]
+	var moved: Array[Vector3] = []
+	for point in points:
+		moved.append(point + shift)
+	shifted.observe(moved)
+	_expect(is_equal_approx(shifted.span, meter.span)
+			and is_equal_approx(shifted.vertical, meter.vertical),
+		"a floating-origin recentre does not move the envelope reading",
+		"%.1f/%.1f against %.1f/%.1f" % [shifted.span, shifted.vertical,
+			meter.span, meter.vertical])
+
+	meter.reset()
+	_expect(is_zero_approx(meter.span) and is_zero_approx(meter.vertical),
+		"reset forgets the record", "span %.1f" % meter.span)

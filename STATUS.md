@@ -47,12 +47,19 @@ human.**
 
 ### Open, and flagged rather than resolved
 
-- **`ship.max_engagement_envelope` is still unmeasured**, and the exploration POC
-  did not wait for it. `system_diameter` was handed down as 3500 m rather than
-  derived, so `PROJECT_OVERVIEW` §Open Questions 1's chain — envelope → disc height
-  at 5–10x → cruise → diameter — is now resolved from the wrong end. A 500 m
-  envelope would want a disc taller than it is wide. It may bite when a real system
-  gets sized.
+- **The envelope now measures itself.** `EnvelopeMeter` keeps a session high-water
+  mark and the arena HUD carries an `envelope` row. Two figures, because the chain
+  wants them for different things: **span** (largest distance between any two
+  participants) sizes the diameter, and **vertical** (up-axis spread alone) is what
+  disc height is actually 5–10x of — the clause is *"so the ceiling never enters a
+  fight"*, and a ceiling is only entered vertically. An earlier note here said the
+  numbers chain was "resolved from the wrong end"; that conflated the fight's
+  horizontal sprawl with its vertical one and was wrong. **One session now produces
+  the number.**
+- For scale while reading it: the fight is held at 203 m standoff, missile reach is
+  348 m, the target patrols a 600 m box — while the rock field the human has been
+  flying in is already **3,134 m across and 440 m thick**. The scenery is roughly
+  3–4x the fight in both dimensions. Whether that comes down is a feel call.
 - **ADR 0011's boundary treatment has never been built.** The POC doc's step 2 says
   "existing boundary treatment"; there is none. Hard faces, the red volume, the
   telegraphed timer and the magnitude-only outbound clamp are all new work.

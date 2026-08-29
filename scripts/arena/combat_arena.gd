@@ -49,6 +49,10 @@ var _lattice: GrayBoxArena
 var _rocks: ReferenceField
 var _ship: Mothership
 var _target: TargetShip
+## The engagement envelope, measured instead of eyeballed. See EnvelopeMeter — this
+## is the first link in the exploration numbers chain and it has been deferred four
+## times because it reads like a chore for a human. It is a high-water mark.
+var _envelope := EnvelopeMeter.new()
 var _turret: Turret
 var _views: ViewController
 var _hud: DebugHud
@@ -304,6 +308,11 @@ func _build_hud() -> void:
 		return "%.0f m held / %.0f m tuned  ·  %.0f m deep / %.0f tuned" % [
 			_ship.range_to_target(), Tuning.num("ship/standoff_distance"),
 			_ship.depth_below_target(), Tuning.num("ship/arc_depth")])
+	# THE reading the exploration layer is waiting on (CLAUDE.md §Session hygiene).
+	# It sizes the system disc, and disc height is 5-10x it "so the ceiling never
+	# enters a fight" — which is why the vertical figure is reported separately from
+	# the span rather than being inferred from it.
+	_hud.add_row("envelope", func() -> String: return _envelope.summary())
 	_hud.add_row("last", func() -> String: return _last_outcome)
 	_hud.add_row("keys", func() -> String:
 		match _views.view():
@@ -331,6 +340,26 @@ func _apply_tuning() -> void:
 
 
 # --- firing ------------------------------------------------------------------
+
+## Feed the envelope meter. Ships and steered things only: a gun round is a stream
+## rather than a participant, and its reach is already a tuned constant.
+##
+## Everything here is in `_arena_root`'s frame, which is what makes the reading
+## survive a floating-origin recentre — the meter measures distances BETWEEN
+## participants and never a distance from an origin (ADR 0020).
+func _process(_delta: float) -> void:
+	var points: Array[Vector3] = []
+	if _ship != null and is_instance_valid(_ship):
+		points.append(_ship.position)
+	if _target != null and is_instance_valid(_target):
+		points.append(_target.position)
+	for group in ["player_missile", EnemyMissile.GROUP]:
+		for node in get_tree().get_nodes_in_group(group):
+			var flyer := node as Node3D
+			if flyer != null and is_instance_valid(flyer):
+				points.append(flyer.position)
+	_envelope.observe(points)
+
 
 func _unhandled_input(event: InputEvent) -> void:
 	# With the tuning panel open the pointer belongs to the UI, so a click in the
@@ -524,6 +553,11 @@ func target() -> TargetShip:
 
 func views() -> ViewController:
 	return _views
+
+
+## The envelope reading, for tests and for whatever eventually writes it down.
+func envelope() -> EnvelopeMeter:
+	return _envelope
 
 
 func turret() -> Turret:

@@ -60,6 +60,7 @@ The reasoning, including what the alternative was and why it lost.
 | [0057](0057-the-highway-is-a-place.md) | The highway is a place, not a travel mode — supersedes 0009 |
 | [0059](0059-hull-class-is-the-table.md) | Every ship number is keyed by hull class, with a shared default |
 | [0060](0060-a-portal-opens-for-a-cruise-drive.md) | A portal opens for a cruise drive, and its colour says so |
+| [0061](0061-planets-sit-below-the-combat-layer.md) | Planets sit below the combat layer, because down is already a direction |
 
 ### Framing corrections
 | # | Decision |
@@ -108,4 +109,4 @@ The reasoning, including what the alternative was and why it lost.
 | [0056](0056-pilot-or-gunner.md) | The player holds a job, not a mode; the autopilot follows from it |
 | [0058](0058-npcs-are-worse-than-a-player.md) | NPCs are worse than an engaged player at every station, gunners included |
 
-*Next number: 0061.*
+*Next number: 0062.*
