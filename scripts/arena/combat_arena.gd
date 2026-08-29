@@ -396,7 +396,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	# early, because "is 15.5 m/s the right taxi speed" is the anchor for every
 	# number downstream of it and is answerable in the arena that already exists.
 	elif event.is_action_pressed("debug_cycle_hull"):
-		_ship.hull_class = HullClass.next(_ship.hull_class)
+		# Through the setter, so the silhouette changes with the class rather than
+		# staying at the previous one's size until the next hot reload.
+		_ship.set_hull_class(HullClass.next(_ship.hull_class))
 	elif event.is_action_pressed("loadout_1"):
 		_turret.set_loadout(1)
 	elif event.is_action_pressed("loadout_2"):

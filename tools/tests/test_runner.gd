@@ -82,7 +82,7 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"enemy/component_radius", "enemy/component_length", "enemy/component_mount_radius",
 	"enemy/component_hit_radius", "enemy/component_damaged_darken",
 	"enemy/component_respawn_seconds", "enemy/component_color", "enemy/component_emission",
-	"camera/fov_base", "camera/return_delay_sec", "camera/missile_view_mode",
+	"camera/fov_base", "camera/boom_hull_scale_influence", "camera/return_delay_sec", "camera/missile_view_mode",
 	"camera/ship_follow_distance", "camera/ship_follow_height", "camera/ship_follow_lag",
 	"camera/ship_look_ahead",
 	"camera/missile_follow_distance", "camera/missile_follow_height",
@@ -128,6 +128,12 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/capital_max_speed", "exploration/cruise_speed",
 	"exploration/taxi_speed_ceiling_fraction", "exploration/fighter_speed_ceiling_fraction",
 	"exploration/capital_speed_ceiling_fraction", "exploration/start_hull_class",
+	"exploration/fighter_turn_rate_deg_per_sec", "exploration/fighter_accel_seconds",
+	"exploration/fighter_brake_seconds", "exploration/fighter_strafe_speed",
+	"exploration/fighter_reticle_max_angle_deg", "exploration/fighter_hull_scale",
+	"exploration/capital_turn_rate_deg_per_sec", "exploration/capital_accel_seconds",
+	"exploration/capital_brake_seconds", "exploration/capital_strafe_speed",
+	"exploration/capital_reticle_max_angle_deg", "exploration/capital_hull_scale",
 	"exploration/taxi_has_cruise_drive", "exploration/fighter_has_cruise_drive",
 	"exploration/capital_has_cruise_drive",
 	"exploration/cruise_turn_clamp_deg", "exploration/cruise_turn_rate_deg_per_sec",
@@ -190,6 +196,7 @@ func _ready() -> void:
 	_test_lane_geometry()
 	_test_envelope_meter()
 	_test_disc_bounds()
+	_test_hull_roster()
 	_test_target_components()
 	_test_turret_station()
 	_test_turret_weapons()
@@ -2650,3 +2657,89 @@ func _test_exploration_builds() -> void:
 
 	scene.queue_free()
 	await get_tree().process_frame
+
+## The debug roster (POC step 3). What is under test is that the three classes are
+## actually three *ships* rather than three top speeds, and that switching between
+## them rebuilds everything that follows from the class.
+func _test_hull_roster() -> void:
+	var ship := Mothership.new()
+	add_child(ship)
+
+	# The taxi overrides nothing on purpose: it IS the shared fallback, which is
+	# what keeps the roster from disturbing the ship the combat POC was validated
+	# on. If this ever fails, adding a class has changed the existing one.
+	ship.set_hull_class(HullClass.Kind.TAXI)
+	_expect(is_equal_approx(ship.turn_rate_deg_per_sec(),
+			Tuning.num("ship/manual_turn_rate_deg_per_sec"))
+			and is_equal_approx(ship.accel_seconds(),
+				Tuning.num("ship/manual_accel_seconds"))
+			and is_equal_approx(ship.hull_scale(), Tuning.num("ship/hull_scale")),
+		"the taxi is the shared default and the roster cannot disturb it",
+		"turn %.1f, accel %.1f, scale %.2f" % [ship.turn_rate_deg_per_sec(),
+			ship.accel_seconds(), ship.hull_scale()])
+
+	var taxi_turn := ship.turn_rate_deg_per_sec()
+	var taxi_accel := ship.accel_seconds()
+	var taxi_scale := ship.hull_scale()
+	var taxi_top := ship.manual_max_speed()
+
+	# A class has to differ in more than one number, or it is a speed setting rather
+	# than a ship. These orderings are what makes each one legible in the hand.
+	ship.set_hull_class(HullClass.Kind.FIGHTER)
+	_expect(ship.manual_max_speed() > taxi_top
+			and ship.turn_rate_deg_per_sec() > taxi_turn
+			and ship.accel_seconds() < taxi_accel
+			and ship.strafe_speed() > Tuning.num("ship/manual_strafe_speed")
+			and ship.hull_scale() < taxi_scale,
+		"a fighter is faster, turns harder, spools quicker and is smaller",
+		"top %.1f turn %.0f accel %.1f scale %.2f" % [ship.manual_max_speed(),
+			ship.turn_rate_deg_per_sec(), ship.accel_seconds(), ship.hull_scale()])
+	_expect(not ship.has_cruise_drive(),
+		"…and has no cruise drive, which is the whole of why no portal opens for it",
+		"it has one")
+
+	ship.set_hull_class(HullClass.Kind.CAPITAL)
+	_expect(ship.manual_max_speed() < taxi_top
+			and ship.turn_rate_deg_per_sec() < taxi_turn
+			and ship.accel_seconds() > taxi_accel
+			and ship.hull_scale() > taxi_scale,
+		"a capital is slower, turns worse, spools longer and is bigger",
+		"top %.1f turn %.0f accel %.1f scale %.2f" % [ship.manual_max_speed(),
+			ship.turn_rate_deg_per_sec(), ship.accel_seconds(), ship.hull_scale()])
+	_expect(ship.has_cruise_drive(),
+		"…and does carry the cruise drive", "it does not")
+
+	# Drawn shape is hit shape (ADR 0043). A fighter drawn at a quarter size with a
+	# gunboat's hit sphere would be hit from four hull-widths away and nothing
+	# anywhere would report it.
+	var capital_radius := ship.hit_radius()
+	ship.set_hull_class(HullClass.Kind.FIGHTER)
+	_expect(ship.hit_radius() < capital_radius,
+		"the hit sphere follows the silhouette, not the shared hull scale",
+		"fighter %.1f m against capital %.1f m" % [ship.hit_radius(), capital_radius])
+
+	# Switching rebuilds what depends on the class. A bare assignment left the drawn
+	# hull at the previous size until something else triggered a hot reload.
+	var drawn := (ship.get_node("Hull") as MeshInstance3D).scale.x
+	_expect(is_equal_approx(drawn, ship.hull_scale()),
+		"switching class resizes the drawn hull immediately",
+		"drawn at %.2f, class wants %.2f" % [drawn, ship.hull_scale()])
+	ship.free()
+
+	# The roster wraps, so one key reaches every class without a menu.
+	var seen := {}
+	var kind := HullClass.DEFAULT
+	for _i in HullClass.all().size():
+		seen[kind] = true
+		kind = HullClass.next(kind)
+	_expect(seen.size() == HullClass.all().size() and kind == HullClass.DEFAULT,
+		"cycling reaches every class and wraps back round",
+		"saw %d of %d" % [seen.size(), HullClass.all().size()])
+
+	# The camera boom follows the hull, so what the player compares between classes
+	# is how the ship flies rather than how far away it looks.
+	var camera := ChaseCamera.new()
+	add_child(camera)
+	_expect(is_equal_approx(camera.boom_scale, 1.0),
+		"a chase camera defaults to an unscaled boom", "%.2f" % camera.boom_scale)
+	camera.free()

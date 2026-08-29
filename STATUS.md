@@ -45,6 +45,39 @@ That is the exploration POC's step-3 roster arriving in step 1 on purpose: *"is
 in the scene that already exists. **This is the first feel question waiting on the
 human.**
 
+### Exploration step 3 is built — the hull roster
+
+`H` cycles **taxi → fighter → capital**, instantly, in both scenes. The classes are
+three ships rather than three top speeds: turn rate, throttle travel, thruster
+authority and silhouette are all per class, because a fighter that is just a fast
+taxi teaches nothing about what a fighter is.
+
+**The taxi has no rows of its own on purpose.** It *is* the shared fallback, so it
+is exactly the ship the combat POC was validated on and the roster cannot disturb
+it. A test asserts that.
+
+| | Top | Turn | To full / stop | Crosses the disc |
+|---|---|---|---|---|
+| Taxi | 15.5 m/s | 26 °/s | 3.2 s / 2.4 s | 3.8 min |
+| Fighter | 38.7 m/s | 62 °/s | 1.4 s / 1.0 s | **1.5 min** |
+| Capital | 11.0 m/s | 11 °/s | 7.0 s / 6.0 s | 5.3 min |
+
+The fighter's 1.5 minutes is the number `EXPLORATION_DESIGN.md` §Two-Tier Network
+predicted for "system diameter, fighter alone" — so the ladder and the disc size
+agree without either having been fitted to the other.
+
+### 🔵 THE FIRST FEEL QUESTION IS OPEN
+
+**Is 15.5 m/s the right taxi speed?** It anchors every number downstream of it — the
+whole ladder is derived from it, and cruise, leg times and system size all move when
+it does. `make run SCENE=res://scenes/exploration.tscn`, press `H`, and F2 the
+values live.
+
+Worth knowing while reading it: the camera boom scales with hull size, so the ship
+stays the same size on screen and the *world* changes scale instead — a small ship
+makes the system feel large. That is `camera/boom_hull_scale_influence`; drop it to
+0 to read hull size off the screen directly instead.
+
 ### Open, and flagged rather than resolved
 
 - **The envelope now measures itself.** `EnvelopeMeter` keeps a session high-water

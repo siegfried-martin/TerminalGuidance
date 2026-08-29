@@ -101,6 +101,7 @@ func _build_ship() -> void:
 	_camera.name = "ChaseCamera"
 	_camera.subject = _ship
 	_camera.tuning_prefix = "camera/ship"
+	_camera.boom_scale = _ship.hull_scale()
 	add_child(_camera)
 	_camera.snap()
 	_camera.current = true
@@ -116,9 +117,22 @@ func _build_hud() -> void:
 			HullClass.name_of(_ship.hull_class).to_upper(),
 			_ship.manual_max_speed(),
 			"yes" if _ship.has_cruise_drive() else "NO — no portal opens"])
+	_hud.add_row("handling", func() -> String:
+		return "%.0f deg/s turn  ·  %.1f s to full / %.1f s to stop  ·  %.0f m/s strafe" % [
+			_ship.turn_rate_deg_per_sec(), _ship.accel_seconds(),
+			_ship.brake_seconds(), _ship.strafe_speed()])
 	_hud.add_row("flight", func() -> String:
 		return "throttle %3.0f%%  ·  %.0f m/s of %.0f" % [
 			_ship.throttle() * 100.0, _ship.speed(), _ship.manual_max_speed()])
+	# How long this hull takes to cross its own system, which is the number the
+	# ladder was built to make meaningful and the one step 3 is really asking about.
+	_hud.add_row("crossing", func() -> String:
+		var top := _ship.manual_max_speed()
+		if top <= 0.0:
+			return "—"
+		var seconds := _system.radius() * 2.0 / top
+		return "%.0f s across the disc at full throttle  (%.1f min)" % [
+			seconds, seconds / 60.0])
 	# The disc, stated as the three things it decomposes into (ADR 0061) rather than
 	# as one height, because that is how it is tuned.
 	_hud.add_row("system", func() -> String:
@@ -167,7 +181,7 @@ func _build_hud() -> void:
 	_hud.add_row("markers", func() -> String:
 		return "%d in the disc" % _system.marker_count())
 	_hud.add_row("keys", func() -> String:
-		return "W/S throttle · A/D thrusters · mouse steers · H hull · F1 hud · F2 tune")
+		return "W/S throttle · A/D thrusters · mouse steers · H cycles hull · F1 hud · F2 tune")
 
 
 func _apply_tuning() -> void:
@@ -212,7 +226,22 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("debug_reload_tuning"):
 		Tuning.reload()
 	elif event.is_action_pressed("debug_cycle_hull"):
-		_ship.hull_class = HullClass.next(_ship.hull_class)
+		cycle_hull()
+
+
+## The debug roster (POC step 3). Instant, because the whole point is feeling the
+## classes back to back — a transition would put the thing being compared behind an
+## animation. The camera boom follows the hull so the ship stays the same size on
+## screen and what changes is how it flies, not how far away it looks.
+##
+## Velocity is deliberately left alone. Switching from a fighter at 38 m/s into a
+## capital that tops out at 11 does not teleport or snap the ship: `_fly_manual`
+## limits to the new maximum on the next frame, so the ship bleeds down to its new
+## class the way it would if the throttle had been pulled. That is a truthful answer
+## rather than a special case.
+func cycle_hull() -> void:
+	_ship.set_hull_class(HullClass.next(_ship.hull_class))
+	_camera.boom_scale = _ship.hull_scale()
 
 
 func system() -> SystemDisc:

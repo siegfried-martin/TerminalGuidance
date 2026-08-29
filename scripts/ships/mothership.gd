@@ -35,8 +35,11 @@ var autopilot: bool = true
 var piloted: bool = true
 var target: Node3D
 
-## Which hull this is. Everything about how the ship flies resolves from here, so
-## switching class at runtime is one assignment and not a rebuild (POC step 4).
+## Which hull this is. Everything about how the ship flies resolves from here.
+##
+## Assign through `set_hull_class` rather than directly: the silhouette is a class
+## property too, and a bare assignment leaves the hull at the previous class's size
+## until something else happens to trigger a hot reload.
 var hull_class: HullClass.Kind = HullClass.DEFAULT
 ## Scaled below 1 while the ship leans on a system boundary (ADR 0011, SystemDisc).
 ##
@@ -111,7 +114,7 @@ func _on_tuning_reloaded() -> void:
 
 
 func _apply_tuning() -> void:
-	_hull.scale = Vector3.ONE * Tuning.num("ship/hull_scale")
+	_hull.scale = Vector3.ONE * hull_scale()
 	var mat := _hull.material_override as StandardMaterial3D
 	mat.albedo_color = Tuning.color("ship/hull_tint")
 	mat.metallic = Tuning.num("ship/metallic")
@@ -228,7 +231,16 @@ func manual_max_speed() -> float:
 ## editing `ship/hull_class` changes the ship in place, and so the debug roster
 ## (POC step 4) can put it back.
 func adopt_tuned_hull_class() -> void:
-	hull_class = HullClass.from_name(Tuning.text("ship/hull_class"))
+	set_hull_class(HullClass.from_name(Tuning.text("ship/hull_class")))
+
+
+## Change class, and rebuild everything that follows from it. Instant by design —
+## the roster exists so the classes can be felt back to back, and a transition would
+## put the thing being compared behind an animation.
+func set_hull_class(kind: HullClass.Kind) -> void:
+	hull_class = kind
+	if _hull != null:
+		_apply_tuning()
 
 
 ## Can this hull use a portal at all? The fighter cannot, and that is the single
@@ -237,11 +249,51 @@ func has_cruise_drive() -> bool:
 	return HullClass.has_cruise_drive(hull_class)
 
 
+## How hard this hull turns. Read publicly because the roster's whole purpose is
+## comparing classes, and a difference the player has to infer from feel alone is
+## a difference they will mis-attribute.
+func turn_rate_deg_per_sec() -> float:
+	return HullClass.num(hull_class, "turn_rate_deg_per_sec",
+		"ship/manual_turn_rate_deg_per_sec")
+
+
+func strafe_speed() -> float:
+	return HullClass.num(hull_class, "strafe_speed", "ship/manual_strafe_speed")
+
+
+## Seconds of throttle travel, end to end. The pair is what "ponderous" actually
+## means for a capital — its top speed is only half the story.
+func accel_seconds() -> float:
+	return HullClass.num(hull_class, "accel_seconds", "ship/manual_accel_seconds")
+
+
+func brake_seconds() -> float:
+	return HullClass.num(hull_class, "brake_seconds", "ship/manual_brake_seconds")
+
+
+## The hull's size multiplier for this class. A roster whose three ships look
+## identical fails at the one thing it is for: you must be able to see which one
+## you are in without reading the HUD.
+func hull_scale() -> float:
+	return HullClass.num(hull_class, "hull_scale", "ship/hull_scale")
+
+
+## Every number here resolves through the hull class (ADR 0059), with the
+## `ship/manual_*` values as the shared fallback. A class that overrides nothing
+## flies exactly as this ship always has — which is why the taxi, the class the
+## combat arena uses, has no entries of its own and is untouched by the roster.
+##
+## Top speed alone does not make a class legible. A fighter that is a fast taxi
+## teaches nothing about what a fighter *is*, so turn rate, throttle travel and
+## thruster authority are all per class too. That is the difference between
+## "the number is different" and "it flies differently".
 func _fly_manual(delta: float) -> void:
 	# Throttle is a held state that climbs and falls, not a burst. The seconds are
 	# the whole travel of the lever, so "3 s to full" means what it says.
-	var accel_seconds := maxf(Tuning.num("ship/manual_accel_seconds"), 0.01)
-	var brake_seconds := maxf(Tuning.num("ship/manual_brake_seconds"), 0.01)
+	var accel_seconds := maxf(
+		HullClass.num(hull_class, "accel_seconds", "ship/manual_accel_seconds"), 0.01)
+	var brake_seconds := maxf(
+		HullClass.num(hull_class, "brake_seconds", "ship/manual_brake_seconds"), 0.01)
 	if Input.is_action_pressed("throttle_up"):
 		_throttle = minf(_throttle + delta / accel_seconds, 1.0)
 	if Input.is_action_pressed("throttle_down"):
@@ -255,15 +307,15 @@ func _fly_manual(delta: float) -> void:
 	basis = _reticle.update(basis, stick, delta,
 		Tuning.num("controls/stick_reticle_speed_deg_per_sec"),
 		Tuning.num("controls/mouse_sensitivity"),
-		Tuning.num("ship/manual_turn_rate_deg_per_sec"),
-		Tuning.num("ship/manual_reticle_max_angle_deg"))
+		turn_rate_deg_per_sec(),
+		HullClass.num(hull_class, "reticle_max_angle_deg",
+			"ship/manual_reticle_max_angle_deg"))
 
 	# Lateral thrusters are held here, unlike the missile's one-press dodge. ADR
 	# 0039 rejected a held slide for the *missile*, where it flattened every
 	# approach into a lane change; a ship is not flying a terminal approach and
 	# has no such geometry to flatten.
-	var strafe := Input.get_axis("strafe_left", "strafe_right") \
-		* Tuning.num("ship/manual_strafe_speed")
+	var strafe := Input.get_axis("strafe_left", "strafe_right") * strafe_speed()
 
 	# The clamp is on the WHOLE velocity, not on the throttle alone. Thrusting
 	# sideways at full throttle otherwise sums to more than the top speed — 34 m/s
@@ -330,11 +382,14 @@ func hit_flash() -> float:
 ## the direction of *being* hit. When ship damage arrives (step 9) this has to
 ## become the hull's own volumes, the way the target's did.
 func hit_radius() -> float:
+	# Against the CLASS's hull scale, not the shared one: a fighter drawn at a
+	# quarter size with a gunboat's hit sphere would be hit from four hull-widths
+	# away, and nothing would report it. Drawn shape is hit shape (ADR 0043).
 	var scale := maxf(Tuning.num("ship/hit_radius_scale"), 0.01)
 	if _hull == null or _hull.mesh == null:
-		return Tuning.num("ship/hull_scale") * scale
+		return hull_scale() * scale
 	var extents: Vector3 = _hull.mesh.get_aabb().size * 0.5
-	return extents.length() * Tuning.num("ship/hull_scale") * scale
+	return extents.length() * hull_scale() * scale
 
 
 # --- the launch tube ---------------------------------------------------------
