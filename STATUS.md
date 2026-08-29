@@ -96,15 +96,67 @@ The docking screen has one service — `Depart`. Refuel is step 7's, the magazin
 missiles this scene does not carry, and dead placeholder buttons teach the player that
 the screen lies. It is built as a service list, so step 7 adds a row.
 
+### ✅ Taxi speed is confirmed at 15.5 m/s — 2026-08-29
+
+> "yes the taxi speed is correct based on the updated doc. It felt too fast in
+> combat and it's OK if a giant ship feels slow as it's descending to the planet."
+
+Cause named, and it is the useful half: the old 34 m/s **read too fast in combat**,
+and a large ship feeling slow on a descent is *correct* rather than a cost being
+paid. The whole ladder derives from this, so everything below it — cruise, leg
+times, system size — is now anchored rather than provisional.
+
+### 🔜 SETTLED, NOT YET BUILT: the system border
+
+Decided with the human 2026-08-29, before implementation. **Build this next.**
+
+**The rim becomes a boundary**, which supersedes ADR 0011's *"do not put a wall,
+threshold, or prompt at the rim"*. That clause existed because lateral exit **was**
+departure; once roads exist, departure is through the corridor and an open rim leads
+somewhere nothing is rendered. That is the highway design's own renderability
+argument, so ADR 0057 is untouched and it is 0011 that gives. **Needs an ADR.**
+
+**Apertures are funnels.** The rim opens where a road attaches — wider at the rim,
+narrowing into the corridor, so the player is guided in rather than threading a
+1750 m hole. The current single-system scene declares a **placeholder aperture** at
+the bearing the local leg will use, so the rim is testable before step 6 rather than
+being closed now and reopened later.
+
+**The clamp becomes heading-proportional, and reaches zero.** The old version was a
+boolean — any outbound velocity component at all triggered the full clamp on the
+whole speed, so a legal lateral departure near the ceiling was strangled by a few
+degrees of climb. The human's model, which is better:
+
+    outbound = (1 + cos θ) / 2              ; = cos²(θ/2), θ from the outward normal
+    depth    = clamp(metres past the edge / bounds_stop_distance, 0, 1)
+    scale    = 1 − depth × outbound
+
+`cos²(θ/2)` is 1 straight out, **0.5 tangential**, 0 straight back in. So tangential
+is still slowed, the way home is never taxed at any depth, and a ship that keeps
+pushing outward arrives at zero and must turn. **The boundary stops you by making
+outward cost everything, never by taking the stick** — magnitude, never direction,
+exactly as before.
+
+Note that "the faces slow the player, they never stop them" currently appears in
+`tuning.cfg`'s comments. That was mine, not ADR 0011's, and it is wrong — drop it.
+
+**Two distances, previously conflated.** `bounds_warning_band` is metres *inside*
+the edge where the faces redden: pure telegraph, no mechanical effect. A new
+`bounds_stop_distance` is metres *outside* the edge over which the cap ramps to
+zero. The red zone is genuinely outside the good zone and can be entered.
+
+**Boundaries become a list of constraints**, each contributing a distance and an
+outward normal, rather than ceiling/floor/rim being three special cases. `warning`
+is the max over them; `outward` is their normals summed weighted by depth. Every
+corner then falls out of the arithmetic — at a ceiling∩rim corner the combined
+normal is the diagonal, so down-and-inward is free and up-and-out is stopped, with
+no case written for it. A disc is one constraint set; the whole-map boundary the
+human expects to want later is a different set, not different code.
+
 ### 🔵 THE FIRST FEEL QUESTION IS OPEN
 
-Two now, and the second one is step 4's checkpoint: **does approach feel like
-arriving somewhere, or like a menu with a runway?**
-
-**Is 15.5 m/s the right taxi speed?** It anchors every number downstream of it — the
-whole ladder is derived from it, and cruise, leg times and system size all move when
-it does. `make run SCENE=res://scenes/exploration.tscn`, press `H`, and F2 the
-values live.
+Step 4's checkpoint: **does approach feel like arriving somewhere, or like a menu
+with a runway?** `make run SCENE=res://scenes/exploration.tscn`.
 
 Worth knowing while reading it: the camera boom scales with hull size, so the ship
 stays the same size on screen and the *world* changes scale instead — a small ship
