@@ -159,6 +159,20 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/aperture_mouth_diameter", "exploration/aperture_funnel_length",
 	"exploration/aperture_bearing_deg",
 	"exploration/lane_corner_roundness", "exploration/lane_rib_spacing",
+	"exploration/lane_hull_clearance_cap", "exploration/ramp_curve_tightness",
+	"exploration/road_curve_deg", "exploration/road_curve_period",
+	"exploration/road_rise_deg", "exploration/road_rise_period",
+	"exploration/bounds_grid_spacing", "exploration/bounds_grid_alpha_scale",
+	"exploration/deep_seed",
+	"exploration/starfield_count", "exploration/starfield_distance",
+	"exploration/starfield_size", "exploration/starfield_color",
+	"exploration/deep_bodies_count", "exploration/deep_bodies_near",
+	"exploration/deep_bodies_far", "exploration/deep_bodies_min_radius",
+	"exploration/deep_bodies_max_radius", "exploration/deep_bodies_color",
+	"exploration/deep_bodies_tint_spread",
+	"exploration/deep_dust_count", "exploration/deep_dust_near",
+	"exploration/deep_dust_far", "exploration/deep_dust_min_size",
+	"exploration/deep_dust_max_size", "exploration/deep_dust_color",
 	"exploration/lane_color", "exploration/lane_line_alpha",
 	"exploration/portal_label_metres", "exploration/portal_site_offset",
 	"exploration/ramp_run_length", "exploration/ramp_side_offset",
@@ -210,6 +224,7 @@ func _ready() -> void:
 	_test_manual_flight()
 	_test_hull_classes()
 	_test_lane_geometry()
+	_test_deep_field()
 	_test_envelope_meter()
 	_test_disc_bounds()
 	_test_the_road()
@@ -2424,7 +2439,7 @@ func _test_lane_geometry() -> void:
 	_expect(lane_height < lane_width,
 		"the lane is wider than it is tall — monitor aspect, and roll is locked",
 		"%.0f wide x %.0f tall" % [lane_width, lane_height])
-	_expect(Tuning.num("exploration/deck_separation") > lane_height,
+	_expect(Tuning.num("exploration/deck_separation") >= lane_height,
 		"the two decks are separated by more than one deck's height, so they do not intersect",
 		"separation %.0f vs height %.0f" % [
 			Tuning.num("exploration/deck_separation"), lane_height])
@@ -2439,16 +2454,33 @@ func _test_lane_geometry() -> void:
 	# The portal is the on-ramp mouth and is deliberately NARROWER than the road it
 	# feeds. What must hold is that it clears the hull: a ship that cannot fit
 	# through an "unmissable, drive in, no ceremony" opening is the failure here.
+	# EVERY hull in the roster, not just the shared scale. The capital is drawn at
+	# 1.75 and is 76 m across; checking the aperture against the 1.0 hull passed
+	# happily while the ship the human was actually flying cleared it by 12 m and had
+	# nowhere to be in the lane behind it. A roster the road cannot carry is a bug in
+	# the road, and it has to be one number that says so.
 	var hull := load("res://assets/models/carrier.obj") as Mesh
-	var box := hull.get_aabb().size * Tuning.num("ship/hull_scale")
 	var portal_width := Tuning.num("exploration/portal_width")
 	var portal_height := Tuning.num("exploration/portal_height")
-	_expect(portal_width > box.x * 1.5,
-		"the portal aperture clears the hull's width with margin",
-		"portal %.0f m against a %.1f m hull" % [portal_width, box.x])
-	_expect(portal_height > box.y * 1.5,
-		"…and its height",
-		"portal %.0f m against a %.1f m hull" % [portal_height, box.y])
+	var widest := Vector2.ZERO
+	for kind: HullClass.Kind in HullClass.all():
+		var box := hull.get_aabb().size \
+			* HullClass.num(kind, "hull_scale", "ship/hull_scale")
+		widest = Vector2(maxf(widest.x, box.x), maxf(widest.y, box.y))
+		_expect(portal_width > box.x * 1.5 and portal_height > box.y * 1.5,
+			"a %s clears the portal aperture with margin, across and up"
+				% HullClass.name_of(kind),
+			"%.0f x %.0f opening against a %.1f x %.1f hull" % [
+				portal_width, portal_height, box.x, box.y])
+	# …and once through it, the lane it feeds has to leave that hull somewhere to be.
+	# The lane is measured against the hull, so a ship whose half-section fills the
+	# lane's is outside it wherever it sits.
+	var cap := Tuning.num("exploration/lane_hull_clearance_cap")
+	_expect(widest.x * 0.5 < lane_width * 0.5 * cap
+			and widest.y * 0.5 < lane_height * 0.5 * cap,
+		"…and the widest hull leaves itself room in the lane rather than filling it",
+		"%.1f x %.1f hull in a %.0f x %.0f lane at a %.2f cap" % [
+			widest.x, widest.y, lane_width, lane_height, cap])
 	_expect(portal_width <= lane_width,
 		"the portal is the ramp mouth, no wider than the road it feeds",
 		"portal %.0f vs lane %.0f" % [portal_width, lane_width])
@@ -2478,6 +2510,61 @@ func _test_lane_geometry() -> void:
 		"cruise is at least twice the fastest hull, or the road buys nothing",
 		"cruise %.1f vs fighter %.1f" % [Tuning.num("exploration/cruise_speed"),
 			HullClass.max_speed(HullClass.Kind.FIGHTER)])
+
+## The deep field: what is out there past the boundary, and why.
+##
+## The placement rule is the whole of it — everything is at least `near` metres
+## OUTSIDE playable space — because the failure it prevents is a rock appearing inside
+## a corridor the moment a leg length is nudged. `DeepField.scatter` is static so this
+## can be checked directly; the node itself deliberately has no accessor that hands
+## out a position, and nothing may add one (CLAUDE.md, LOD / collision).
+func _test_deep_field() -> void:
+	var disc := DiscRegion.new()
+	disc.ceiling = 400.0
+	disc.floor_depth = 750.0
+	disc.radius = 1750.0
+	disc.name_of = "SYSTEM A"
+	var field := BoundaryField.new()
+	field.regions = [disc]
+	var spine := PackedVector3Array([Vector3(-1750.0, 0.0, 0.0),
+		Vector3.ZERO, Vector3(1750.0, 0.0, 0.0)])
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1
+
+	var near := 300.0
+	var places := DeepField.scatter(rng, spine, field, 400, near, 4000.0, 1750.0)
+	_expect(places.size() > 300,
+		"the deep field places what it is asked for, near enough",
+		"%d of 400 placed" % places.size())
+	var intruder := 0
+	for point: Vector3 in places:
+		if field.overshoot(point) < near or field.overshoot(point) > 4000.0:
+			intruder += 1
+	_expect(intruder == 0,
+		"…and every piece of it is OUTSIDE playable space, in its own layer's band",
+		"%d of %d landed inside the system" % [intruder, places.size()])
+	_expect(DeepField.scatter(rng, spine, field, 0, near, 4000.0, 1750.0).is_empty()
+			and DeepField.scatter(rng, PackedVector3Array(), field, 10, near,
+				4000.0, 1750.0).is_empty(),
+		"…and a field with no route or no count is empty rather than at the origin",
+		"something was placed anyway")
+
+	# The three layers are three distances on purpose: motion is only legible against
+	# things that are NOT all the same distance away. If the dust ever reaches out as
+	# far as the bodies, the field collapses to one layer and the speed cue with it.
+	_expect(Tuning.num("exploration/deep_dust_far")
+			< Tuning.num("exploration/deep_bodies_far"),
+		"the dust is nearer than the bodies — three layers, not one",
+		"dust to %.0f m, bodies to %.0f m" % [
+			Tuning.num("exploration/deep_dust_far"),
+			Tuning.num("exploration/deep_bodies_far")])
+	_expect(Tuning.num("exploration/starfield_distance")
+			> Tuning.num("exploration/deep_bodies_far") * 1.2,
+		"…and the stars are past the furthest of them, so they read as a sky",
+		"stars at %.0f m, bodies out to %.0f m" % [
+			Tuning.num("exploration/starfield_distance"),
+			Tuning.num("exploration/deep_bodies_far")])
+
 
 ## The engagement-envelope meter. It is an instrument, so what is tested is that it
 ## reports the truth and that nothing about it depends on where the origin happens
@@ -2551,8 +2638,7 @@ func _test_disc_bounds() -> void:
 	disc.name_of = "SYSTEM A"
 
 	var tube := TubeRegion.new()
-	tube.from = Vector3(1750.0, 0.0, 0.0)
-	tube.to = Vector3(5750.0, 0.0, 0.0)
+	tube.span_between(Vector3(1750.0, 0.0, 0.0), Vector3(5750.0, 0.0, 0.0))
 	tube.mouth_radius = 1100.0
 	tube.radius = 875.0
 	tube.flare_length = 800.0
@@ -2906,6 +2992,57 @@ func _test_the_road() -> void:
 	_expect(lane.push().length() > nudge.length(),
 		"…and it grows with depth, so it is felt as a slope rather than as a wall",
 		"%.1f then %.1f" % [nudge.length(), lane.push().length()])
+	# EASED IN, and this is the fix for a shudder rather than a nicety. `sqrt` has an
+	# infinite slope at zero, so the bare closed form arrived at full strength on the
+	# frame the edge was crossed, shoved the ship back inside, vanished — it is a
+	# function of position — and let it drift out again. A slope is what was promised;
+	# a limit cycle at the rail is what a big hull got.
+	lane.lateral = lane.half_width + 0.05
+	var toe := lane.push().length()
+	lane.lateral = lane.half_width + lane.edge_softness
+	_expect(toe < lane.push().length() * 0.05,
+		"…and it eases IN from nothing at the edge, rather than arriving at full",
+		"%.2f m/s a hair past the rail against %.2f m/s a softness past it" % [
+			toe, lane.push().length()])
+
+	# --- the lane is measured against the HULL, not against a point ---
+	# A capital is 76 m across. A lane that only notices the ship's centre lets most
+	# of it hang through the rails before anything reports it, which is what the human
+	# flew into. Clearance shrinks the band the CENTRE may occupy; the drawn lane is
+	# unchanged, exactly as a road's markings do not move for a wide lorry.
+	var wide := CruiseLane.new()
+	wide.right = Vector3.BACK
+	wide.up = Vector3.UP
+	wide.half_width = 120.0
+	wide.half_height = 75.0
+	wide.roundness = 4.0
+	wide.edge_softness = 10.0
+	wide.clearance_cap = 0.5
+	wide.lateral = 90.0
+	_expect(not wide.is_outside(),
+		"a point-sized ship 90 m off a 120 m half-lane is still in its lane",
+		"%.1f m past" % wide.edge_distance())
+	wide.clearance = Vector2(38.0, 21.0)
+	_expect(wide.is_outside(),
+		"…and a 76 m hull in the same place is not, because its side is through the rail",
+		"%.1f m past" % wide.edge_distance())
+	wide.lateral = 0.0
+	wide.vertical = 0.0
+	_expect(not wide.is_outside() and wide.push() == Vector3.ZERO,
+		"…while down the middle it is still in its lane and unpushed",
+		"%.1f m past" % wide.edge_distance())
+	# A hull that is too big for the road still has to be able to FLY it. Without the
+	# cap it would be handed a lane of zero width, be outside wherever it sat, and be
+	# pushed and slowed for existing.
+	wide.clearance = Vector2(1000.0, 1000.0)
+	_expect(wide.usable_extents().x > 0.0 and wide.usable_extents().y > 0.0
+			and not wide.is_outside(),
+		"…and an absurd hull is left a lane rather than being outside its own road",
+		"%.1f x %.1f of usable lane" % [wide.usable_extents().x,
+			wide.usable_extents().y])
+	_expect(is_equal_approx(wide.usable_extents().x, 120.0 * 0.5),
+		"…capped at the tuned share of the section, and no further",
+		"%.1f m of a 120 m half-lane left" % wide.usable_extents().x)
 	_expect(lane.push().length() < lane.base_speed,
 		"…but never overpowers the drive itself", "%.1f m/s of push against %.1f" % [
 			lane.push().length(), lane.base_speed])
@@ -2934,7 +3071,7 @@ func _test_the_road() -> void:
 	# The decks are stacked and must not intersect, or the lanes stop being separate
 	# and "no oncoming traffic in your lane" quietly stops being structural.
 	_expect(Tuning.num("exploration/deck_separation")
-			> Tuning.num("exploration/lane_height"),
+			>= Tuning.num("exploration/lane_height"),
 		"the two decks are stacked clear of each other — one-way lanes stay separate",
 		"%.0f m apart for %.0f m of lane" % [
 			Tuning.num("exploration/deck_separation"),
@@ -3026,25 +3163,36 @@ func _test_exploration_builds() -> void:
 		"…and the one in the middle opens twice, because the road passes through it",
 		"%d apertures" % discs[1].aperture_count())
 	var link := map.links()[0]
-	_expect(link.region().from.distance_to(discs[0].aperture_mouth(0)) < 1.0
-			and link.region().to.distance_to(discs[1].aperture_mouth(0)) < 1.0,
+	_expect(link.region().from().distance_to(discs[0].aperture_mouth(0)) < 1.0
+			and link.region().to().distance_to(discs[1].aperture_mouth(0)) < 1.0,
 		"…and the corridor attaches to those two mouths, not near them",
 		"%.1f m and %.1f m off" % [
-			link.region().from.distance_to(discs[0].aperture_mouth(0)),
-			link.region().to.distance_to(discs[1].aperture_mouth(0))])
+			link.region().from().distance_to(discs[0].aperture_mouth(0)),
+			link.region().to().distance_to(discs[1].aperture_mouth(0))])
 	# Legs are measured PORTAL TO PORTAL (an amendment to the POC doc), so this is
 	# the number the highway has to beat and it must be the tuned one, not the
 	# centre-to-centre distance that would be easy to conflate it with.
-	_expect(absf(link.length() - Tuning.num("exploration/local_leg_length")) < 1.0,
+	#
+	# The tuned number is the STRAIGHT LINE between the mouths. A leg weaves now, so
+	# what you actually fly is a little longer than what you tuned — which is the
+	# honest reading and the reason both are checked here rather than one.
+	_expect(absf(link.region().from().distance_to(link.region().to())
+			- Tuning.num("exploration/local_leg_length")) < 1.0,
 		"the leg is the tuned length MOUTH TO MOUTH, not centre to centre",
 		"%.0f m of a tuned %.0f" % [link.length(),
+			Tuning.num("exploration/local_leg_length")])
+	_expect(link.length() > Tuning.num("exploration/local_leg_length")
+			and link.length() < Tuning.num("exploration/local_leg_length") * 1.2,
+		"…and flying it is a little further than that, because the leg curves",
+		"%.0f m of road across a %.0f m gap" % [link.length(),
 			Tuning.num("exploration/local_leg_length")])
 	_expect(absf(discs[0].position.distance_to(discs[1].position)
 			- (Tuning.num("exploration/local_leg_length")
 				+ Tuning.num("exploration/system_diameter"))) < 1.0,
 		"…so centre to centre is the leg plus one system radius at each end",
 		"%.0f m apart" % discs[0].position.distance_to(discs[1].position))
-	_expect(absf(map.links()[1].length()
+	_expect(absf(map.links()[1].region().from().distance_to(
+				map.links()[1].region().to())
 			- Tuning.num("exploration/trunk_leg_length")) < 1.0,
 		"…and the trunk leg is its own tuned length, an order up from the local one",
 		"%.0f m of a tuned %.0f" % [map.links()[1].length(),
@@ -3066,7 +3214,9 @@ func _test_exploration_builds() -> void:
 		"worst point is %.1f m outside" % worst)
 	# And the corridor is not a second way of saying "the disc". Halfway along, the
 	# governing region has to be the tube.
-	var midpoint := link.region().from.lerp(link.region().to, 0.5)
+	# ALONG the corridor rather than between its mouths: a leg weaves now, and the
+	# straight-line midpoint of a curved leg is not on it.
+	var midpoint := link.region().path.point_at(link.region().length() * 0.5)
 	_expect(map.place_of(midpoint) == link.region().name_of,
 		"…and halfway along it, the CORRIDOR is what governs, not either system",
 		map.place_of(midpoint))
@@ -3175,6 +3325,76 @@ func _test_exploration_builds() -> void:
 		"%.0f m of road across a %.0f m map" % [mainlines[0].length(),
 			map.system_center(0).distance_to(
 				map.system_center(map.systems().size() - 1))])
+
+	# --- the road's SHAPE (POC step 8) ---
+	# THE steepness check, and the one that makes "too steep" a number rather than an
+	# opinion. The ship's nose is hard-clamped into a cone around the road's axis
+	# every frame, so a road that turns faster than the ship can be turned yanks the
+	# nose instead of being flown — which is what a diving ramp feels like. Measured
+	# on every road on the map, at full cruise, because the tightest bend is the one
+	# that decides it.
+	var cruise := Tuning.num("exploration/cruise_speed")
+	var allowance := Tuning.num("exploration/cruise_turn_rate_deg_per_sec")
+	var steepest := 0.0
+	var steepest_name := ""
+	for deck in road.decks():
+		var rate := deck.path().max_turn_deg_per_metre() * cruise
+		if rate > steepest:
+			steepest = rate
+			steepest_name = deck.name
+	_expect(steepest <= allowance,
+		"no road on the map turns faster than the ship can be turned at cruise",
+		"%s bends at %.1f deg/s against a %.1f deg/s turn rate" % [
+			steepest_name, steepest, allowance])
+	# …and it is not zero, or success criterion 1 has nothing to be judged on: "a
+	# generous clamp on a straight road still feels like nothing".
+	var trunk := map.links()[map.links().size() - 1]
+	var trunk_line := trunk.region().path
+	_expect(trunk_line.max_turn_deg_per_metre() > 0.0,
+		"the trunk leg CURVES — a straight road cannot answer success criterion 1",
+		"the trunk leg is straight")
+	var lowest := INF
+	var highest := -INF
+	for point: Vector3 in trunk_line.points:
+		lowest = minf(lowest, point.y)
+		highest = maxf(highest, point.y)
+	_expect(highest - lowest > Tuning.num("exploration/lane_height"),
+		"…and changes elevation by more than the lane is tall, so the rise is felt",
+		"%.0f m of rise and fall" % (highest - lowest))
+	# A weaving leg still has to leave and arrive ON the bearing, or the aperture and
+	# the corridor disagree about where the road goes and the mouths move.
+	var on_bearing := SystemDisc.bearing_to_direction(
+		Tuning.num("exploration/aperture_bearing_deg"))
+	_expect(trunk_line.tangent_at(0.0).dot(on_bearing) > 0.999
+			and trunk_line.tangent_at(trunk_line.length()).dot(on_bearing) > 0.999,
+		"…and leaves and arrives exactly on the bearing, so the mouths do not move",
+		"%.3f in, %.3f out" % [trunk_line.tangent_at(0.0).dot(on_bearing),
+			trunk_line.tangent_at(trunk_line.length()).dot(on_bearing)])
+	# The deck convention is DECLARED per segment, not derived from heading, and this
+	# map deliberately does not cross the northwest-southeast divider. A weave wide
+	# enough to cross it would put a stretch of the upper deck on a heading that says
+	# lower, and the convention's whole value is as a mistake-catcher.
+	var crosses := false
+	for point: Vector3 in trunk_line.points:
+		var heading := trunk_line.tangent_at(trunk_line.closest(point)[0])
+		if not RoadDeck.rides_upper(
+				rad_to_deg(atan2(heading.x, -heading.z))):
+			crosses = true
+	_expect(not crosses,
+		"…and never weaves across the deck divider, which this map must not cross",
+		"the trunk leg crosses from the upper arc into the lower")
+	# The corridor is the space AROUND the road, so it has to still contain it once
+	# both curve. The lane's far corner on the upper deck is the worst case.
+	var stacked := Tuning.num("exploration/deck_separation") * 0.5 \
+		+ Tuning.num("exploration/lane_height") * 0.5
+	var worst_escape := -INF
+	for i in 40:
+		var along := trunk_line.length() * float(i) / 39.0
+		worst_escape = maxf(worst_escape, trunk.region().depth(
+			trunk_line.point_at(along) + Vector3.UP * stacked))
+	_expect(worst_escape < 0.0,
+		"…and the corridor still contains the road stacked inside it, all the way",
+		"the lane's top corner is %.1f m outside the corridor" % worst_escape)
 
 	# The ramp mouths sit BESIDE the planet, not above it. Directly above is inside
 	# the approach envelope, and a ship taking the ramp would arm a landing sequence
@@ -3348,7 +3568,8 @@ func _test_exploration_builds() -> void:
 		"scale %.2f" % scene.ship().speed_ceiling_scale)
 	# Mid-corridor, four kilometres from either system, nothing is clamped. The
 	# boundary following the player across the map is the thing this checks.
-	scene.ship().position = link.region().from.lerp(link.region().to, 0.5)
+	scene.ship().position = link.region().path.point_at(
+		link.region().length() * 0.5)
 	scene.ship()._velocity = Vector3(0.0, 0.0, 10.0)
 	_step_exploration(scene, 1.0 / 60.0)
 	_expect(is_equal_approx(scene.ship().speed_ceiling_scale, 1.0),

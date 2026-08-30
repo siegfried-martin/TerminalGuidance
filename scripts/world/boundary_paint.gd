@@ -35,6 +35,29 @@ static func tint(nodes: Array, warning: float, alpha_scale: float) -> void:
 			(node.material_override as StandardMaterial3D).albedo_color = color
 
 
+## A line mesh from a list of polylines, for ruling a boundary surface.
+##
+## The translucent faces alone are one flat colour that fills the view, and a ship
+## flying at one has nothing in the frame that moves — which is the "impossible to
+## tell that I am moving" report. A ruled grid on the same surface fixes that without
+## making the boundary opaque, which it must never be: the space past the edge stays
+## visible through it.
+static func make_grid(lines: Array[PackedVector3Array]) -> ArrayMesh:
+	var verts := PackedVector3Array()
+	for line: PackedVector3Array in lines:
+		for i in line.size() - 1:
+			verts.append(line[i])
+			verts.append(line[i + 1])
+	if verts.is_empty():
+		return null
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_LINES, arrays)
+	return mesh
+
+
 ## Reference geometry, not scenery: nothing here is queryable and nothing eats a
 ## missile. It exists so motion is legible in space that is otherwise empty — which
 ## matters most in a corridor, where there is nothing else at all to move past.

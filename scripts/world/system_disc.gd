@@ -19,6 +19,10 @@ extends Node3D
 ## How finely the rim is tessellated. Infrastructure, not feel: enough segments
 ## that the aperture's edge is not visibly faceted at the disc's scale.
 const RIM_SEGMENTS := 128
+## The fewest lines the grid will draw around a circle, however coarse the spacing
+## is tuned. Infrastructure, not feel: below this a "grid" is a couple of lines and
+## reads as debris rather than as a ruled surface.
+const GRID_MIN_SPOKES := 8
 
 ## Where the road leaves, in degrees. Assigned by the map before the node enters the
 ## tree — the bearings come from the layout, not from a preference, because a leg
@@ -33,6 +37,11 @@ var _floor: MeshInstance3D
 ## The rim wall, built as an ArrayMesh so the apertures can be holes in it rather
 ## than decals over it.
 var _rim: MeshInstance3D
+## A ruled grid over all three surfaces. The translucent faces alone are one flat
+## colour filling the view, and a ship flying at one has nothing in the frame that
+## moves; the grid is the texture that slides past. Drawn from the same radius and
+## the same `rim_is_open` as the surfaces, so it cannot disagree with them.
+var _grid: MeshInstance3D
 ## Reference markers filling the volume, so motion is legible in empty space. The
 ## combat arena's `GrayBoxArena` fills a cube; a disc is a different shape and gets
 ## its own placement rather than a shape flag on that one.
@@ -46,6 +55,7 @@ func _ready() -> void:
 	_ceiling = _make_surface("Ceiling")
 	_floor = _make_surface("Floor")
 	_rim = _make_surface("Rim")
+	_grid = _make_surface("Grid")
 	_markers = MultiMeshInstance3D.new()
 	_markers.name = "SystemMarkers"
 	_markers.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -81,6 +91,7 @@ func rebuild() -> void:
 	_ceiling.position = Vector3(0.0, ceiling_height(), 0.0)
 	_floor.position = Vector3(0.0, -floor_depth(), 0.0)
 	_rebuild_rim()
+	_rebuild_grid()
 	paint(0.0)
 	_rebuild_markers()
 
@@ -146,6 +157,63 @@ func _rebuild_rim() -> void:
 	_rim.mesh = mesh
 
 
+## Circles and spokes on the ceiling and floor, uprights and level rings on the rim.
+##
+## The grid is what makes the disc read as a room with a size rather than as a wash of
+## colour: at 160 m/s a ruled line passing the canopy is the only thing on a bare
+## boundary that says how fast you are going. The rim skips its apertures for the same
+## reason the wall does — a line across the opening is a wall drawn where the hole is.
+func _rebuild_grid() -> void:
+	var spacing := maxf(Tuning.num("exploration/bounds_grid_spacing"), 1.0)
+	var top := ceiling_height()
+	var bottom := -floor_depth()
+	var lines: Array[PackedVector3Array] = []
+	# Spokes are spaced by the SAME metres as the rings, measured around the rim, so
+	# the grid is square where it matters rather than being a fan of lines that are
+	# metres apart at the middle and hundreds apart at the wall.
+	var spokes := maxi(int(TAU * _region.radius / spacing), GRID_MIN_SPOKES)
+	for height: float in [top, bottom]:
+		var rings := maxi(int(_region.radius / spacing), 1)
+		for i in range(1, rings + 1):
+			var r := minf(float(i) * spacing, _region.radius)
+			var ring := PackedVector3Array()
+			for s in RIM_SEGMENTS + 1:
+				var a := TAU * float(s) / float(RIM_SEGMENTS)
+				ring.append(Vector3(sin(a) * r, height, -cos(a) * r))
+			lines.append(ring)
+		for s in spokes:
+			var a := TAU * float(s) / float(spokes)
+			var d := Vector3(sin(a), 0.0, -cos(a))
+			lines.append(PackedVector3Array([Vector3(0.0, height, 0.0),
+				d * _region.radius + Vector3(0.0, height, 0.0)]))
+
+	# The rim: uprights where the wall is solid, and level rings drawn as arcs that
+	# break at each opening.
+	for s in spokes:
+		var a := TAU * float(s) / float(spokes)
+		var d := Vector3(sin(a), 0.0, -cos(a))
+		if _region.rim_is_open(_region.center + d * _region.radius):
+			continue
+		lines.append(PackedVector3Array([d * _region.radius + Vector3(0.0, bottom, 0.0),
+			d * _region.radius + Vector3(0.0, top, 0.0)]))
+	var levels := maxi(int((top - bottom) / spacing), 1)
+	for i in levels + 1:
+		var y := bottom + minf(float(i) * spacing, top - bottom)
+		var arc := PackedVector3Array()
+		for s in RIM_SEGMENTS + 1:
+			var a := TAU * float(s) / float(RIM_SEGMENTS)
+			var d := Vector3(sin(a), 0.0, -cos(a))
+			if _region.rim_is_open(_region.center + d * _region.radius):
+				if arc.size() > 1:
+					lines.append(arc)
+				arc = PackedVector3Array()
+				continue
+			arc.append(d * _region.radius + Vector3(0.0, y, 0.0))
+		if arc.size() > 1:
+			lines.append(arc)
+	_grid.mesh = BoundaryPaint.make_grid(lines)
+
+
 ## Markers filling the disc, on a lattice clipped to the cylinder. Reference
 ## geometry, not scenery: nothing here is queryable and nothing eats a missile.
 func _rebuild_markers() -> void:
@@ -179,6 +247,8 @@ func paint(warning_level: float) -> void:
 	# edge-on and stack their own depth. Same colour, more of it.
 	BoundaryPaint.tint([_rim], warning_level,
 		Tuning.num("exploration/bounds_rim_alpha_scale"))
+	BoundaryPaint.tint([_grid], warning_level,
+		Tuning.num("exploration/bounds_grid_alpha_scale"))
 
 
 func ceiling_height() -> float:

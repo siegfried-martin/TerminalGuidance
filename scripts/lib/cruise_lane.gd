@@ -27,11 +27,21 @@ var vertical: float = 0.0
 ## sample too rather than a constant.
 var half_width: float = 1.0
 var half_height: float = 1.0
+## Half the HULL's own section, across and up. The lane is measured against the ship
+## it is carrying rather than against a point, because a capital is 76 m across and a
+## lane that only notices its centre lets three quarters of the ship hang through the
+## rails before anything reports it — which is what the human flew into.
+##
+## Zero for anything that has no hull to speak of, which is what leaves the maths
+## below identical to the point case it used to be.
+var clearance: Vector2 = Vector2.ZERO
 ## The cross-section's corner exponent. 2 is an ellipse, large is a rectangle; in
 ## between is the rounded lozenge, so no edge is dramatically nearer than another.
 var roundness: float = 4.0
 ## Metres past the edge over which the penalty and the push reach full.
 var edge_softness: float = 1.0
+## The most of the lane's half-section a hull may claim, 0 to 1. See `usable_extents`.
+var clearance_cap: float = 0.5
 
 var base_speed: float = 0.0
 var edge_speed_penalty: float = 1.0
@@ -53,17 +63,33 @@ var metres_remaining: float = 0.0
 ## is the answer. Exact for the shape rather than an approximation of it, which
 ## matters because the same number drives both the penalty and the push.
 func edge_distance() -> float:
+	var extents := usable_extents()
 	var offset := sqrt(lateral * lateral + vertical * vertical)
 	if offset <= 0.0001:
-		return -minf(half_width, half_height)
+		return -minf(extents.x, extents.y)
 	var exponent := maxf(roundness, 1.0)
 	var reach := pow(
-		pow(absf(lateral) / maxf(half_width, 0.001), exponent)
-		+ pow(absf(vertical) / maxf(half_height, 0.001), exponent),
+		pow(absf(lateral) / maxf(extents.x, 0.001), exponent)
+		+ pow(absf(vertical) / maxf(extents.y, 0.001), exponent),
 		1.0 / exponent)
 	if reach <= 0.0001:
-		return -minf(half_width, half_height)
+		return -minf(extents.x, extents.y)
 	return offset * (reach - 1.0) / reach
+
+
+## The half-section the ship's CENTRE may occupy: the lane, less the hull's own half
+## section, so the drawn rail is crossed when the hull crosses it rather than when
+## the centre does.
+##
+## The hull may never claim more than `clearance_cap` of the section. Without that a
+## ship wider than the road it is on would be handed a lane of zero width, be outside
+## it wherever it sat, and be pushed and penalised for existing — the road has to
+## stay flyable by everything the roster contains even when something is too big for
+## it, and "too big" then reads as no room to manoeuvre rather than as a fault.
+func usable_extents() -> Vector2:
+	return Vector2(
+		half_width - minf(maxf(clearance.x, 0.0), half_width * clearance_cap),
+		half_height - minf(maxf(clearance.y, 0.0), half_height * clearance_cap))
 
 
 ## How far out of the lane, 0 to 1. Zero inside, 1 once `edge_softness` past it.
@@ -99,7 +125,15 @@ func push() -> Vector3:
 	var toward := -(right * lateral + up * vertical)
 	if toward.length_squared() <= 0.000001:
 		return Vector3.ZERO
-	return toward.normalized() * sqrt(2.0 * push_accel * past)
+	# EASED IN over `edge_softness`, and that factor is not cosmetic. `sqrt` has an
+	# infinite slope at zero, so the bare closed form appears at full strength the
+	# instant the edge is crossed: the ship is shoved back in, the push vanishes
+	# because it is a function of position, the ship drifts back out, and the result
+	# is a shudder at the rail rather than a slope — worst on a big hull, which is
+	# where it was found. Multiplying by the same 0-to-1 ramp the speed penalty uses
+	# makes the push leave zero at zero slope, and the two now share one edge.
+	return toward.normalized() \
+		* sqrt(2.0 * push_accel * past) * outside_fraction()
 
 
 ## A cross-frame for a road running this way. Level, because nothing rolls

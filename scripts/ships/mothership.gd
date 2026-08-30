@@ -608,6 +608,17 @@ func snap_to_standoff() -> void:
 ## An aperture the ship has to fit through is an axis-by-axis question: the bounding
 ## sphere of a 44 x 24 x 48 m gunboat is 72 m across, and checking a 50 m portal
 ## against that would condemn an opening the ship flies through with 13 m to spare.
+## Half the hull's section across and up, for the lane to measure itself against.
+##
+## The lane is measured against the SHIP rather than against a point (`CruiseLane`):
+## a capital is 76 m across in a lane that is 240, and one that only noticed the
+## centre would let most of the hull hang through the rails before anything reported
+## it. Across and up only — the length does not decide whether you are in your lane.
+func lane_clearance() -> Vector2:
+	var size := hull_extents()
+	return Vector2(size.x, size.y) * 0.5
+
+
 func hull_extents() -> Vector3:
 	if _hull == null or _hull.mesh == null:
 		return Vector3.ONE * hull_scale()

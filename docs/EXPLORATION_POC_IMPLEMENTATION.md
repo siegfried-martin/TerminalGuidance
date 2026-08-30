@@ -66,6 +66,16 @@ Where this section and the body below disagree, this section wins.
   have flown at 23.2 with nothing reporting it.
 - **The cruise drive spools in and out** rather than snapping (ADR 0066), and
   **undocking leaves already flying**, on the reflection of the arrival.
+- **The lane grew, and so did the portal aperture** (240 x 150 and 150 x 85). Not a
+  change of taste: the lane was three taxi hulls across, sized against the wrong ship,
+  and the capital drawn at 1.75 is 76 x 42 m. The lane is measured against the HULL
+  now (ADR 0068), which made that arithmetic visible instead of letting most of a big
+  ship hang through the rails unreported, and a lane a capital cannot sit in is a lane
+  it is permanently outside of. The gate asserts every hull in the roster clears every
+  part of the road.
+- **The two decks are stacked FLUSH**, `deck_separation` equal to `lane_height`, at
+  the human's request to see how it reads with no air between them. The gate forbids
+  going below, not to equal. One slider restores the gap.
 - **`tuning.cfg` is the source of truth for every number below.** The block in
   §Starting Tuning Values is v1's proposal, kept for its reasoning; read the values
   from the file.
@@ -82,7 +92,7 @@ This is not a fun-or-kill test the way the combat POC was. It is an interaction 
 
 ### Success criteria
 
-1. **The road is driving.** After ten continuous minutes on a trunk highway, the player's hands are still busy. Curvature, lane position, and traffic supply steering demand. If the road reads as a conveyor, either the turn clamp is too tight or the road geometry is too straight — tune before concluding.
+1. **The road is driving.** *(Ready to judge as of 2026-08-30: the legs weave and undulate. Success criterion 1 also wants ten continuous minutes, and the trunk leg is 1.9 min — see the flag on `trunk_leg_length`.)* After ten continuous minutes on a trunk highway, the player's hands are still busy. Curvature, lane position, and traffic supply steering demand. If the road reads as a conveyor, either the turn clamp is too tight or the road geometry is too straight — tune before concluding.
 2. **Off-road survives.** The player elects to fly at least one leg off-highway for a reason other than testing it, and does not regret the choice. If open space is only ever a punishment, the speed ratios or the fuel cost are wrong.
 3. **Fuel is a plan.** The player checks the gauge before committing to a route. Running dry produces a story, not a reload.
 4. **The tiers read.** A local hop and a trunk run feel like different activities without being told they are.
@@ -222,7 +232,7 @@ Each numbered step should leave the build in a playable state.
 5. ✅ **built 2026-08-29** — `SystemMap` (the layout, the composed boundary, the hot reload), `SystemLink` (the corridor), `BoundaryRegion`/`DiscRegion`/`TubeRegion` (ADR 0063). Two systems 7.5 km apart centre to centre, joined by the 4 km corridor, flown by hand: 4.3 min each way in a taxi against 41 s at cruise, which is the ratio step 6 is asking about. *`aperture_bearing_deg` became the map's own bearing rather than a placeholder, so the apertures and the legs cannot disagree.* **Second system and the local leg, off-road only.** No highway yet. Fly A to B manually at each hull speed. This establishes the baseline the highway must beat and is the control condition for success criterion 2.
 6. ✅ **built 2026-08-29** — `RoadDeck` (two decks per leg, stacked, one-way), `Portal` (swept crossing, blue/red by hull class, destination label), `CruiseLane` (the lane sample the ship is handed), `Mothership._fly_cruise`, and the camera's road lock. The corridor was **not replaced** — the road was laid inside it, so declining the portal is still a real choice and step 5's 258 s baseline is still flyable alongside the 41 s one. ADR 0064 records why the lane pushes and the world does not. **Portals and the highway tube, local leg only.** Cruise drive, camera clamp, lane boundary, deck geometry. **⬅ THIRD CHECKPOINT, open** — is a 41-second hop worth the portal at all, or does it feel like ceremony around nothing?
 7. **⬅ NEXT. Cruise fuel and the debug teleport.** Fuel gauge, consumption, empty behaviour. Teleport bound and logged.
-8. *(The third system and the trunk leg landed early, on 2026-08-30 — the human needed the full three-system map to judge how the on and off ramps read in the case that matters, a system the road passes through. Curvature and the elevation change are still open and are what success criterion 1 turns on.)* **Third system and the trunk leg.** Curvature, elevation change, sustained road. **Fourth checkpoint and the important one** — success criterion 1. Ten minutes on the trunk road. Tune `cruise_turn_clamp_deg` against road curvature here, together, never separately.
+8. ✅ **built 2026-08-30**, in two parts. The third system and the trunk leg landed first — the human needed the full three-system map to judge how the on and off ramps read in the case that matters, a system the road passes through. The curvature followed: `RoadPath.weave` (a sine weave across the bearing and a slower one in elevation, both tapered to zero value *and* zero slope at each mouth, so the legs curve and no system moves), `TubeRegion` following a path rather than an axis, and `RoadNetwork` laid on a single spine through the whole map. Curvature is expressed as an ANGLE with a period rather than an amplitude in metres, because the same amplitude is a sweep on an 18 km leg and a hairpin on a 2.6 km one (ADR 0070). *Also in this step, from the same play session: the ramps were too steep and are now cubics tangential at both ends; the lane is measured against the hull rather than the ship's centre (ADR 0068); the space past the boundary is furnished (ADR 0069); the decks are stacked flush.* **⬅ FOURTH CHECKPOINT, open, and the important one** — success criterion 1. Ten minutes on the trunk road. Tune `cruise_turn_clamp_deg` against `road_curve_deg` and `road_curve_period` here, together, never separately.
 9. **NPC traffic, road first.** Same-direction, speed spread, overtaking. **Fifth checkpoint** — does traffic make the road feel populated, and at what density does it tip into busy?
 10. **Open-space traffic.** Sparse. Fly a leg off-road with traffic present and compare against step 5's memory of it empty.
 11. **Verdict session.** Thirty minutes minimum, moving freely between all three systems, switching hulls, choosing routes. All four success criteria.

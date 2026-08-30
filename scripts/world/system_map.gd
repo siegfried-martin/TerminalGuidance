@@ -45,6 +45,13 @@ var _road: RoadNetwork
 ## Every piece of playable space, united. Systems and corridors are regions in one
 ## list rather than two systems to be checked in turn (ADR 0062).
 var _field: BoundaryField = BoundaryField.new()
+## What is out there past the edge. Background-layer only: nothing in it is queryable
+## and nothing in it collides (see `DeepField` and CLAUDE.md's LOD/collision rule).
+var _deep: DeepField
+## The line the whole highway is laid on, through every system and along every leg.
+## Kept because the road, the corridors and the deep field all have to agree about
+## where the route goes, and the way to guarantee that is one polyline.
+var _spine: PackedVector3Array = PackedVector3Array()
 
 ## Seconds the player has spent outside on this excursion. Resets on return, so two
 ## short dips do not add up into damage the player did not see coming.
@@ -102,6 +109,10 @@ func _build() -> void:
 	_road.name = "Road"
 	add_child(_road)
 
+	_deep = DeepField.new()
+	_deep.name = "DeepField"
+	add_child(_deep)
+
 	for i in LEG_KEYS.size():
 		var link := SystemLink.new()
 		link.name = "Link%s%s" % [LETTERS[i], LETTERS[i + 1]]
@@ -120,7 +131,15 @@ func relayout() -> void:
 	var radius := Tuning.num("exploration/system_diameter") * 0.5
 	var bearing := Tuning.num("exploration/aperture_bearing_deg")
 	var step := SystemDisc.bearing_to_direction(bearing)
+	var curve_deg := Tuning.num("exploration/road_curve_deg")
+	var curve_period := Tuning.num("exploration/road_curve_period")
+	var rise_deg := Tuning.num("exploration/road_rise_deg")
+	var rise_period := Tuning.num("exploration/road_rise_period")
 	var here := Vector3.ZERO
+	# Each leg's centre-line, mouth to mouth. Built during the layout because the next
+	# system sits at the end of the leg that reaches it.
+	var legs: Array[PackedVector3Array] = []
+
 	for i in _discs.size():
 		var disc := _discs[i]
 		disc.position = here
@@ -128,6 +147,10 @@ func relayout() -> void:
 		# Apertures face the legs, in order: back down the leg you arrived by, then
 		# on down the next one. The last system has only the one, which is what makes
 		# a line a line rather than a ring with a missing piece.
+		#
+		# Still ONE bearing for every aperture, even though the legs now weave: the
+		# weave leaves and arrives exactly on the bearing (`RoadPath.weave` tapers its
+		# amplitude to zero at both ends), so a curving leg does not move a mouth.
 		var bearings: Array[float] = []
 		if i > 0:
 			bearings.append(bearing + 180.0)
@@ -142,15 +165,29 @@ func relayout() -> void:
 		_approaches[i].rebuild()
 
 		if i < _links.size():
-			here += step * (Tuning.num(LEG_KEYS[i]) + radius * 2.0)
+			var leg := Tuning.num(LEG_KEYS[i])
+			legs.append(RoadPath.weave(here + step * radius, step, leg,
+				curve_deg, curve_period, rise_deg, rise_period))
+			here += step * (leg + radius * 2.0)
 
 	for i in _links.size():
 		# The CORRIDOR is mouth to mouth: it is the bounded space between two systems,
-		# and it is what you fly when you decline the road. The outgoing aperture is
-		# the last on the system you leave and the first on the one you arrive at,
-		# which falls out of the order the bearings were appended in above.
-		_links[i].span(_discs[i].aperture_mouth(_discs[i].aperture_count() - 1),
-			_discs[i + 1].aperture_mouth(0))
+		# and it is what you fly when you decline the road. It is handed the leg's own
+		# centre-line rather than two endpoints, so the corridor and the highway inside
+		# it are the same curve and cannot drift apart.
+		_links[i].follow(legs[i])
+
+	# The SPINE: behind the first system, through every centre, along every leg, and
+	# out past the last. The road is laid on this and the deep field is scattered
+	# around it, so one polyline is the only place the route is written down.
+	_spine = PackedVector3Array()
+	_spine.append(_discs[0].position - step * radius)
+	for i in _discs.size():
+		_spine.append(_discs[i].position)
+		if i < legs.size():
+			for point: Vector3 in legs[i]:
+				_spine.append(point)
+	_spine.append(_discs[_discs.size() - 1].position + step * radius)
 
 	# The ROAD spans the whole map in one piece, through every system, and is built
 	# once rather than per leg — a highway that stops at each system is the thing
@@ -158,7 +195,7 @@ func relayout() -> void:
 	var centres: Array[Vector3] = []
 	for disc in _discs:
 		centres.append(disc.position)
-	_road.rebuild(centres, NAMES, bearing)
+	_road.rebuild(_spine, centres, NAMES, bearing)
 
 	_field.regions.clear()
 	for disc in _discs:
@@ -167,6 +204,11 @@ func relayout() -> void:
 		_field.regions.append(link.region())
 	_field.warning_band = Tuning.num("exploration/bounds_warning_band")
 	_field.stop_distance = Tuning.num("exploration/bounds_stop_distance")
+
+	# LAST, and it needs both of the things above it: the deep field is scattered
+	# around the spine and rejected wherever the boundary says the point is still
+	# playable space, so it cannot exist until the field is composed.
+	_deep.rebuild(_spine, _field)
 
 
 ## Run the whole map against the ship for this frame.
@@ -198,6 +240,10 @@ func observe(ship: Mothership, delta: float) -> void:
 		_speed_scale = minf(_speed_scale, approach.speed_scale())
 
 	_ride_the_road(ship, here)
+	# The starfield rides with the player so it never gets nearer, the way a sky does.
+	# Everything else in the deep field stays where it was put, which is what makes it
+	# parallax against the ship instead of moving with it.
+	_deep.follow(here)
 	_previous = here
 	_has_previous = true
 
@@ -226,6 +272,10 @@ func observe(ship: Mothership, delta: float) -> void:
 ## colour rather than a second rule about who may use a portal.
 func _ride_the_road(ship: Mothership, here: Vector3) -> void:
 	var allowed := ship.has_cruise_drive()
+	# The hull's own half-section. The lane is measured against the ship rather than
+	# against a point, and every sample below has to be taken with the SAME clearance
+	# or the union would compare a hull-measured depth against a point-measured one.
+	var clearance := ship.lane_clearance()
 	_road.set_permitted(allowed)
 	if not _has_previous:
 		return
@@ -245,22 +295,23 @@ func _ride_the_road(ship: Mothership, here: Vector3) -> void:
 		# of a ramp hands off to whatever else contains the ship. The handover happens
 		# because the geometry says so, not because a rule fired (ADR 0063's rule,
 		# applied to lanes instead of regions).
-		var lane := _riding.sample(here)
-		var alternative := _road.governing(here, _riding.is_upper, _riding)
+		var lane := _riding.sample(here, clearance)
+		var alternative := _road.governing(here, _riding.is_upper, _riding, clearance)
 		if lane.metres_remaining <= 0.001:
 			# Off the end of this deck. A ramp ends on the mainline and hands over; a
 			# mainline ends at the edge of the map, where there is nothing to hand to
 			# and the road has simply run out.
-			if alternative == null or alternative.sample(here).is_outside():
+			if alternative == null or alternative.sample(here, clearance).is_outside():
 				_riding = null
 				ship.cruise = null
 				ship.reset_reticle()
 				return
 			_riding = alternative
 		elif alternative != null \
-				and alternative.sample(here).edge_distance() < lane.edge_distance():
+				and alternative.sample(here, clearance).edge_distance() \
+					< lane.edge_distance():
 			_riding = alternative
-		ship.cruise = _riding.sample(here)
+		ship.cruise = _riding.sample(here, clearance)
 		return
 
 	if not allowed:
@@ -269,7 +320,7 @@ func _ride_the_road(ship: Mothership, here: Vector3) -> void:
 		if deck.start_portal() != null \
 				and deck.start_portal().crossed(_previous, here) > 0:
 			_riding = deck
-			ship.cruise = deck.sample(here)
+			ship.cruise = deck.sample(here, clearance)
 			ship.reset_reticle()
 			return
 
@@ -303,6 +354,18 @@ func portals() -> Array[Portal]:
 
 func road() -> RoadNetwork:
 	return _road
+
+
+## What is out there past the boundary. For the scene and for the gate; nothing in
+## the game queries it, and CLAUDE.md's LOD/collision rule says nothing may.
+func deep_field() -> DeepField:
+	return _deep
+
+
+## The line the whole highway is laid on. For tests and for anything that needs to
+## know where the route goes without asking a deck which piece of it it owns.
+func spine() -> PackedVector3Array:
+	return _spine
 
 
 ## The nearest way on or off the road. For the HUD — the player is meant to read the

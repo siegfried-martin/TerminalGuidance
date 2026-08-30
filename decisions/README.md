@@ -114,5 +114,8 @@ The reasoning, including what the alternative was and why it lost.
 | [0065](0065-the-highway-runs-through-a-system.md) | The highway runs through a system, and its ramps sit beside the planet |
 | [0066](0066-transitions-carry-momentum.md) | Transitions carry momentum: the drive spools, a departure leaves flying |
 | [0067](0067-lanes-unite-there-are-no-junctions.md) | Getting on and off the road is a union of lanes, not a junction |
+| [0068](0068-the-lane-is-measured-against-the-hull.md) | The lane is measured against the hull, not against the ship's centre |
+| [0069](0069-the-space-past-the-edge-is-furnished.md) | The space past the edge is furnished, in three layers |
+| [0070](0070-no-road-out-turns-the-ship.md) | No road out-turns the ship, and a ramp is tangential at both ends |
 
-*Next number: 0068.*
+*Next number: 0071.*

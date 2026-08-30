@@ -26,6 +26,6 @@ func _process(_delta: float) -> void:
 		return
 	# Parked rather than flown: a taxi takes four and a half minutes to get here.
 	var link := _scene.map().links()[0]
-	var here := link.region().from.lerp(link.region().to, 0.5)
+	var here := link.region().path.point_at(link.region().length() * 0.5)
 	_scene.ship().position = here
-	_scene.ship().look_at(link.region().to, Vector3.UP)
+	_scene.ship().look_at(link.region().to(), Vector3.UP)

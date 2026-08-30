@@ -1,6 +1,6 @@
 # STATUS
 
-*Updated 2026-08-29.*
+*Updated 2026-08-30.*
 
 ---
 
@@ -15,11 +15,40 @@ the human's explicit direction.
 | | |
 |---|---|
 | Branch | `feat/exploration-tuning-and-hud`, PR #14 |
-| Gate | `make check` — 1020 checks, 0 failed |
+| Gate | `make check` — 1069 checks, 0 failed |
 | Run it | `make fly` |
-| Built | Exploration POC steps 1–6, plus step 8's third system (ADRs 0062–0067) |
-| **Do next** | **POC step 7** — cruise fuel and the debug teleport. Then step 8's remaining half: road curvature and an elevation change, which is what success criterion 1 turns on. |
-| **Waiting on you** | **The third checkpoint, on the reshaped interchange**: is a 33-second hop worth the portal, against 203 s by hand? The mainline now runs *through* every system with ramps curving off it beside each planet, which is the case that matters. |
+| Built | Exploration POC steps 1–6 and **step 8** (ADRs 0062–0070) |
+| **Do next** | **POC step 7** — cruise fuel and the debug teleport. It is the only step left before traffic. |
+| **Waiting on you** | **The fourth checkpoint, and the important one**: success criterion 1, on a trunk road that now weaves and undulates. Ten minutes on it. `cruise_turn_clamp_deg` is tuned WITH `road_curve_deg` and `road_curve_period`, never against them. The third checkpoint is still open too — is a 38-second hop worth the portal, against 203 s by hand? |
+
+### What landed on 2026-08-30 — the road curves, and the space outside it is furnished
+
+From play-session feedback. Five things, one branch:
+
+- **The trunk and local legs weave and undulate** (`RoadPath.weave`), which is step
+  8's remaining half and what success criterion 1 turns on. Curvature is expressed as
+  an ANGLE with a period, not an amplitude in metres, and both weaves taper to zero
+  value *and* zero slope at each mouth — so the legs curve and nothing else moved.
+- **The on-ramp was too steep, and it was measurable.** The old quadratic bent at
+  23.7 deg/s at cruise against the ship's 22 deg/s turn rate and arrived at its mouth
+  88 deg across the mainline in a 30 deg dive. Ramps are cubics tangential at *both*
+  ends now and peak at 15.7 deg/s, and **the gate checks every road on the map**
+  (ADR 0070).
+- **The space past the boundary is furnished** — near dust, mid-distance bodies, a
+  starfield — because a bounded volume with nothing outside it cannot be moved
+  through. Every boundary surface also carries a ruled grid. Background layer only,
+  nothing queryable (ADR 0069).
+- **The lane is measured against the hull, not the ship's centre** (ADR 0068). A
+  capital is 76 x 42 m and was flying two thirds outside a lane that never noticed.
+  The lane and the portal aperture grew to fit the roster, and the gate now asserts
+  that every hull clears every part of the road.
+- **The lane's push is eased in** rather than arriving at full strength on the frame
+  the rail is crossed. `sqrt` has an infinite slope at zero, which made a limit cycle
+  at the rail instead of the slope ADR 0064 promises — most visible on a big hull, and
+  the best candidate for the "tear" reported on the capital.
+
+**Decks are stacked FLUSH** (`deck_separation` = `lane_height` = 150), on request, to
+see how it reads with no air between them. One slider back up and the gap returns.
 
 Everything under §Where the build is and below is the **combat POC's history**,
 kept for its reasoning. It is not a to-do list, and its §Next is superseded by the

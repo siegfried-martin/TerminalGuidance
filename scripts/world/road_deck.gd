@@ -140,7 +140,12 @@ func profile(along: float) -> Vector2:
 
 ## Where the road is, at this point. Everything the ship needs from the lane in one
 ## object, so the ship never has to look the road up (`CruiseLane`).
-func sample(point: Vector3) -> CruiseLane:
+##
+## `clearance` is half the asking ship's own section. The lane is measured against
+## the hull rather than against a point, so a wide ship crosses the rail when its
+## hull does; anything that does not have a hull worth the name passes zero and gets
+## the point case back.
+func sample(point: Vector3, clearance: Vector2 = Vector2.ZERO) -> CruiseLane:
 	var lane := CruiseLane.new()
 	var found := _path.closest(point)
 	var along: float = found[0]
@@ -156,6 +161,8 @@ func sample(point: Vector3) -> CruiseLane:
 	lane.vertical = offset.dot(frame[1])
 	lane.half_width = extents.x
 	lane.half_height = extents.y
+	lane.clearance = clearance
+	lane.clearance_cap = Tuning.num("exploration/lane_hull_clearance_cap")
 	lane.roundness = Tuning.num("exploration/lane_corner_roundness")
 	lane.edge_softness = Tuning.num("exploration/lane_edge_softness")
 	lane.base_speed = Tuning.num("exploration/cruise_speed")
