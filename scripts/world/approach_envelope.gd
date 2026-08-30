@@ -89,7 +89,10 @@ func observe(ship: Mothership, delta: float) -> void:
 	_speed_scale = 1.0
 	if ship == null or not is_instance_valid(ship) or host == null:
 		return
-	var range_to_host := ship.position.distance_to(host.position)
+	# Global rather than parent-relative: with more than one system on the map the
+	# ship and the host are no longer siblings, and comparing two different frames
+	# is the kind of bug that reads as "docking is broken at system B only".
+	var range_to_host := ship.global_position.distance_to(host.global_position)
 	var inside := range_to_host <= radius()
 	_paint(clampf(1.0 - (range_to_host - radius()) / maxf(radius(), 1.0), 0.0, 1.0))
 

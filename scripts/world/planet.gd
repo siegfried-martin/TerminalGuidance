@@ -15,6 +15,11 @@ extends Node3D
 ##
 ## The approach envelope is POC step 4 and is not here yet. This is the placement.
 
+## The system this planet belongs to, in the map's frame. The depth below is
+## relative to that rather than to the world, so a map with several systems in it is
+## a list of positions rather than a node hierarchy that has to be got right.
+var base: Vector3 = Vector3.ZERO
+
 var _body: MeshInstance3D
 
 
@@ -51,13 +56,21 @@ func rebuild() -> void:
 
 	# Parent-relative, so recentring the world is a move of the parent and nothing
 	# else (ADR 0020).
-	position = Vector3(0.0, -Tuning.num("exploration/planet_center_depth"), 0.0)
+	position = base + Vector3(0.0,
+		-Tuning.num("exploration/planet_center_depth"), 0.0)
 
 
 ## The top of the planet, which is the number the disc's floor has to clear and the
 ## one a landing approach will eventually be measured from.
 func surface_height() -> float:
 	return position.y + Tuning.num("exploration/planet_radius")
+
+
+## How far below its own system's combat plane it sits. What ADR 0061 is about, and
+## the number the disc's floor has to clear — neither of which depends on where in
+## the map the system happens to be.
+func depth_below_system() -> float:
+	return base.y - position.y
 
 
 func radius() -> float:

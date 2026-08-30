@@ -33,12 +33,13 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
-	if _scene == null or _scene.ship() == null or _scene.system().aperture_count() <= 0:
+	if _scene == null or _scene.ship() == null or _scene.map().links().is_empty():
 		return
 	# Parked rather than flown: a taxi does 15.5 m/s and the mouth is most of a
 	# kilometre away, so flying there honestly is a minute of capture for one frame.
-	var mouth := _scene.system().aperture_mouth(0)
-	var bearing := mouth.normalized()
+	var home := _scene.map().systems()[0]
+	var mouth := home.aperture_mouth(home.aperture_count() - 1)
+	var bearing := (mouth - home.position).normalized()
 	var side := bearing.cross(Vector3.UP).normalized()
 	_scene.ship().position = mouth - bearing * BACK_METRES \
 		+ side * SIDE_METRES + Vector3.UP * UP_METRES

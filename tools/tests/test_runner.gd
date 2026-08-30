@@ -2530,19 +2530,30 @@ func _test_envelope_meter() -> void:
 		"reset forgets the record", "span %.1f" % meter.span)
 
 ## The system boundary (ADR 0011, as amended by ADR 0062). The rules under test are
-## the ones that make it a telegraph rather than a wall, and the heading model that
-## lets it stop the player without ever taking the stick.
+## the ones that make it a telegraph rather than a wall, the heading model that lets
+## it stop the player without ever taking the stick, and the union that makes a
+## corridor continuous with the systems at its ends.
 func _test_disc_bounds() -> void:
+	var disc := DiscRegion.new()
+	disc.ceiling = 400.0
+	disc.floor_depth = 750.0
+	disc.radius = 1750.0
+	disc.aperture_radius = 1100.0
+	disc.apertures = [Vector3.RIGHT]
+	disc.name_of = "SYSTEM A"
+
+	var tube := TubeRegion.new()
+	tube.from = Vector3(1750.0, 0.0, 0.0)
+	tube.to = Vector3(5750.0, 0.0, 0.0)
+	tube.mouth_radius = 1100.0
+	tube.radius = 875.0
+	tube.flare_length = 800.0
+	tube.name_of = "corridor"
+
 	var field := BoundaryField.new()
-	field.ceiling = 400.0
-	field.floor_depth = 750.0
-	field.radius = 1750.0
+	field.regions = [disc, tube]
 	field.warning_band = 120.0
 	field.stop_distance = 260.0
-	field.aperture_radius = 1100.0
-	field.funnel_length = 800.0
-	field.corridor_radius = 875.0
-	field.apertures = [Vector3.RIGHT]
 
 	# --- where the edges are ---
 	_expect(is_zero_approx(field.overshoot(Vector3.ZERO)),
@@ -2561,72 +2572,107 @@ func _test_disc_bounds() -> void:
 		"%.1f m past" % field.overshoot(Vector3(0.0, 0.0, 1850.0)))
 	_expect(is_zero_approx(field.overshoot(Vector3(0.0, 0.0, 1700.0))),
 		"…and just inside it is still clear", "already outside")
+	_expect(field.label(Vector3.ZERO) == "SYSTEM A",
+		"…and the field can say which piece of the map you are in",
+		field.label(Vector3.ZERO))
 
-	# --- the aperture, and its funnel ---
-	# The one place the rim opens. It is a FUNNEL: wide at the rim, tapering to the
-	# corridor, so leaving is aimed rather than threaded.
-	_expect(field.aperture_at(Vector3(1850.0, 0.0, 0.0)) == 0,
-		"the rim OPENS on the aperture's bearing", "the throat was not found")
-	# Lined up with an opening is not the same as being in it, and the HUD says so.
-	# A ship in the middle of the disc is lined up with an aperture a kilometre away.
-	_expect(field.aperture_at(Vector3(500.0, 0.0, 0.0)) == 0
-			and field.throat_at(Vector3(500.0, 0.0, 0.0)) < 0,
-		"…and being LINED UP with it, deep inside the disc, is not being IN it",
-		"the middle of the disc reads as the throat")
-	_expect(field.throat_at(Vector3(1850.0, 0.0, 0.0)) == 0,
-		"…while past the rim plane inside the walls is", "the throat was not entered")
-	_expect(is_zero_approx(field.overshoot(Vector3(2200.0, 0.0, 0.0))),
-		"…so flying out along it is not out of bounds at all",
-		"%.1f m past" % field.overshoot(Vector3(2200.0, 0.0, 0.0)))
-	_expect(field.aperture_at(Vector3(-1850.0, 0.0, 0.0)) < 0
+	# --- the aperture, and the corridor that is the same shape ---
+	_expect(disc.aperture_at(Vector3(1740.0, 0.0, 0.0)) == 0,
+		"the rim OPENS on the aperture's bearing", "the opening was not found")
+	_expect(disc.aperture_at(Vector3(-1740.0, 0.0, 0.0)) < 0
 			and field.overshoot(Vector3(-1850.0, 0.0, 0.0)) > 0.0,
 		"…and the OPPOSITE bearing is closed — one opening, not a symmetric pair",
 		"the far side is open too")
-	_expect(field.funnel_radius(field.radius) > field.funnel_radius(
-			field.radius + field.funnel_length),
-		"the funnel NARROWS outward: wide at the rim, corridor-sized at the far end",
-		"%.0f m at the mouth, %.0f m at the corridor" % [
-			field.funnel_radius(field.radius),
-			field.funnel_radius(field.radius + field.funnel_length)])
-	_expect(is_equal_approx(field.funnel_radius(
-			field.radius + field.funnel_length * 2.0), field.corridor_radius),
-		"…and stops narrowing once it is the corridor", "%.1f" % field.funnel_radius(
-			field.radius + field.funnel_length * 2.0))
+	# The hole is a hole in the WALL, not a tunnel through space. Past the rim there
+	# is no hole to be in, and what is out there belongs to the corridor. Without
+	# this the disc reports itself unbounded along its own bearing, and a kilometre
+	# past the rim still reads as "in SYSTEM A".
+	_expect(disc.aperture_at(Vector3(3000.0, 0.0, 0.0)) < 0,
+		"…and past the rim there is no opening to be in — a hole is not a tunnel",
+		"the disc claimed space a kilometre outside itself")
+	# The opening is ANGULAR, measured where the bearing cuts the wall. Using the
+	# point's own distance from the axis instead widens the hole for anything deep
+	# inside the disc, which is where it matters least and is wrong most.
+	var off_bearing := Vector3(600.0, 0.0, 1500.0)
+	_expect(disc.aperture_at(off_bearing) < 0,
+		"…and the opening is angular: 68 deg off the bearing is wall, not hole",
+		"a point 68 deg round the rim read as the opening")
+	_expect(tube.profile(0.0) > tube.profile(tube.flare_length),
+		"the corridor FLARES at its mouth: wide at the rim, corridor-sized after",
+		"%.0f m at the mouth, %.0f m along" % [
+			tube.profile(0.0), tube.profile(tube.flare_length)])
+	_expect(is_equal_approx(tube.profile(tube.length() * 0.5), tube.radius),
+		"…and is the corridor down the middle", "%.1f" % tube.profile(
+			tube.length() * 0.5))
+	_expect(is_equal_approx(tube.profile(tube.length()), tube.mouth_radius),
+		"…and flares again at the far end, so arriving opens out too",
+		"%.1f" % tube.profile(tube.length()))
 	# Past the rim the disc's faces stop applying: a ceiling 400 m up has nothing to
 	# say about a corridor 1750 m across, and leaving a flat system for a round tube
 	# should open out rather than pinch.
 	_expect(is_zero_approx(field.overshoot(Vector3(2000.0, 600.0, 0.0))),
-		"inside the throat the disc's ceiling no longer applies — the tube is taller",
+		"inside the corridor the disc's ceiling no longer applies — the tube is taller",
 		"%.1f m past" % field.overshoot(Vector3(2000.0, 600.0, 0.0)))
-	_expect(field.overshoot(Vector3(2000.0, 0.0, 1400.0)) > 0.0,
-		"…but the funnel WALL does: off-axis in the throat is still outside",
-		"it is not")
+	_expect(field.label(Vector3(3500.0, 0.0, 0.0)) == "corridor",
+		"…and the corridor is what governs out there",
+		field.label(Vector3(3500.0, 0.0, 0.0)))
+
+	# --- the union, which is where the seams would be ---
+	# Playable space is the disc PLUS the corridor, so flying out through the mouth
+	# must be continuous: no step at the rim plane, and above all no red glow while
+	# passing through the middle of the opening.
+	_expect(is_zero_approx(field.warning(Vector3(1700.0, 0.0, 0.0))),
+		"no red while flying up the middle of the aperture — the rim is not there",
+		"%.2f warning 50 m short of the rim plane" % field.warning(
+			Vector3(1700.0, 0.0, 0.0)))
+	_expect(field.warning(Vector3(0.0, 0.0, 1700.0)) > 0.0,
+		"…while the same distance from the CLOSED rim does warn",
+		"%.2f" % field.warning(Vector3(0.0, 0.0, 1700.0)))
+	# A tube has NO END CAPS. A cap is a wall reported where two regions merely meet,
+	# and it would paint the far end of a legal four-kilometre route red.
+	_expect(is_zero_approx(field.warning(Vector3(5600.0, 0.0, 0.0))),
+		"…and no red at the far mouth either — regions meet, they do not wall",
+		"%.2f 150 m short of the far rim" % field.warning(Vector3(5600.0, 0.0, 0.0)))
+	_expect(not tube.applies_to(Vector3(1000.0, 0.0, 0.0)),
+		"the tube declares itself INAPPLICABLE behind its own mouth, rather than capped",
+		"it answered for a point inside the disc")
+	# Drifting wide in the corridor is caught by the tube wall, and the way back is
+	# toward the axis — not backward into the disc, which is the answer a rim-only
+	# model gives and it points the player the wrong way.
+	var wide := Vector3(3500.0, 0.0, 915.0)
+	_expect(field.overshoot(wide) > 0.0 and field.overshoot(wide) < 100.0,
+		"drifting wide in the corridor is outside — by the TUBE's margin, not the rim's",
+		"%.1f m past" % field.overshoot(wide))
+	_expect(absf(field.outward(wide).z) > 0.9,
+		"…and the way back in is sideways toward the axis, not back down the corridor",
+		"outward (%.2f, %.2f, %.2f)" % [field.outward(wide).x,
+			field.outward(wide).y, field.outward(wide).z])
 
 	# --- the telegraph ---
 	# It reaches full BEFORE anything happens to the player. That ordering is the
 	# whole of the Bannerlord treatment, and it is why this is not a punishment.
 	_expect(is_zero_approx(field.warning(Vector3.ZERO)),
 		"no warning in the middle of the disc", "%.2f" % field.warning(Vector3.ZERO))
-	_expect(field.warning(Vector3(0.0, field.ceiling - 60.0, 0.0)) > 0.4,
+	_expect(field.warning(Vector3(0.0, disc.ceiling - 60.0, 0.0)) > 0.4,
 		"the red is well up before the ceiling is reached",
-		"%.2f" % field.warning(Vector3(0.0, field.ceiling - 60.0, 0.0)))
-	_expect(is_equal_approx(field.warning(Vector3(0.0, field.ceiling, 0.0)), 1.0),
+		"%.2f" % field.warning(Vector3(0.0, disc.ceiling - 60.0, 0.0)))
+	_expect(is_equal_approx(field.warning(Vector3(0.0, disc.ceiling, 0.0)), 1.0),
 		"…and is full AT the face, while nothing has been taken yet",
-		"%.2f" % field.warning(Vector3(0.0, field.ceiling, 0.0)))
+		"%.2f" % field.warning(Vector3(0.0, disc.ceiling, 0.0)))
 	_expect(is_equal_approx(field.warning(Vector3(0.0, 9999.0, 0.0)), 1.0),
 		"…and does not exceed full past it",
 		"%.2f" % field.warning(Vector3(0.0, 9999.0, 0.0)))
 	# The warning band is metres INSIDE the edge and does nothing but paint. The two
 	# distances used to be one, and conflating them is the easy mistake here.
 	_expect(is_equal_approx(field.speed_ceiling_scale(
-			Vector3(0.0, field.ceiling - 10.0, 0.0), Vector3.UP), 1.0),
+			Vector3(0.0, disc.ceiling - 10.0, 0.0), Vector3.UP), 1.0),
 		"the warning band is TELEGRAPH ONLY — nothing is clamped inside the edge",
 		"clamped while still inside")
 
 	# --- the clamp: magnitude, never direction, and heading-proportional ---
 	# THE invariant, and it is structural: the function returns a scale and never
 	# sees a heading it could return.
-	var above := Vector3(0.0, field.ceiling + field.stop_distance * 0.5, 0.0)
+	var above := Vector3(0.0, disc.ceiling + field.stop_distance * 0.5, 0.0)
 	_expect(field.speed_ceiling_scale(above, Vector3.UP) < 1.0,
 		"pushing further out past a face scales the speed LIMIT down",
 		"no strain applied")
@@ -2647,14 +2693,14 @@ func _test_disc_bounds() -> void:
 			BoundaryField.outbound_fraction(Vector3.UP, Vector3.UP),
 			BoundaryField.outbound_fraction(Vector3.RIGHT, Vector3.UP),
 			BoundaryField.outbound_fraction(Vector3.DOWN, Vector3.UP)])
-	var sideways := field.speed_ceiling_scale(above, Vector3.RIGHT)
+	var sideways := field.speed_ceiling_scale(above, Vector3.BACK)
 	_expect(sideways < 1.0 and sideways > field.speed_ceiling_scale(above, Vector3.UP),
 		"…so flying ALONG the edge is slowed, but less than flying out of it",
 		"%.2f along vs %.2f out" % [
 			sideways, field.speed_ceiling_scale(above, Vector3.UP)])
 	# And it reaches zero. A ship that keeps pushing outward is brought to a halt and
 	# has to turn; the boundary stops it by making outward cost everything.
-	var far_out := Vector3(0.0, field.ceiling + field.stop_distance, 0.0)
+	var far_out := Vector3(0.0, disc.ceiling + field.stop_distance, 0.0)
 	_expect(is_zero_approx(field.speed_ceiling_scale(far_out, Vector3.UP)),
 		"a full stop_distance out, straight outbound is STOPPED — not merely slowed",
 		"%.2f" % field.speed_ceiling_scale(far_out, Vector3.UP))
@@ -2669,7 +2715,7 @@ func _test_disc_bounds() -> void:
 	# --- the corner, which is arithmetic rather than a case ---
 	# Past both the ceiling and the rim, the combined outward normal is the diagonal,
 	# so down-and-inward is free and up-and-out is stopped. Nothing is written for it.
-	var corner := Vector3(0.0, field.ceiling + 80.0, field.radius + 80.0)
+	var corner := Vector3(0.0, disc.ceiling + 80.0, disc.radius + 80.0)
 	var out_dir := field.outward(corner)
 	_expect(out_dir.y > 0.3 and out_dir.z > 0.3,
 		"at a ceiling-and-rim corner the outward normal is the DIAGONAL",
@@ -2677,10 +2723,32 @@ func _test_disc_bounds() -> void:
 	_expect(field.speed_ceiling_scale(corner, -out_dir) > \
 			field.speed_ceiling_scale(corner, Vector3.UP),
 		"…so the way back in from a corner is the cheapest heading there",
-		"straight down was no better than the diagonal")
+		"straight up was no worse than the diagonal")
 	_expect(field.constraints(corner).size() == 3,
 		"…and it is three constraints, not a corner case", "%d constraints" %
 			field.constraints(corner).size())
+
+	# --- regions carry their own placement ---
+	# The map is a list of regions, not a hierarchy, so a system a kilometre away has
+	# to answer about its own space and no one else's.
+	var far_disc := DiscRegion.new()
+	far_disc.center = Vector3(5750.0 + 1750.0, 0.0, 0.0)
+	far_disc.ceiling = 400.0
+	far_disc.floor_depth = 750.0
+	far_disc.radius = 1750.0
+	far_disc.name_of = "SYSTEM B"
+	field.regions = [disc, tube, far_disc]
+	_expect(field.label(far_disc.center) == "SYSTEM B",
+		"a second system placed down the corridor answers for its own space",
+		field.label(far_disc.center))
+	_expect(is_zero_approx(field.overshoot(far_disc.center))
+			and is_zero_approx(field.overshoot(Vector3.ZERO)),
+		"…and both systems are in bounds at once — the map is a UNION, not a mode",
+		"one of them reported outside")
+	_expect(is_zero_approx(field.overshoot(Vector3(4000.0, 0.0, 0.0))),
+		"…with the corridor between them in bounds all the way across",
+		"%.1f m past, mid-corridor" % field.overshoot(Vector3(4000.0, 0.0, 0.0)))
+	field.regions = [disc, tube]
 
 	# Damage is the LAST stage and starts only after the grace the player watched
 	# run down. A brief tactical dip has to cost nothing (ADR 0011).
@@ -2695,33 +2763,9 @@ func _test_disc_bounds() -> void:
 		"…reaching the full rate, so camping out there does not work",
 		"%.2f hp/s" % BoundaryField.damage_per_second(99.0, 4.0, 6.0, 12.0))
 
-	# --- the union, which is where the seams would be ---
-	# The playable volume is the disc PLUS each funnel, so flying out through a mouth
-	# must be continuous: no step at the rim plane, and above all no red glow while
-	# passing through the middle of the opening.
-	_expect(is_zero_approx(field.warning(Vector3(field.radius - 50.0, 0.0, 0.0))),
-		"no red while flying up the middle of the aperture — the rim is not there",
-		"%.2f warning 50 m short of the rim plane" % field.warning(
-			Vector3(field.radius - 50.0, 0.0, 0.0)))
-	_expect(field.warning(Vector3(0.0, 0.0, field.radius - 50.0)) > 0.0,
-		"…while the same distance from the CLOSED rim does warn",
-		"%.2f" % field.warning(Vector3(0.0, 0.0, field.radius - 50.0)))
-	# Drifting wide in the throat is caught by the funnel wall, and the way back is
-	# toward the axis — not backward into the disc, which is the answer a rim-only
-	# model gives and it points the player the wrong way.
-	var wide := Vector3(field.radius + field.funnel_length + 200.0, 0.0,
-		field.corridor_radius + 40.0)
-	_expect(field.overshoot(wide) > 0.0 and field.overshoot(wide) < 100.0,
-		"drifting wide in the corridor is outside — by the FUNNEL's margin, not the rim's",
-		"%.1f m past" % field.overshoot(wide))
-	_expect(absf(field.outward(wide).z) > 0.9,
-		"…and the way back in is sideways toward the axis, not back down the throat",
-		"outward (%.2f, %.2f, %.2f)" % [field.outward(wide).x,
-			field.outward(wide).y, field.outward(wide).z])
-
-	# The funnel only funnels if its mouth is wider than what it feeds. Tuned values,
-	# not the fixture's — the two keys are independent and inverting them silently
-	# turns the guide into a pinch.
+	# The corridor only funnels if its mouth is wider than what it feeds. Tuned
+	# values, not the fixture's — the two keys are independent and inverting them
+	# silently turns the guide into a pinch.
 	_expect(Tuning.num("exploration/aperture_mouth_diameter")
 			> Tuning.num("exploration/corridor_diameter"),
 		"the tuned aperture mouth is WIDER than the corridor it feeds",
@@ -2734,6 +2778,14 @@ func _test_disc_bounds() -> void:
 		"%.0f m mouth in a %.0f m disc" % [
 			Tuning.num("exploration/aperture_mouth_diameter"),
 			Tuning.num("exploration/system_diameter")])
+	# Two flares have to fit in the shortest leg, or the corridor is all mouth and
+	# never reaches its own width.
+	_expect(Tuning.num("exploration/aperture_funnel_length") * 2.0
+			< Tuning.num("exploration/local_leg_length"),
+		"…and the two flares fit inside the shortest leg with corridor left between",
+		"%.0f m of flare in a %.0f m leg" % [
+			Tuning.num("exploration/aperture_funnel_length") * 2.0,
+			Tuning.num("exploration/local_leg_length")])
 
 	# ADR 0061: the floor goes UNDER the planet, never between the player and it.
 	var surface := Tuning.num("exploration/planet_radius") \
@@ -2762,24 +2814,37 @@ func _test_exploration_builds() -> void:
 	await get_tree().process_frame
 
 	for path in ["WorldEnvironment", "KeyLight", "FillLight", "SystemRoot",
-			"SystemRoot/SystemDisc", "SystemRoot/SystemDisc/Ceiling",
-			"SystemRoot/SystemDisc/Floor", "SystemRoot/SystemDisc/Rim",
-			"SystemRoot/SystemDisc/Apertures",
-			"SystemRoot/SystemDisc/Apertures/Aperture0",
-			"SystemRoot/SystemDisc/SystemMarkers",
-			"SystemRoot/Planet", "SystemRoot/Planet/Body",
+			"SystemRoot/SystemMap",
+			"SystemRoot/SystemMap/DiscA", "SystemRoot/SystemMap/DiscA/Ceiling",
+			"SystemRoot/SystemMap/DiscA/Floor", "SystemRoot/SystemMap/DiscA/Rim",
+			"SystemRoot/SystemMap/DiscA/SystemMarkers",
+			"SystemRoot/SystemMap/PlanetA", "SystemRoot/SystemMap/PlanetA/Body",
+			"SystemRoot/SystemMap/ApproachA",
+			"SystemRoot/SystemMap/DiscB", "SystemRoot/SystemMap/DiscB/Rim",
+			"SystemRoot/SystemMap/PlanetB", "SystemRoot/SystemMap/PlanetB/Body",
+			"SystemRoot/SystemMap/ApproachB",
+			"SystemRoot/SystemMap/LinkAB", "SystemRoot/SystemMap/LinkAB/Wall",
+			"SystemRoot/SystemMap/LinkAB/LinkMarkers",
 			"SystemRoot/Ship", "ChaseCamera", "DebugHud"]:
 		_expect(scene.get_node_or_null(path) != null,
 			"exploration builds " + path, "missing")
 
-	_expect(scene.system().marker_count() > 0,
-		"the disc is filled with reference markers",
-		"%d markers" % scene.system().marker_count())
+	var map := scene.map()
+	var field := map.field()
+	_expect(map.systems().size() == 2 and map.links().size() == 1,
+		"the map is two systems and the local leg (POC step 5)",
+		"%d systems, %d links" % [map.systems().size(), map.links().size()])
+	_expect(map.marker_count() > 0,
+		"the whole map is filled with reference markers, corridor included",
+		"%d markers" % map.marker_count())
+	_expect(map.links()[0].marker_count() > 0,
+		"…and the CORRIDOR has its own: 4 km of empty tube reads as a still image",
+		"%d in the corridor" % map.links()[0].marker_count())
 
 	# The drawn rim and the enforced rim have to be the same thing, or the player
 	# learns to distrust the picture. The hole is a hole in the mesh, not a decal.
 	var rim := scene.get_node_or_null(
-		"SystemRoot/SystemDisc/Rim") as MeshInstance3D
+		"SystemRoot/SystemMap/DiscA/Rim") as MeshInstance3D
 	if rim != null and rim.mesh != null:
 		var rim_verts: PackedVector3Array = rim.mesh.surface_get_arrays(0)[
 			Mesh.ARRAY_VERTEX]
@@ -2787,40 +2852,99 @@ func _test_exploration_builds() -> void:
 		_expect(drawn > 0 and drawn < SystemDisc.RIM_SEGMENTS,
 			"the rim is drawn with an actual HOLE in it where the aperture is",
 			"%d of %d segments drawn" % [drawn, SystemDisc.RIM_SEGMENTS])
-	var disc := scene.system()
-	_expect(disc.aperture_count() == 1,
-		"the single system declares one placeholder aperture (step 6 lays the road)",
-		"%d apertures" % disc.aperture_count())
-	_expect(is_zero_approx(disc.field().overshoot(disc.aperture_mouth(0))),
-		"…and the mouth of it is inside the boundary, so it can be flown through",
-		"%.1f m past" % disc.field().overshoot(disc.aperture_mouth(0)))
+
+	# A LINE, not a ring: the end systems have one aperture each, and it is the one
+	# the leg actually attaches to. An aperture facing nowhere is a hole in the
+	# boundary with unrendered space behind it.
+	var discs := map.systems()
+	_expect(discs[0].aperture_count() == 1 and discs[1].aperture_count() == 1,
+		"each end system opens its rim exactly once — a line, not a ring",
+		"%d and %d apertures" % [discs[0].aperture_count(),
+			discs[1].aperture_count()])
+	var link := map.links()[0]
+	_expect(link.region().from.distance_to(discs[0].aperture_mouth(0)) < 1.0
+			and link.region().to.distance_to(discs[1].aperture_mouth(0)) < 1.0,
+		"…and the corridor attaches to those two mouths, not near them",
+		"%.1f m and %.1f m off" % [
+			link.region().from.distance_to(discs[0].aperture_mouth(0)),
+			link.region().to.distance_to(discs[1].aperture_mouth(0))])
+	# Legs are measured PORTAL TO PORTAL (an amendment to the POC doc), so this is
+	# the number the highway has to beat and it must be the tuned one, not the
+	# centre-to-centre distance that would be easy to conflate it with.
+	_expect(absf(link.length() - Tuning.num("exploration/local_leg_length")) < 1.0,
+		"the leg is the tuned length MOUTH TO MOUTH, not centre to centre",
+		"%.0f m of a tuned %.0f" % [link.length(),
+			Tuning.num("exploration/local_leg_length")])
+	_expect(absf(discs[0].position.distance_to(discs[1].position)
+			- (Tuning.num("exploration/local_leg_length")
+				+ Tuning.num("exploration/system_diameter"))) < 1.0,
+		"…so centre to centre is the leg plus one system radius at each end",
+		"%.0f m apart" % discs[0].position.distance_to(discs[1].position))
+
+	# You can fly from one to the other without leaving the map. This is the whole of
+	# step 5 as one assertion: if any point along the route is out of bounds, the
+	# control condition cannot be flown and success criterion 2 is untestable.
+	var route_ok := true
+	var worst := 0.0
+	for i in 81:
+		var t := float(i) / 80.0
+		var point := discs[0].position.lerp(discs[1].position, t)
+		worst = maxf(worst, field.overshoot(point))
+		if field.overshoot(point) > 0.0:
+			route_ok = false
+	_expect(route_ok,
+		"the whole route from A to B is in bounds — the leg can actually be flown",
+		"worst point is %.1f m outside" % worst)
+	# And the corridor is not a second way of saying "the disc". Halfway along, the
+	# governing region has to be the tube.
+	var midpoint := link.region().from.lerp(link.region().to, 0.5)
+	_expect(map.place_of(midpoint) == link.region().name_of,
+		"…and halfway along it, the CORRIDOR is what governs, not either system",
+		map.place_of(midpoint))
+	_expect(map.place_of(discs[1].position) == SystemMap.NAMES[1],
+		"…while the far end is system B, which the HUD can therefore name",
+		map.place_of(discs[1].position))
+
 	# The ship has to start somewhere it can actually be. A closed rim plus a start
 	# position derived from the radius is exactly the pair that could silently put
 	# the player outside their own system.
-	_expect(is_zero_approx(disc.field().overshoot(scene.ship().position)),
+	_expect(is_zero_approx(field.overshoot(map.to_local(
+			scene.ship().global_position))),
 		"the ship starts INSIDE the bounded volume, not on the wrong side of the rim",
-		"%.1f m past" % disc.field().overshoot(scene.ship().position))
+		"%.1f m past" % field.overshoot(map.to_local(scene.ship().global_position)))
+	_expect(map.place_of(map.to_local(scene.ship().global_position))
+			== SystemMap.NAMES[0],
+		"…and it starts in system A, with the crossing still ahead of it",
+		map.place_of(map.to_local(scene.ship().global_position)))
 
 	# The player owns the helm and keeps it. There is no other station here, so the
 	# autopilot — which is what happens when nobody is flying — must never run.
 	_expect(not scene.ship().autopilot and scene.ship().piloted,
 		"the player is at the helm and stays there — no roster in this scene",
 		"autopilot %s, piloted %s" % [scene.ship().autopilot, scene.ship().piloted])
-	_expect(scene.ship().position.y < scene.system().ceiling_height()
-			and scene.ship().position.y > -scene.system().floor_depth(),
+	_expect(scene.ship().position.y < discs[0].ceiling_height()
+			and scene.ship().position.y > -discs[0].floor_depth(),
 		"…and starts inside the disc", "y %.1f" % scene.ship().position.y)
-	_expect(scene.planet().position.y < 0.0,
-		"the planet is below the combat plane (ADR 0061)",
-		"planet at y %.1f" % scene.planet().position.y)
+	# Every system gets a planet, each below its OWN combat plane. A planet that
+	# derived its depth from the world rather than its system would sit correctly at
+	# A and be buried at B, which is a bug that only shows up after a four-minute flight.
+	for i in map.planets().size():
+		var planet := map.planets()[i]
+		_expect(is_equal_approx(planet.depth_below_system(),
+				Tuning.num("exploration/planet_center_depth")),
+			"%s's planet is below ITS OWN combat plane (ADR 0061)" % SystemMap.NAMES[i],
+			"%.1f m below a system centred at y %.1f" % [
+				planet.depth_below_system(), planet.base.y])
 
-	# The strain is applied to the ship by the disc, each frame, and released when
-	# the ship comes back. Driven through the real node rather than the pure library
-	# so the wiring is covered too.
+	# The strain is applied to the ship by the map, each frame, and released when the
+	# ship turns round. Driven through the real nodes rather than the pure library so
+	# the wiring is covered too.
 	#
 	# Note the ship has to be PAST the ceiling, not merely near it: since ADR 0062
 	# the warning band inside the edge only paints, and the clamp lives entirely in
 	# `bounds_stop_distance` outside it. That split is the easy thing to get wrong.
-	scene.ship().position.y = scene.system().ceiling_height() + 40.0
+	scene.ship().position = discs[0].position \
+		+ Vector3(0.0, discs[0].ceiling_height() + 40.0, 0.0)
 	scene.ship()._velocity = Vector3(0.0, 10.0, 0.0)
 	scene._process(1.0 / 60.0)
 	_expect(scene.ship().speed_ceiling_scale < 1.0,
@@ -2835,11 +2959,13 @@ func _test_exploration_builds() -> void:
 			and scene.ship().manual_max_speed() > strained,
 		"…and TURNING ROUND releases it on the spot, without moving back in",
 		"scale %.2f" % scene.ship().speed_ceiling_scale)
-	scene.ship().position.y = 0.0
-	scene.ship()._velocity = Vector3(0.0, 10.0, 0.0)
+	# Mid-corridor, four kilometres from either system, nothing is clamped. The
+	# boundary following the player across the map is the thing this checks.
+	scene.ship().position = link.region().from.lerp(link.region().to, 0.5)
+	scene.ship()._velocity = Vector3(0.0, 0.0, 10.0)
 	scene._process(1.0 / 60.0)
 	_expect(is_equal_approx(scene.ship().speed_ceiling_scale, 1.0),
-		"…and nothing is clamped back in the middle of the disc",
+		"…and nothing is clamped in the middle of the corridor either",
 		"scale %.2f" % scene.ship().speed_ceiling_scale)
 
 	scene.queue_free()

@@ -18,8 +18,8 @@ func _ready() -> void:
 	add_child(_scene)
 	# Placed just outside the envelope, aimed down at the planet, rather than flown
 	# in: a taxi covers the 900 m at 15.5 m/s in a minute, and this needs one frame.
-	var planet: Node3D = _scene.planet()
-	var envelope: ApproachEnvelope = _scene.approach()
+	var planet: Node3D = _scene.map().planets()[0]
+	var envelope: ApproachEnvelope = _scene.map().approaches()[0]
 	_scene.ship().position = planet.position \
 		+ Vector3(0.0, envelope.radius() * 1.06, 0.0)
 	_scene.ship().look_at_from_position(_scene.ship().position, planet.position,

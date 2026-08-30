@@ -30,5 +30,7 @@ func _process(_delta: float) -> void:
 	# Parked rather than flown: the ceiling is 400 m up and a taxi does 15.5 m/s,
 	# so flying there honestly would take 26 seconds of capture for one frame.
 	# Held outbound so the strain and the damage timer both engage.
-	_scene.ship().position.y = _scene.system().ceiling_height() + OVERSHOOT_METRES
+	var home := _scene.map().systems()[0]
+	_scene.ship().position = home.position + Vector3(0.0,
+		home.ceiling_height() + OVERSHOOT_METRES, 0.0)
 	_scene.ship().rotation_degrees = Vector3(-35.0, 0.0, 0.0)

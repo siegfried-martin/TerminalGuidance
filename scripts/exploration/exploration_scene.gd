@@ -2,8 +2,14 @@ class_name ExplorationScene
 extends Node3D
 ## The travel layer's POC scene (`docs/EXPLORATION_POC_IMPLEMENTATION.md`).
 ##
-## Build step 2: one system disc with a planet, flown by hand. Everything is
+## Build step 5: two systems joined by the local leg, flown by hand. Everything is
 ## constructed here from tuning (ADR 0027); the `.tscn` is a shell.
+##
+## **This is the control condition.** No road, no portals, no cruise drive — the
+## 4 km between A and B is flown manually, at each hull's speed, so there is a
+## measured baseline before step 6 lays the highway. Success criterion 2 is *"the
+## player elects to fly a leg off-highway and does not regret it"*, and that cannot
+## be judged against a memory of what off-road felt like.
 ##
 ## **Only the pilot exists here.** Every station is a person who keeps doing their
 ## job while the player is elsewhere, and the existing autopilot already is that for
@@ -13,22 +19,19 @@ extends Node3D
 ## problem to solve.
 ##
 ## Also absent, and coming with the steps that need them: missiles and the launch
-## tube (there is nothing to shoot and nothing to disable in a tube yet), the
-## approach envelope and docking (step 4), roads and portals (step 6).
+## tube, roads and portals and the cruise drive (step 6), fuel (step 7), the third
+## system and the trunk leg (step 8), traffic (steps 9-10).
 
-var _system: SystemDisc
-var _planet: Planet
+## The map: systems, corridors, planets, docking, and the one composed boundary.
+var _map: SystemMap
 var _ship: Mothership
 var _camera: ChaseCamera
 var _hud: DebugHud
-## The way you arrive somewhere (ADR 0012). Mounted on the planet here; the same
-## node goes on the portals' ramp stations in step 6.
-var _approach: ApproachEnvelope
 var _dock: DockScreen
-## Everything in system space hangs off one node, so the floating origin is a move
-## of this and nothing else has to know (ADR 0020). The disc, the planet and the
-## ship are all its children — including the boundary, which is why leaning on a
-## ceiling is unaffected by where the world happens to be centred.
+## Everything in map space hangs off one node, so the floating origin is a move of
+## this and nothing else has to know (ADR 0020). At 7.5 km centre to centre the
+## precision is not yet a problem — the invariant is kept because retrofitting it
+## once systems assume a fixed origin is what costs.
 var _root: Node3D
 
 
@@ -80,26 +83,16 @@ func _build_world() -> void:
 	_root.name = "SystemRoot"
 	add_child(_root)
 
-	_system = SystemDisc.new()
-	_system.name = "SystemDisc"
-	_root.add_child(_system)
-
-	_planet = Planet.new()
-	_planet.name = "Planet"
-	_root.add_child(_planet)
-
-	_approach = ApproachEnvelope.new()
-	_approach.name = "ApproachEnvelope"
-	_approach.host = _planet
-	_approach.position = _planet.position
-	_root.add_child(_approach)
-	_approach.arrived.connect(_on_arrived)
-	_approach.departed.connect(_on_departed)
+	_map = SystemMap.new()
+	_map.name = "SystemMap"
+	_root.add_child(_map)
+	_map.arrived.connect(_on_arrived)
+	_map.departed.connect(_on_departed)
 
 	_dock = DockScreen.new()
 	_dock.name = "DockScreen"
 	add_child(_dock)
-	_dock.departed.connect(func() -> void: _approach.depart())
+	_dock.departed.connect(func() -> void: _map.depart())
 
 
 func _build_ship() -> void:
@@ -110,9 +103,14 @@ func _build_ship() -> void:
 	# the autopilot — which is what happens when nobody is flying — never runs.
 	_ship.set_autopilot(false)
 	_ship.piloted = true
-	# Started on the combat plane, well inside the disc, facing out across it so the
-	# first thing on screen is the volume rather than the floor.
-	_ship.position = Vector3(0.0, 0.0, _system.radius() * 0.45)
+	# Started in system A, on the combat plane, back from the aperture and facing
+	# down the leg — so the first thing on screen is the way out of the system and
+	# the trip that is being measured.
+	var home := _map.system_center(0)
+	var mouth := _map.systems()[0].aperture_mouth(
+		_map.systems()[0].aperture_count() - 1)
+	_ship.position = home - (mouth - home).normalized() * _map.systems()[0].radius() * 0.45
+	_ship.look_at(mouth, Vector3.UP)
 
 	_camera = ChaseCamera.new()
 	_camera.name = "ChaseCamera"
@@ -141,63 +139,62 @@ func _build_hud() -> void:
 	_hud.add_row("flight", func() -> String:
 		return "throttle %3.0f%%  ·  %.0f m/s of %.0f" % [
 			_ship.throttle() * 100.0, _ship.speed(), _ship.manual_max_speed()])
-	# How long this hull takes to cross its own system, which is the number the
-	# ladder was built to make meaningful and the one step 3 is really asking about.
-	_hud.add_row("crossing", func() -> String:
-		var top := _ship.manual_max_speed()
-		if top <= 0.0:
+	# Where the player is, in the map's own words. This is the step-5 row: the whole
+	# question is what four kilometres of hand-flown corridor feels like, and that
+	# starts with knowing whether you have left yet.
+	_hud.add_row("where", func() -> String:
+		return _map.place_of(_ship_in_map()))
+	# THE step-5 number. The leg at this hull's top speed is the baseline the
+	# highway has to beat in step 6, and it is worth reading before flying it as well
+	# as during — a figure the player predicted and then lived through is a much
+	# stronger verdict than one they only lived through.
+	_hud.add_row("leg", func() -> String:
+		var links := _map.links()
+		if links.is_empty():
 			return "—"
-		var seconds := _system.radius() * 2.0 / top
-		return "%.0f s across the disc at full throttle  (%.1f min)" % [
-			seconds, seconds / 60.0])
-	# The disc, stated as the three things it decomposes into (ADR 0061) rather than
-	# as one height, because that is how it is tuned.
+		var top := _ship.manual_max_speed()
+		var seconds := INF if top <= 0.0 else links[0].length() / top
+		return "%.0f m mouth to mouth  ·  %.0f s at full throttle (%.1f min)" % [
+			links[0].length(), seconds, seconds / 60.0])
+	# How far there is left to go, either way. Off-road travel with no map is the
+	# control condition, not a puzzle — the POC is testing whether the crossing is
+	# worth making, not whether it can be navigated blind.
+	_hud.add_row("route", func() -> String:
+		var here := _ship_in_map()
+		var parts := PackedStringArray()
+		for i in _map.systems().size():
+			parts.append("%s %.0f m" % [_map.system_name(i),
+				here.distance_to(_map.system_center(i))])
+		return "  ·  ".join(parts))
 	_hud.add_row("system", func() -> String:
+		var disc := _map.systems()[maxi(_map.nearest_system(_ship_in_map()), 0)]
 		return "%.0f m across  ·  %.0f m tall (%.0f up / %.0f down)  ·  %d aperture" % [
-			_system.radius() * 2.0, _system.height(),
-			_system.ceiling_height(), _system.floor_depth(),
-			_system.aperture_count()])
+			disc.radius() * 2.0, disc.height(),
+			disc.ceiling_height(), disc.floor_depth(), disc.aperture_count()])
 	_hud.add_row("altitude", func() -> String:
 		return "%+.0f m  ·  %.0f m of open space to the nearest edge" % [
-			_ship.position.y, _system.field().distance_to_edge(_ship.position)])
-	# The telegraph, in words as well as in red. A timer the player cannot see is
-	# not a telegraph, and this POC is where the treatment gets read for the first
-	# time — it has never been built before.
+			_ship.position.y,
+			_map.field().distance_to_edge(_ship_in_map())])
+	# The telegraph, in words as well as in red. A timer the player cannot see is not
+	# a telegraph.
 	_hud.add_row("bounds", func() -> String:
-		var field := _system.field()
-		var overshoot := field.overshoot(_ship.position)
+		var overshoot := _map.field().overshoot(_ship_in_map())
 		if overshoot <= 0.0:
-			if _system.warning() <= 0.0:
+			if _map.warning() <= 0.0:
 				return "clear"
-			return "NEARING THE EDGE  ·  %.0f%%" % (_system.warning() * 100.0)
-		var rate := BoundaryField.damage_per_second(_system.seconds_outside(),
+			return "NEARING THE EDGE  ·  %.0f%%" % (_map.warning() * 100.0)
+		var rate := BoundaryField.damage_per_second(_map.seconds_outside(),
 			Tuning.num("exploration/bounds_grace_seconds"),
 			Tuning.num("exploration/bounds_damage_ramp_seconds"),
 			Tuning.num("exploration/bounds_damage_per_second"))
 		if rate <= 0.0:
 			return "OUTSIDE  ·  %.0f m past  ·  %.1f s of grace left" % [overshoot,
 				Tuning.num("exploration/bounds_grace_seconds")
-					- _system.seconds_outside()]
+					- _map.seconds_outside()]
 		return "OUTSIDE  ·  %.0f m past  ·  taking %.0f hp/s" % [overshoot, rate])
-	# Where the rim opens, and how far off that bearing the nose currently is. Step 6
-	# hangs the local leg's portal here; until then this is how the aperture is found
-	# without a map, and it is the only way out of the volume.
-	_hud.add_row("aperture", func() -> String:
-		if _system.aperture_count() <= 0:
-			return "the rim is closed"
-		var mouth := _system.aperture_mouth(0)
-		var to_mouth := mouth - _ship.position
-		var off := rad_to_deg((-_ship.basis.z).angle_to(to_mouth))
-		var where := "bearing %.0f deg" % Tuning.num("exploration/aperture_bearing_deg")
-		if _system.field().throat_at(_ship.position) >= 0:
-			where = "IN THE THROAT"
-		elif _system.field().aperture_at(_ship.position) >= 0:
-			where = "lined up — no rim ahead"
-		return "%.0f m away  ·  %.0f deg off the nose  ·  %s" % [
-			to_mouth.length(), off, where])
 	# Damage means nothing while the ship cannot be hurt, and the bounds row above
-	# reports an hp/s rate whether or not it costs anything. Saying so here keeps
-	# that from reading as a lie during a session where the flag is on.
+	# reports an hp/s rate whether or not it costs anything. Saying so here keeps that
+	# from reading as a lie during a session where the flag is on.
 	_hud.add_row("hull", func() -> String:
 		if Tuning.flag("ship/invulnerable"):
 			return "INVULNERABLE  ·  boundary damage is counted, not taken"
@@ -209,14 +206,12 @@ func _build_hud() -> void:
 		if is_equal_approx(_ship.speed_ceiling_scale, 1.0):
 			return "—"
 		return "speed limit at %.0f%%  ·  heading is %.0f%% outbound" % [
-			_ship.speed_ceiling_scale * 100.0, _system.outbound() * 100.0])
-	_hud.add_row("approach", func() -> String: return _approach.state_label())
-	_hud.add_row("planet", func() -> String:
-		return "%.0f m below  ·  r %.0f  ·  %.0f m away" % [
-			-_planet.position.y, _planet.radius(),
-			_ship.position.distance_to(_planet.position)])
+			_ship.speed_ceiling_scale * 100.0, _map.outbound() * 100.0])
+	_hud.add_row("approach", func() -> String:
+		var approach := _map.active_approach(_ship_in_map())
+		return "—" if approach == null else approach.state_label())
 	_hud.add_row("markers", func() -> String:
-		return "%d in the disc" % _system.marker_count())
+		return "%d across the map" % _map.marker_count())
 	_hud.add_row("keys", func() -> String:
 		return "W/S throttle · A/D thrusters · mouse steers · H cycles hull · F1 hud · F2 tune")
 
@@ -239,25 +234,24 @@ func _apply_tuning() -> void:
 
 # --- flight ------------------------------------------------------------------
 
+## The ship, in the map's frame. Every boundary question is asked in that frame, and
+## with more than one system the ship and the map's contents are no longer siblings.
+func _ship_in_map() -> Vector3:
+	return _map.to_local(_ship.global_position)
+
+
 func _process(delta: float) -> void:
-	# The envelope rides with the planet, which will move once systems do.
-	_approach.position = _planet.position
-	_system.observe(_ship, delta)
-	_approach.observe(_ship, delta)
-	# Composed here, and assigned once. Both the boundary and the approach constrain
-	# the same ceiling, and the tightest wins — so leaning on a face while an
-	# approach is running does the stricter of the two rather than whichever system
-	# happened to run second.
-	_ship.speed_ceiling_scale = minf(_system.speed_scale(), _approach.speed_scale())
+	_map.observe(_ship, delta)
+	_ship.speed_ceiling_scale = _map.speed_scale()
 
 
 ## Arriving takes the helm, because there is nowhere to fly from a docked ship. The
 ## sequence never took the stick on the way in — it only capped what the throttle
 ## could reach — so this is the first moment control actually changes hands, and it
 ## happens after the countdown the player watched, not before it.
-func _on_arrived() -> void:
+func _on_arrived(place: String) -> void:
 	_ship.piloted = false
-	_dock.open("PLANET")
+	_dock.open(place)
 
 
 func _on_departed() -> void:
@@ -269,14 +263,14 @@ func _on_departed() -> void:
 ## The pointer steers the ship, and is released only for the tuning panel. With one
 ## station there is nothing else it could be doing.
 func _apply_mouse_mode() -> void:
-	if DebugPanel.is_open() or (_approach != null and _approach.is_docked()):
+	if DebugPanel.is_open() or (_map != null and _map.is_docked()):
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		return
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if DebugPanel.is_open() or _approach.is_docked():
+	if DebugPanel.is_open() or _map.is_docked():
 		return
 	if event is InputEventMouseMotion:
 		_ship.add_mouse_steer((event as InputEventMouseMotion).relative)
@@ -306,20 +300,12 @@ func cycle_hull() -> void:
 	_camera.boom_scale = _ship.hull_scale()
 
 
-func approach() -> ApproachEnvelope:
-	return _approach
+func map() -> SystemMap:
+	return _map
 
 
 func dock_screen() -> DockScreen:
 	return _dock
-
-
-func system() -> SystemDisc:
-	return _system
-
-
-func planet() -> Planet:
-	return _planet
 
 
 func ship() -> Mothership:

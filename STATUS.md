@@ -15,10 +15,10 @@ the human's explicit direction.
 | | |
 |---|---|
 | Branch | `feat/exploration-tuning-and-hud`, PR #14 |
-| Gate | `make check` — 906 checks, 0 failed |
+| Gate | `make check` — 938 checks, 0 failed |
 | Run it | `make run SCENE=res://scenes/exploration.tscn` |
-| Built | Exploration POC steps 1–4, plus the system border (ADR 0062) |
-| **Do next** | **POC step 5** — the second system and the local leg, off-road. See `docs/EXPLORATION_POC_IMPLEMENTATION.md`. The aperture the leg attaches to already exists: `SystemDisc.aperture_mouth(0)`. |
+| Built | Exploration POC steps 1–5, plus the system border (ADRs 0062, 0063) |
+| **Do next** | **POC step 6** — portals and the highway tube on the local leg. See `docs/EXPLORATION_POC_IMPLEMENTATION.md`. The corridor it goes inside is built and flyable: `SystemLink`, attached at `SystemMap.systems()[i].aperture_mouth(…)`. |
 
 Everything under §Where the build is and below is the **combat POC's history**,
 kept for its reasoning. It is not a to-do list, and its §Next is superseded by the
@@ -211,6 +211,53 @@ a ship drifting wide in the corridor being told to fly *backward into the disc*
 rather than sideways toward the axis. So constraints intersect within a region
 (deepest wins) and unite between regions (shallowest wins), and the throat is
 continuous with the disc instead of having a seam. Both cases are now tests.
+
+### ✅ Exploration step 5 is built — two systems and the local leg
+
+`make run SCENE=res://scenes/exploration.tscn`. System A, 4 km of corridor, system
+B. **No road, no portals, no cruise drive** — the crossing is flown by hand, which is
+the whole point: it is the control condition success criterion 2 is measured against,
+and it has to be flown before the highway exists rather than remembered afterwards.
+
+**The number this step exists to produce: 258 s — 4.3 minutes — each way in a taxi,
+against 41 s at cruise.** The HUD's `leg` row states it before the trip as well as
+during, because a figure the human predicted and then lived through is a stronger
+verdict than one they only lived through. That ~6x ratio is what step 6 is really
+asking about.
+
+Legs are **mouth to mouth**, so centre to centre is the leg plus one system radius at
+each end — 7.5 km here. Widening a system pushes its neighbours apart rather than
+eating into the road, and a test asserts both readings so they cannot be conflated.
+
+`aperture_bearing_deg` stopped being a placeholder and became **the map's own
+bearing**. The apertures and the legs are now the same number, so they cannot
+disagree; step 8's trunk leg will want a second one, because a straight road cannot
+test success criterion 1.
+
+**The boundary became a union of regions — ADR 0063.** That is ADR 0062's *"the
+whole-map boundary later is a different constraint set, not different code"*, arriving
+one step later than predicted. Three things it cost, all of which look like polish
+bugs and none of which a code review would catch:
+
+- **No end caps on a corridor.** A cap is a wall reported where the corridor merely
+  becomes a system, and it paints the far end of a legal 4 km route red as you
+  approach it. Regions declare themselves *inapplicable* instead.
+- **A hole is a hole in a wall, not a tunnel through space.** The first cut dropped
+  the rim wherever a point lined up with an aperture, at any distance, so a system
+  claimed an unbounded tube along its own bearing and a ship a kilometre outside
+  still read as being in it. The opening is angular and it is in the wall.
+- **The opening is measured where the bearing cuts the wall**, not by the query
+  point's own distance from the axis — that widens the hole with distance.
+
+Rendered both states: `tools/shots/aperture_shot.tscn` (the mouth and the corridor's
+flare from inside A) and the new `tools/shots/corridor_shot.tscn` (mid-leg, looking
+at B). The corridor carries its own marker lattice — 1172 across the map — because
+4 km of empty tube renders as a still image at 15.5 m/s no matter how fast the ship
+is going, and the leg being *long* is the thing under test.
+
+**Flagged, not resolved:** flying the leg costs 4.3 minutes each way, so testing it
+twice is a nine-minute round trip. `debug_teleport_enabled` is already tuned and the
+POC doc puts the teleport in step 7. Say so if it should move earlier.
 
 ### 🔵 THE FIRST FEEL QUESTION IS OPEN
 
