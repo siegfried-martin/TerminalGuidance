@@ -158,6 +158,9 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/bounds_rim_alpha_scale",
 	"exploration/aperture_mouth_diameter", "exploration/aperture_funnel_length",
 	"exploration/aperture_bearing_deg",
+	"exploration/lane_corner_roundness", "exploration/lane_rib_spacing",
+	"exploration/lane_color", "exploration/lane_line_alpha",
+	"exploration/portal_label_metres",
 	"exploration/planet_radius", "exploration/planet_center_depth",
 	"exploration/planet_color", "exploration/planet_emission",
 	"exploration/marker_spacing", "exploration/marker_size", "exploration/marker_color",
@@ -205,6 +208,7 @@ func _ready() -> void:
 	_test_lane_geometry()
 	_test_envelope_meter()
 	_test_disc_bounds()
+	_test_the_road()
 	_test_hull_roster()
 	_test_approach_envelope()
 	_test_target_components()
@@ -2801,6 +2805,138 @@ func _test_disc_bounds() -> void:
 		"surface at %+.0f" % surface)
 
 
+## The road (POC step 6): the lane, the portals, and the deck convention. What is
+## under test is that the highway is a PLACE rather than a travel mode — every
+## property ADR 0057 asks a review to check is checkable here.
+func _test_the_road() -> void:
+	# --- the deck convention ---
+	# Headings in the arc clockwise from northwest through north and east to
+	# southeast ride the upper deck. Its value is entirely as a mistake-catcher —
+	# "I am heading east, why am I on the lower deck?" — so one exception makes it
+	# worse than no rule, and the boundary cases are the whole test.
+	_expect(RoadDeck.rides_upper(0.0) and RoadDeck.rides_upper(90.0)
+			and RoadDeck.rides_upper(135.0) and RoadDeck.rides_upper(315.0)
+			and RoadDeck.rides_upper(350.0),
+		"north, east and the arc between them ride the UPPER deck",
+		"the arc is wrong")
+	_expect(not RoadDeck.rides_upper(180.0) and not RoadDeck.rides_upper(270.0)
+			and not RoadDeck.rides_upper(136.0) and not RoadDeck.rides_upper(314.0),
+		"…and south, west and the arc between them ride the lower",
+		"the other half is wrong")
+	_expect(RoadDeck.rides_upper(90.0) != RoadDeck.rides_upper(270.0),
+		"…so a leg and its return are never on the same deck",
+		"both directions landed on one deck")
+	_expect(RoadDeck.rides_upper(-90.0) == RoadDeck.rides_upper(270.0),
+		"…and a bearing outside 0-360 wraps rather than falling off the arc",
+		"a negative bearing was not normalised")
+
+	# --- the lane's cross-section ---
+	var lane := CruiseLane.new()
+	lane.axis = Vector3.RIGHT
+	lane.right = Vector3.BACK
+	lane.up = Vector3.UP
+	lane.half_width = 75.0
+	lane.half_height = 50.0
+	lane.roundness = 4.0
+	lane.edge_softness = 10.0
+	lane.base_speed = 96.7
+	lane.edge_speed_penalty = 0.45
+	lane.push_accel = 8.0
+
+	_expect(lane.edge_distance() < 0.0 and not lane.is_outside(),
+		"the centre of the lane is in the lane",
+		"%.1f m past" % lane.edge_distance())
+	lane.lateral = 74.0
+	_expect(not lane.is_outside(),
+		"…and so is just inside the near edge", "%.1f" % lane.edge_distance())
+	lane.lateral = 80.0
+	_expect(lane.is_outside() and is_equal_approx(lane.edge_distance(), 5.0),
+		"…and 5 m past it is 5 m past it", "%.2f" % lane.edge_distance())
+	# The cross-section is a rounded lozenge so no edge is dramatically nearer than
+	# another. At the corner a plain rectangle would still be inside and an ellipse
+	# would be well outside; the lozenge sits between them, and the DRAWN ribs use
+	# this same curve so the picture and the rule are one shape.
+	lane.lateral = 75.0 * 0.9
+	lane.vertical = 50.0 * 0.9
+	_expect(lane.is_outside(),
+		"the corner of the lane is outside it — the section is a lozenge, not a box",
+		"%.2f m past at 90%% of both extents" % lane.edge_distance())
+	lane.lateral = 75.0 * 0.7
+	lane.vertical = 50.0 * 0.7
+	_expect(not lane.is_outside(),
+		"…but not as far in as an ellipse would put it — nor a rounded diamond",
+		"%.2f m past at 70%% of both" % lane.edge_distance())
+
+	# --- the soft boundary: an incentive, never a wall (ADR 0064) ---
+	lane.vertical = 0.0
+	lane.lateral = 0.0
+	_expect(is_equal_approx(lane.top_speed(), lane.base_speed)
+			and lane.push() == Vector3.ZERO,
+		"in the lane there is no penalty and no push at all",
+		"%.1f m/s, push %.1f" % [lane.top_speed(), lane.push().length()])
+	lane.lateral = 90.0
+	_expect(lane.top_speed() < lane.base_speed
+			and lane.top_speed() > lane.base_speed * 0.4,
+		"out of the lane the cruise drive is slower — an incentive to hold a line",
+		"%.1f m/s of %.1f" % [lane.top_speed(), lane.base_speed])
+	# THE invariant of the lane: it must never be able to stop the player. If it can,
+	# it is a wall, and a wall on a road is the conveyor this design rejects.
+	lane.lateral = 100000.0
+	_expect(lane.top_speed() >= lane.base_speed * clampf(
+			Tuning.num("exploration/lane_edge_speed_penalty"), 0.05, 1.0) - 0.001,
+		"…and no slower than the penalty, however far out — the lane cannot STOP you",
+		"%.1f m/s" % lane.top_speed())
+	_expect(lane.top_speed() > Tuning.num("exploration/taxi_max_speed"),
+		"…in fact still faster than flying the leg by hand, which is why it is soft",
+		"%.1f m/s out of lane vs %.1f by hand" % [lane.top_speed(),
+			Tuning.num("exploration/taxi_max_speed")])
+	lane.lateral = 90.0
+	var nudge := lane.push()
+	_expect(nudge.length() > 0.0 and nudge.dot(Vector3.BACK) < 0.0,
+		"…and the push is back toward the centre-line, not along the road",
+		"(%.1f, %.1f, %.1f)" % [nudge.x, nudge.y, nudge.z])
+	_expect(is_zero_approx(nudge.dot(lane.axis)),
+		"…with nothing along the axis: the road corrects your LINE, never your speed",
+		"%.3f m/s along the road" % nudge.dot(lane.axis))
+	lane.lateral = 200.0
+	_expect(lane.push().length() > nudge.length(),
+		"…and it grows with depth, so it is felt as a slope rather than as a wall",
+		"%.1f then %.1f" % [nudge.length(), lane.push().length()])
+	_expect(lane.push().length() < lane.base_speed,
+		"…but never overpowers the drive itself", "%.1f m/s of push against %.1f" % [
+			lane.push().length(), lane.base_speed])
+
+	# --- ADR 0057: entry is on contact and instant ---
+	_expect(is_zero_approx(Tuning.num("exploration/portal_entry_seconds")),
+		"portal entry has no sequence — at a 41 s leg, ceremony is a loading screen",
+		"%.2f s of entry" % Tuning.num("exploration/portal_entry_seconds"))
+	_expect(Tuning.num("exploration/portal_width")
+			< Tuning.num("exploration/lane_width")
+			and Tuning.num("exploration/portal_height")
+				< Tuning.num("exploration/lane_height"),
+		"the portal is NARROWER than the lane it feeds — an on-ramp, not a gate",
+		"%.0f x %.0f opening into a %.0f x %.0f lane" % [
+			Tuning.num("exploration/portal_width"),
+			Tuning.num("exploration/portal_height"),
+			Tuning.num("exploration/lane_width"),
+			Tuning.num("exploration/lane_height")])
+	# The road only pays if it beats flying the leg. This is the ratio the third
+	# checkpoint is about, and it is arithmetic rather than opinion.
+	_expect(Tuning.num("exploration/cruise_speed")
+			> Tuning.num("exploration/fighter_max_speed"),
+		"cruise outruns the fastest hull, so the road is worth the detour to it",
+		"%.1f m/s cruise vs %.1f fighter" % [Tuning.num("exploration/cruise_speed"),
+			Tuning.num("exploration/fighter_max_speed")])
+	# The decks are stacked and must not intersect, or the lanes stop being separate
+	# and "no oncoming traffic in your lane" quietly stops being structural.
+	_expect(Tuning.num("exploration/deck_separation")
+			> Tuning.num("exploration/lane_height"),
+		"the two decks are stacked clear of each other — one-way lanes stay separate",
+		"%.0f m apart for %.0f m of lane" % [
+			Tuning.num("exploration/deck_separation"),
+			Tuning.num("exploration/lane_height")])
+
+
 ## The exploration scene builds its nodes. Same gate the arena and sandbox get: a
 ## scene that is constructed in code has no editor to catch a missing child.
 func _test_exploration_builds() -> void:
@@ -2935,6 +3071,134 @@ func _test_exploration_builds() -> void:
 			"%s's planet is below ITS OWN combat plane (ADR 0061)" % SystemMap.NAMES[i],
 			"%.1f m below a system centred at y %.1f" % [
 				planet.depth_below_system(), planet.base.y])
+
+	# --- the road (POC step 6) ---
+	var decks := link.decks()
+	_expect(decks.size() == 2,
+		"the leg carries two decks, one per direction", "%d decks" % decks.size())
+	_expect(decks[0].is_upper != decks[1].is_upper,
+		"…on opposite decks, so there is never oncoming traffic in the player's lane",
+		"both on the %s deck" % ("upper" if decks[0].is_upper else "lower"))
+	# The declaration has to match the convention it is declared under. This is the
+	# check that catches a return leg wired to the wrong deck, which is the error the
+	# convention exists to make visible in the first place.
+	_expect(decks[0].is_upper == RoadDeck.rides_upper(
+				Tuning.num("exploration/aperture_bearing_deg"))
+			and decks[1].is_upper == RoadDeck.rides_upper(
+				Tuning.num("exploration/aperture_bearing_deg") + 180.0),
+		"…and each deck's declaration matches its own heading under the convention",
+		"outbound is %s" % ("upper" if decks[0].is_upper else "lower"))
+	# Two portals at a site, one per direction, STACKED — so which is which is
+	# visible before entry and matches the map, rather than being a thing you learn
+	# by taking the wrong one.
+	var site_out := decks[0].start_portal().position
+	var site_back := decks[1].end_portal().position
+	_expect(absf(site_out.x - site_back.x) < 0.001
+			and absf(site_out.z - site_back.z) < 0.001
+			and absf(site_out.y - site_back.y) > 1.0,
+		"…and a site's two portals are stacked at one place, one per direction",
+		"(%.0f, %.0f, %.0f) against (%.0f, %.0f, %.0f)" % [
+			site_out.x, site_out.y, site_out.z,
+			site_back.x, site_back.y, site_back.z])
+	_expect(is_equal_approx(absf(site_out.y - site_back.y),
+			Tuning.num("exploration/deck_separation")),
+		"…the tuned deck separation apart, so the decks never intersect",
+		"%.1f m apart" % absf(site_out.y - site_back.y))
+	# ADR 0057: the lane is VISUALLY OPEN. Ribs and rails, not a surface — the system
+	# and the war outside it are what the road is not allowed to hide, and a solid
+	# tube would convert the overworld from witnessed to reported.
+	var structure := decks[0].get_node_or_null("Structure") as MeshInstance3D
+	_expect(structure != null and structure.mesh != null
+			and structure.mesh.surface_get_primitive_type(0) == Mesh.PRIMITIVE_LINES,
+		"the lane is drawn as LINES — visually open, never a tunnel (ADR 0057)",
+		"the lane is a surface")
+	# The aperture has to clear the hull with room to fly through rather than to aim.
+	# The invariant the POC doc inverted deliberately: not portal > lane, but
+	# portal > ship.
+	# Measured axis by axis, not against the bounding sphere: the sphere of a
+	# 44 x 24 x 48 m gunboat is 72 m across and would condemn an opening the ship
+	# flies through with 13 m to spare.
+	var hull := scene.ship().hull_extents()
+	_expect(Tuning.num("exploration/portal_width") > hull.x
+			and Tuning.num("exploration/portal_height") > hull.y,
+		"the aperture clears the hull on both axes, with room to fly rather than aim",
+		"%.0f x %.0f m opening for a %.1f x %.1f m hull" % [
+			Tuning.num("exploration/portal_width"),
+			Tuning.num("exploration/portal_height"), hull.x, hull.y])
+	_expect(Tuning.num("exploration/portal_height") - hull.y > hull.y * 0.25,
+		"…and the margin on the tight axis is real, not a rounding error",
+		"%.1f m of clearance on a %.1f m hull" % [
+			Tuning.num("exploration/portal_height") - hull.y, hull.y])
+
+	# Getting on the road. Two frames either side of the start portal, because the
+	# crossing test is swept — and driven through the real scene so the wiring from
+	# portal to cruise drive to speed ceiling is covered, not just the arithmetic.
+	var gate := decks[0].start_portal()
+	var travel := decks[0].axis()
+	scene.ship().position = gate.position - travel * 20.0
+	scene._process(1.0 / 60.0)
+	_expect(scene.ship().cruise == null,
+		"short of the portal the cruise drive is off", "it engaged early")
+	scene.ship().position = gate.position + travel * 20.0
+	scene._process(1.0 / 60.0)
+	_expect(scene.ship().cruise != null and map.riding() == decks[0],
+		"crossing the portal engages cruise ON CONTACT — no sequence (ADR 0057)",
+		"it did not engage")
+	_expect(scene.ship().manual_max_speed()
+			> Tuning.num("exploration/taxi_max_speed") * 2.0,
+		"…and the ceiling becomes the cruise drive's, which is what the road buys",
+		"%.1f m/s" % scene.ship().manual_max_speed())
+	# The camera frames the ROAD while cruising, not the nose: steering left and the
+	# road curving left have to look different or lane position is unreadable.
+	_expect((scene.get_node("ChaseCamera") as ChaseCamera)
+			.heading_override.dot(travel) > 0.9,
+		"…and the camera locks to the road's direction, not the ship's nose",
+		"the camera stayed on the nose")
+
+	# Getting off it, at the far end.
+	var exit_gate := decks[0].end_portal()
+	scene.ship().position = exit_gate.position - travel * 20.0
+	scene._process(1.0 / 60.0)
+	_expect(scene.ship().cruise != null,
+		"still cruising a moment before the far portal", "it dropped early")
+	scene.ship().position = exit_gate.position + travel * 20.0
+	scene._process(1.0 / 60.0)
+	_expect(scene.ship().cruise == null and map.riding() == null,
+		"…and crossing it drops you back into normal flight, in system B",
+		"still cruising past the end of the road")
+
+	# ADR 0060: a portal opens for a cruise drive, and its colour says so. One
+	# property wearing a colour, not a second rule about who may use a portal.
+	scene.ship().set_hull_class(HullClass.Kind.FIGHTER)
+	scene.ship().position = gate.position - travel * 20.0
+	scene._process(1.0 / 60.0)
+	_expect(not gate.permitted,
+		"a fighter has no cruise drive, so every portal reads REFUSED (ADR 0060)",
+		"the portal showed permitted")
+	scene.ship().position = gate.position + travel * 20.0
+	scene._process(1.0 / 60.0)
+	_expect(scene.ship().cruise == null,
+		"…and flying into one does nothing — the refusal was visible before contact",
+		"a fighter got onto the road")
+	scene.ship().set_hull_class(HullClass.Kind.TAXI)
+	scene._process(1.0 / 60.0)
+	_expect(gate.permitted,
+		"…while a taxi sees the same portal open, on the frame it switches",
+		"the portal did not recolour")
+
+	# Turning round on the road and going back out the way you came in. Cruise is
+	# dropped by the player's own flying, never by anything else — there is no
+	# interdiction, and the only two ways off are the two portals.
+	scene.ship().position = gate.position - travel * 20.0
+	scene._process(1.0 / 60.0)
+	scene.ship().position = gate.position + travel * 20.0
+	scene._process(1.0 / 60.0)
+	_expect(scene.ship().cruise != null, "back on the road", "it did not engage")
+	scene.ship().position = gate.position - travel * 20.0
+	scene._process(1.0 / 60.0)
+	_expect(scene.ship().cruise == null,
+		"…and flying back out the entry portal drops cruise — the player's choice",
+		"still cruising after leaving the way it came in")
 
 	# The strain is applied to the ship by the map, each frame, and released when the
 	# ship turns round. Driven through the real nodes rather than the pure library so

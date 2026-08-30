@@ -15,10 +15,11 @@ the human's explicit direction.
 | | |
 |---|---|
 | Branch | `feat/exploration-tuning-and-hud`, PR #14 |
-| Gate | `make check` — 938 checks, 0 failed |
+| Gate | `make check` — 987 checks, 0 failed |
 | Run it | `make run SCENE=res://scenes/exploration.tscn` |
-| Built | Exploration POC steps 1–5, plus the system border (ADRs 0062, 0063) |
-| **Do next** | **POC step 6** — portals and the highway tube on the local leg. See `docs/EXPLORATION_POC_IMPLEMENTATION.md`. The corridor it goes inside is built and flyable: `SystemLink`, attached at `SystemMap.systems()[i].aperture_mouth(…)`. |
+| Built | Exploration POC steps 1–6 (ADRs 0062–0064) |
+| **Do next** | **POC step 7** — cruise fuel and the debug teleport. See `docs/EXPLORATION_POC_IMPLEMENTATION.md`. |
+| **Waiting on you** | **The third checkpoint is live and flyable**: is a 41-second hop worth the portal at all, or is it ceremony around nothing? Fly A→B both ways — the portal, and the 258 s by hand. Both still exist. |
 
 Everything under §Where the build is and below is the **combat POC's history**,
 kept for its reasoning. It is not a to-do list, and its §Next is superseded by the
@@ -258,6 +259,46 @@ is going, and the leg being *long* is the thing under test.
 **Flagged, not resolved:** flying the leg costs 4.3 minutes each way, so testing it
 twice is a nine-minute round trip. `debug_teleport_enabled` is already tuned and the
 POC doc puts the teleport in step 7. Say so if it should move earlier.
+
+### ✅ Exploration step 6 is built — the road
+
+`make run SCENE=res://scenes/exploration.tscn`. Two stacked one-way decks down the
+corridor, a portal at each end of each, and a cruise drive that engages on contact.
+
+**Both ways of making the crossing exist at once, which is the point.** The road did
+not replace the corridor — it was laid *inside* it. The HUD's `leg` row reads 41 s
+while you are on the road and 258 s while you are not, out of the same row, so the
+comparison the third checkpoint is about is on screen in both places rather than
+being a thing to remember.
+
+**What is checkable about ADR 0057, and now checked:** entry is on contact with
+`portal_entry_seconds` at zero and a test asserting it; the lane is drawn as ribs and
+rails (`PRIMITIVE_LINES`, asserted) so the system outside stays visible from inside;
+the throttle and the stick are live every frame; no scene loads and nothing fades.
+
+**The camera locks to the road, not the nose.** With the camera on the nose,
+steering left and the road curving left look identical and lane position is
+unreadable. The ship yaws inside the frame within `cruise_turn_clamp_deg`.
+
+**ADR 0064 — the lane pushes you back, the world only slows you down.** These look
+inconsistent and are not: leaving the world is a *decision* and the honest answer is
+to make it cost more until it costs everything without ever touching the heading;
+drifting out of a lane is a lane-keeping error on a road, both sides of the lane are
+rendered and legal, and a road correcting you is what a road is for. The push is a
+closed form (`sqrt(2 a s)`) rather than integrated drift, so it cannot survive
+leaving the road and the F2 panel changes it on the frame it is saved.
+
+**The deck convention is enforced rather than described.** Headings clockwise from
+NW through N and E to SE ride the upper deck; the leg's return is asserted onto the
+other one. Its whole value is as a mistake-catcher — *"I am heading east, why am I on
+the lower deck?"* — so one exception makes it worse than no rule.
+
+Two things the rendered frames caught that no test would have: both portals at a site
+said "SYSTEM B" (they both connect to B — one is the way there and one is the way
+back), now "TO SYSTEM B" and "FROM SYSTEM B"; and the road row read `inf s at this
+speed` while stopped, which is a division rather than a reading.
+
+`tools/shots/road_shot.tscn` is new — inside the lane, off the centre-line, cruising.
 
 ### 🔵 THE FIRST FEEL QUESTION IS OPEN
 

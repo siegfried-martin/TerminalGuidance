@@ -29,6 +29,16 @@ var pitch_share_key: String = ""
 ## is comparing is how it flies rather than how far away it looks.
 var boom_scale: float = 1.0
 
+## A direction to frame the shot along instead of the subject's own nose. Zero means
+## the subject decides, which is every view except the road.
+##
+## On the highway the camera is fixed to the ROAD's direction and the ship yaws
+## inside the frame within `cruise_turn_clamp_deg` of it (ADR 0057). That is what
+## makes lane position legible: with the camera on the nose, steering left and the
+## road curving left look identical, and the player has nothing to hold a line
+## against.
+var heading_override: Vector3 = Vector3.ZERO
+
 ## Optional tuning key for this view's own field of view. Empty means the shared
 ## `camera/fov_base`. The turret uses it: a narrow FOV is a zoom, and it is the
 ## difference between a distant missile being a few pixels and being a target.
@@ -64,6 +74,9 @@ func _process(delta: float) -> void:
 		return
 
 	var subject_basis := subject.global_transform.basis
+	if heading_override.length_squared() > 0.000001:
+		subject_basis = FlightGeometry.basis_from_forward(
+			heading_override.normalized())
 	var back := subject_basis.z
 	var up := subject_basis.y
 	if not pitch_share_key.is_empty():

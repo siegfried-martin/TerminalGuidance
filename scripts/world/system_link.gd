@@ -23,12 +23,21 @@ const RINGS_PER_FLARE := 8
 const RINGS_ALONG := 20
 
 var link_name: String = "corridor"
+## The leg's own bearing, in degrees. Used to DECLARE which deck is which under the
+## convention (see `RoadDeck.rides_upper`) — assigned by the map, which is the
+## authoring layer, rather than worked out per frame from a heading.
+var leg_bearing_deg: float = 0.0
+## What each end leads to, for the portals' labels.
+var from_name: String = ""
+var to_name: String = ""
 
 var _wall: MeshInstance3D
 ## Reference markers down the length of it. Four kilometres of empty tube reads as a
 ## still image at 15 m/s, and the leg being *long* is the thing under test.
 var _markers: MultiMeshInstance3D
 var _region: TubeRegion = TubeRegion.new()
+## The road inside the corridor: one deck per direction, stacked (POC step 6).
+var _decks: Array[RoadDeck] = []
 
 
 func _ready() -> void:
@@ -41,6 +50,11 @@ func _ready() -> void:
 	_markers.name = "LinkMarkers"
 	_markers.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_markers)
+	for deck_name in ["DeckOut", "DeckBack"]:
+		var deck := RoadDeck.new()
+		deck.name = deck_name
+		add_child(deck)
+		_decks.append(deck)
 	rebuild()
 	# NOT connected to `Tuning.reloaded` here. The map owns the layout, and this
 	# node's geometry depends on it: reloading in signal order would rebuild against
@@ -63,6 +77,7 @@ func rebuild() -> void:
 	_region.name_of = link_name
 	_rebuild_wall()
 	_rebuild_markers()
+	_rebuild_decks()
 	paint(0.0)
 
 
@@ -159,6 +174,36 @@ func _rebuild_markers() -> void:
 func paint(warning_level: float) -> void:
 	BoundaryPaint.tint([_wall], warning_level,
 		Tuning.num("exploration/bounds_rim_alpha_scale"))
+
+
+## The two decks, outbound first. Stacked vertically and visible to each other, one
+## per direction, so there is never oncoming traffic in the player's lane — which is
+## structural here rather than a rule about where NPCs may spawn.
+##
+## Which is upper follows the deck convention: headings in the arc clockwise from
+## northwest through north and east to southeast ride the upper deck. The convention
+## earns its keep as a mistake-catcher — *"I am heading east, why am I on the lower
+## deck?"* — and one exception makes it worse than no rule at all.
+func _rebuild_decks() -> void:
+	if _decks.size() < 2:
+		return
+	var half := Tuning.num("exploration/deck_separation") * 0.5
+	var out_is_upper := RoadDeck.rides_upper(leg_bearing_deg)
+	var back_is_upper := RoadDeck.rides_upper(leg_bearing_deg + 180.0)
+	_decks[0].deck_name = "%s bound" % to_name
+	_decks[0].is_upper = out_is_upper
+	_decks[0].span(_region.from + Vector3.UP * (half if out_is_upper else -half),
+		_region.to + Vector3.UP * (half if out_is_upper else -half),
+		to_name, from_name)
+	_decks[1].deck_name = "%s bound" % from_name
+	_decks[1].is_upper = back_is_upper
+	_decks[1].span(_region.to + Vector3.UP * (half if back_is_upper else -half),
+		_region.from + Vector3.UP * (half if back_is_upper else -half),
+		from_name, to_name)
+
+
+func decks() -> Array[RoadDeck]:
+	return _decks
 
 
 func region() -> TubeRegion:

@@ -188,12 +188,12 @@ scripts/arena/         the combat arena builder
 scripts/ships/         mothership, target ship
 scripts/weapons/       missile, turret rounds, and the one shot resolver
 scripts/view/          camera/control state machine, chase camera, the gun station
-scripts/world/         marker lattice, reference field, the system map
+scripts/world/         marker lattice, reference field, the system map and road
 scripts/effects/       detonation flash, pulse-beam tracer
 scripts/lib/           pure helpers — no scene tree, no disk, unit tested:
                        FlightGeometry, ReticleSteering, Damage, HullClass,
-                       BoundaryField and its regions, EnvelopeMeter,
-                       TuningSchema, TuningWriter
+                       BoundaryField and its regions, CruiseLane,
+                       EnvelopeMeter, TuningSchema, TuningWriter
 scripts/sandbox/       the asset harness scene
 scripts/debug/         HUD, debug fly-cam, the F2 tuning panel
 assets/                models and textures (+ committed .import files)

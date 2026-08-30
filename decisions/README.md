@@ -110,5 +110,6 @@ The reasoning, including what the alternative was and why it lost.
 | [0058](0058-npcs-are-worse-than-a-player.md) | NPCs are worse than an engaged player at every station, gunners included |
 | [0062](0062-the-rim-is-a-boundary.md) | The rim is a boundary, its openings are funnels, and the outbound clamp reaches zero |
 | [0063](0063-space-is-a-union-of-regions.md) | Playable space is a union of regions; a region says where it does not apply |
+| [0064](0064-the-lane-pushes-the-world-does-not.md) | The lane pushes you back; the world only slows you down |
 
-*Next number: 0064.*
+*Next number: 0065.*

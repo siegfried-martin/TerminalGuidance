@@ -53,6 +53,15 @@ var _speed_scale: float = 1.0
 ## How much of the ship's heading was outbound, 0 to 1. Kept because the HUD has to
 ## report the same number the clamp used.
 var _outbound: float = 0.0
+## The deck the player is riding, or null. The cruise drive is not a mode the ship
+## carries — it is a place the ship is in (ADR 0057), so the map knows where it is
+## and the ship only ever receives a sample of the road under it.
+var _riding: RoadDeck = null
+## Last frame's position, for the SWEPT portal test. At 96.7 m/s a ship covers 1.6 m
+## in a frame, and a portal tested against a position rather than a segment is one
+## that intermittently does not exist.
+var _previous: Vector3 = Vector3.ZERO
+var _has_previous: bool = false
 
 
 func _ready() -> void:
@@ -88,6 +97,8 @@ func _build() -> void:
 		var link := SystemLink.new()
 		link.name = "Link%s%s" % [LETTERS[i], LETTERS[i + 1]]
 		link.link_name = "%s to %s" % [NAMES[i], NAMES[i + 1]]
+		link.from_name = NAMES[i]
+		link.to_name = NAMES[i + 1]
 		add_child(link)
 		_links.append(link)
 
@@ -125,6 +136,7 @@ func relayout() -> void:
 			here += step * (Tuning.num(LEG_KEYS[i]) + radius * 2.0)
 
 	for i in _links.size():
+		_links[i].leg_bearing_deg = bearing
 		# Mouth to mouth. The outgoing aperture is the last on the system you leave
 		# and the first on the one you arrive at, which falls out of the order the
 		# bearings were appended in above.
@@ -168,6 +180,10 @@ func observe(ship: Mothership, delta: float) -> void:
 		approach.observe(ship, delta)
 		_speed_scale = minf(_speed_scale, approach.speed_scale())
 
+	_ride_the_road(ship, here)
+	_previous = here
+	_has_previous = true
+
 	if _field.overshoot(here) <= 0.0:
 		_seconds_outside = 0.0
 		return
@@ -178,6 +194,80 @@ func observe(ship: Mothership, delta: float) -> void:
 		Tuning.num("exploration/bounds_damage_per_second"))
 	if rate > 0.0:
 		ship.take_hit(rate * delta)
+
+
+## Getting on and off the road.
+##
+## Entry is **on contact and instant** (ADR 0057): crossing a start portal in its own
+## direction of travel puts the cruise drive on, and there is no alignment, no
+## sequence and no prompt between those two things. Leaving is the far portal, or
+## turning round and going back out the way you came in.
+##
+## Every portal's colour is set from the hull the player is flying *this frame*, so
+## cycling the debug roster recolours the map (ADR 0060). A fighter has no cruise
+## drive, sees red everywhere, and is refused — which is one property wearing a
+## colour rather than a second rule about who may use a portal.
+func _ride_the_road(ship: Mothership, here: Vector3) -> void:
+	var allowed := ship.has_cruise_drive()
+	for link in _links:
+		for deck in link.decks():
+			deck.set_permitted(allowed)
+	if not _has_previous:
+		return
+
+	if _riding != null:
+		# Losing the drive mid-road drops you where you are, at hull speed. That is
+		# the honest reading of the drive belonging to the hull, and it is the only
+		# way the roster can answer "what is the road worth" for a fighter.
+		if not allowed \
+				or _riding.end_portal().crossed(_previous, here) > 0 \
+				or _riding.start_portal().crossed(_previous, here) < 0:
+			_riding = null
+			ship.cruise = null
+			ship.reset_reticle()
+		else:
+			ship.cruise = _riding.sample(here)
+		return
+
+	if not allowed:
+		return
+	for link in _links:
+		for deck in link.decks():
+			if deck.start_portal().crossed(_previous, here) > 0:
+				_riding = deck
+				ship.cruise = deck.sample(here)
+				ship.reset_reticle()
+				return
+
+
+## The deck the player is riding, or null. For the HUD and for tests.
+func riding() -> RoadDeck:
+	return _riding
+
+
+## Every portal on the map, both decks of every leg, both ends.
+func portals() -> Array[Portal]:
+	var found: Array[Portal] = []
+	for link in _links:
+		for deck in link.decks():
+			if deck.start_portal() != null:
+				found.append(deck.start_portal())
+			if deck.end_portal() != null:
+				found.append(deck.end_portal())
+	return found
+
+
+## The nearest way on or off the road. For the HUD — the player is meant to read the
+## answer off the portal's colour, not off a readout.
+func nearest_portal(point: Vector3) -> Portal:
+	var best: Portal = null
+	var best_distance := INF
+	for portal in portals():
+		var distance := point.distance_to(portal.position)
+		if distance < best_distance:
+			best_distance = distance
+			best = portal
+	return best
 
 
 ## Where the ship is trying to go.

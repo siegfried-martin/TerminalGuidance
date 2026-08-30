@@ -2,14 +2,15 @@ class_name ExplorationScene
 extends Node3D
 ## The travel layer's POC scene (`docs/EXPLORATION_POC_IMPLEMENTATION.md`).
 ##
-## Build step 5: two systems joined by the local leg, flown by hand. Everything is
-## constructed here from tuning (ADR 0027); the `.tscn` is a shell.
+## Build step 6: two systems joined by the local leg, with the highway laid inside
+## the corridor. Everything is constructed here from tuning (ADR 0027); the `.tscn`
+## is a shell.
 ##
-## **This is the control condition.** No road, no portals, no cruise drive — the
-## 4 km between A and B is flown manually, at each hull's speed, so there is a
-## measured baseline before step 6 lays the highway. Success criterion 2 is *"the
-## player elects to fly a leg off-highway and does not regret it"*, and that cannot
-## be judged against a memory of what off-road felt like.
+## **Both ways of making the crossing now exist at once**, which is the point. Step 5
+## measured the hand-flown leg at 258 s in a taxi; the road does it in 41. The road
+## did not replace the corridor — it was laid inside it, so declining the portal is
+## still a real choice and success criterion 2 has something to be judged against
+## rather than a memory of it.
 ##
 ## **Only the pilot exists here.** Every station is a person who keeps doing their
 ## job while the player is elsewhere, and the existing autopilot already is that for
@@ -19,8 +20,8 @@ extends Node3D
 ## problem to solve.
 ##
 ## Also absent, and coming with the steps that need them: missiles and the launch
-## tube, roads and portals and the cruise drive (step 6), fuel (step 7), the third
-## system and the trunk leg (step 8), traffic (steps 9-10).
+## tube, fuel (step 7), the third system and the trunk leg (step 8), traffic
+## (steps 9-10).
 
 ## The map: systems, corridors, planets, docking, and the one composed boundary.
 var _map: SystemMap
@@ -144,6 +145,53 @@ func _build_hud() -> void:
 	# starts with knowing whether you have left yet.
 	_hud.add_row("where", func() -> String:
 		return _map.place_of(_ship_in_map()))
+	# The road. This is step 6's row: whether cruise is running, which deck, and how
+	# much of the leg is left — the last one because the third checkpoint asks
+	# whether a 41-second hop is worth the portal, and that is a question about time.
+	_hud.add_row("road", func() -> String:
+		var lane := _ship.cruise
+		if lane == null:
+			if not _ship.has_cruise_drive():
+				return "no cruise drive — every portal is red (ADR 0060)"
+			return "off the road  ·  fly a portal to engage"
+		# Stopped on the road there is no "at this speed", so the row quotes the
+		# ceiling instead. An ETA of `inf` is not a reading, it is a division.
+		var moving := _ship.speed() > 0.1
+		var reference := _ship.speed() if moving else _ship.manual_max_speed()
+		var seconds := 0.0 if reference <= 0.001 else lane.metres_remaining / reference
+		return "CRUISE  ·  %s deck, %s  ·  %.0f m left  ·  %.0f s %s" % [
+			"upper" if _map.riding().is_upper else "lower", lane.deck_name,
+			lane.metres_remaining, seconds,
+			"at this speed" if moving else "at full throttle"]
+	)
+	# Lane position, stated as metres rather than as a bar. The lane boundary is soft
+	# and the penalty is proportional, so "how far out am I" is the number that
+	# explains why the speed row is reading low.
+	_hud.add_row("lane", func() -> String:
+		var lane := _ship.cruise
+		if lane == null:
+			return "—"
+		var past := lane.edge_distance()
+		if past <= 0.0:
+			return "in lane  ·  %+.0f m across, %+.0f m up  ·  %.0f m to the edge" % [
+				lane.lateral, lane.vertical, -past]
+		return "OUT OF LANE  ·  %.0f m past  ·  speed limit at %.0f%%, pushed back" % [
+			past, (lane.top_speed() / maxf(lane.base_speed, 0.001)) * 100.0]
+	)
+	# Where the nearest way on or off is, and whether it will open. The colour is the
+	# whole of the answer (ADR 0060); this row is for reading it from the terminal
+	# while tuning, not a second channel the player is meant to need.
+	_hud.add_row("portal", func() -> String:
+		var here := _ship_in_map()
+		var nearest := _map.nearest_portal(here)
+		if nearest == null:
+			return "—"
+		return "%s  ·  %.0f m  ·  %s" % [
+			"to %s" % nearest.destination if not nearest.destination.is_empty()
+				else "portal",
+			here.distance_to(nearest.position),
+			"OPEN" if nearest.permitted else "REFUSED — no cruise drive"]
+	)
 	# THE step-5 number. The leg at this hull's top speed is the baseline the
 	# highway has to beat in step 6, and it is worth reading before flying it as well
 	# as during — a figure the player predicted and then lived through is a much
@@ -243,6 +291,11 @@ func _ship_in_map() -> Vector3:
 func _process(delta: float) -> void:
 	_map.observe(_ship, delta)
 	_ship.speed_ceiling_scale = _map.speed_scale()
+	# On the road the camera frames the ROAD, not the nose, and the ship yaws inside
+	# the frame (ADR 0057). With the camera on the nose, steering left and the road
+	# curving left look identical and the player has nothing to hold a line against.
+	_camera.heading_override = Vector3.ZERO if _ship.cruise == null \
+		else _ship.cruise.axis
 
 
 ## Arriving takes the helm, because there is nowhere to fly from a docked ship. The
