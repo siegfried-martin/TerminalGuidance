@@ -79,6 +79,15 @@ var _cruise_spool: float = 0.0
 var _cruise_ceiling: float = 0.0
 
 var _velocity: Vector3 = Vector3.ZERO
+## Forward speed, carried between frames so it can be RATE-LIMITED on the way down.
+##
+## Throttle already travels over `accel_seconds` / `brake_seconds`, but the ceiling
+## it multiplies does not: a ceiling that drops in one frame used to drop the ship's
+## speed in one frame with it. The lane's edge is exactly that — cross the rail at
+## 160 m/s and the cruise drive's ceiling falls by half over ten metres, which is a
+## sixteenth of a second — and the result was a ship being yanked backwards and
+## forwards at the rail rather than slowed by it (ADR 0071).
+var _speed: float = 0.0
 var _orbit_sign: float = 1.0
 var _hull: MeshInstance3D
 var _last_standoff: float = -1.0
@@ -227,6 +236,9 @@ func _fly_autopilot(delta: float) -> void:
 	_velocity = (tangent * arc_speed
 		+ radial * radial_speed
 		+ Vector3.UP * climb_speed).limit_length(manual_max_speed())
+	# Kept in step, so the frame the player takes the helm back does not start with a
+	# rate limit measured against a speed the ship has not had for minutes.
+	_speed = _velocity.length()
 	position += _velocity * delta
 
 	# The nose follows the direction of travel, not the target. Firing along the
@@ -268,6 +280,26 @@ func manual_max_speed() -> float:
 	var road := cruise.top_speed() if cruise != null else _cruise_ceiling
 	return lerpf(hull, maxf(road, hull), _cruise_spool) \
 		* clampf(speed_ceiling_scale, 0.0, 1.0)
+
+
+## The most speed a hull may lose in one frame: what its own brakes can take off it.
+##
+## Pure and static, so the rule lives in one named place and can be checked without
+## a scene. `wanted` is what throttle times the current ceiling asks for; going UP is
+## never limited, because acceleration is already paced by the throttle's own travel
+## and limiting it again would compound into a lever that is slower than it is tuned
+## to be.
+##
+## Going down is limited because nothing else paces it. A throttle released falls at
+## `brake_seconds` on its own and this is a no-op for it; a CEILING that drops — the
+## lane's edge, a boundary clamp, a hull swap — has no travel of its own at all, and
+## used to arrive in a single frame (ADR 0071).
+static func brake_limited(from: float, wanted: float, ceiling: float,
+		brake_seconds: float, delta: float) -> float:
+	if wanted >= from:
+		return wanted
+	var rate := maxf(from, ceiling) / maxf(brake_seconds, 0.01)
+	return maxf(wanted, from - rate * delta)
 
 
 ## Wind the drive up or down. Runs every frame whatever is flying, because the
@@ -389,8 +421,10 @@ func _fly_manual(delta: float) -> void:
 	# sideways at full throttle otherwise sums to more than the top speed — 34 m/s
 	# forward plus 12 m/s across is 36 — and the speed hierarchy would be broken by
 	# holding two keys rather than by editing a number.
-	_velocity = (-basis.z * (_throttle * manual_max_speed()) + basis.x * strafe) \
-		.limit_length(manual_max_speed())
+	var top := manual_max_speed()
+	_speed = brake_limited(_speed, _throttle * top, top, brake_seconds, delta)
+	_velocity = (-basis.z * _speed + basis.x * strafe) \
+		.limit_length(maxf(_speed, top))
 	position += _velocity * delta
 
 
@@ -438,11 +472,17 @@ func _fly_cruise(delta: float) -> void:
 
 	var strafe := Input.get_axis("strafe_left", "strafe_right") * strafe_speed()
 	var top := manual_max_speed()
+	# Rate-limited on the way down, and this is where it matters most: `top` here is
+	# the cruise drive's ceiling, and the lane's edge halves it over `edge_softness`
+	# metres. Without the limit, drifting a hull-width out of the lane cost eighty
+	# metres a second in one frame, the push shoved the ship back in, the penalty
+	# released, and the whole thing repeated — a stutter at the rail (ADR 0071).
+	_speed = brake_limited(_speed, _throttle * top, top, brake_seconds, delta)
 	# The lane's nudge is added to the velocity rather than limited with it: it is
 	# the road correcting a lane-keeping mistake, and clamping it away at full
 	# throttle would make the correction vanish exactly when it is needed.
-	_velocity = (-basis.z * (_throttle * top) + basis.x * strafe) \
-		.limit_length(top) + cruise.push()
+	_velocity = (-basis.z * _speed + basis.x * strafe) \
+		.limit_length(maxf(_speed, top)) + cruise.push()
 	position += _velocity * delta
 
 
@@ -566,6 +606,7 @@ func set_autopilot(on: bool) -> bool:
 		_reticle.reset(basis)
 		var ceiling := manual_max_speed()
 		_throttle = 0.0 if ceiling <= 0.0 else clampf(_velocity.length() / ceiling, 0.0, 1.0)
+		_speed = _velocity.length()
 	return autopilot
 
 
@@ -644,6 +685,7 @@ func launch_from_dock(fraction: float) -> void:
 	basis = FlightGeometry.basis_from_forward(away.normalized())
 	_throttle = clampf(fraction, 0.0, 1.0)
 	_velocity = -basis.z * (_throttle * manual_max_speed())
+	_speed = _velocity.length()
 	_reticle.reset(basis)
 
 

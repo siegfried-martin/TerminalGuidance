@@ -117,5 +117,6 @@ The reasoning, including what the alternative was and why it lost.
 | [0068](0068-the-lane-is-measured-against-the-hull.md) | The lane is measured against the hull, not against the ship's centre |
 | [0069](0069-the-space-past-the-edge-is-furnished.md) | The space past the edge is furnished, in three layers |
 | [0070](0070-no-road-out-turns-the-ship.md) | No road out-turns the ship, and a ramp is tangential at both ends |
+| [0071](0071-a-ceiling-that-drops-does-not-drop-the-ship.md) | A ceiling that drops does not drop the ship with it |
 
-*Next number: 0071.*
+*Next number: 0072.*

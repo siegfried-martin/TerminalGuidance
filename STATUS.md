@@ -15,9 +15,9 @@ the human's explicit direction.
 | | |
 |---|---|
 | Branch | `feat/exploration-tuning-and-hud`, PR #14 |
-| Gate | `make check` — 1069 checks, 0 failed |
+| Gate | `make check` — 1073 checks, 0 failed |
 | Run it | `make fly` |
-| Built | Exploration POC steps 1–6 and **step 8** (ADRs 0062–0070) |
+| Built | Exploration POC steps 1–6 and **step 8** (ADRs 0062–0071) |
 | **Do next** | **POC step 7** — cruise fuel and the debug teleport. It is the only step left before traffic. |
 | **Waiting on you** | **The fourth checkpoint, and the important one**: success criterion 1, on a trunk road that now weaves and undulates. Ten minutes on it. `cruise_turn_clamp_deg` is tuned WITH `road_curve_deg` and `road_curve_period`, never against them. The third checkpoint is still open too — is a 38-second hop worth the portal, against 203 s by hand? |
 
@@ -42,10 +42,16 @@ From play-session feedback. Five things, one branch:
   capital is 76 x 42 m and was flying two thirds outside a lane that never noticed.
   The lane and the portal aperture grew to fit the roster, and the gate now asserts
   that every hull clears every part of the road.
-- **The lane's push is eased in** rather than arriving at full strength on the frame
-  the rail is crossed. `sqrt` has an infinite slope at zero, which made a limit cycle
-  at the rail instead of the slope ADR 0064 promises — most visible on a big hull, and
-  the best candidate for the "tear" reported on the capital.
+- **The stutter at the lane's rail is fixed, and it was not the lane.** The ship's
+  speed was written as `throttle x ceiling` with nothing pacing a ceiling that
+  changed, so crossing the rail at cruise took eighty metres a second off in one
+  frame; the push shoved the ship back in, the penalty released, it all came back,
+  and it repeated at a couple of hertz. **A ship may not lose speed faster than its
+  own brakes can take it off** (ADR 0071) — measured, the trace is now monotonic and
+  the worst single-frame drop is 1.2 m/s. The push is eased in as well, but that was
+  a contributor rather than the cause, and `lane_edge_softness` was deliberately left
+  at the tuned 10 rather than widened, because widening it is a feel call and the bug
+  no longer asks for one.
 
 **Decks are stacked FLUSH** (`deck_separation` = `lane_height` = 150), on request, to
 see how it reads with no air between them. One slider back up and the gap returns.

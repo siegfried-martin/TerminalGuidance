@@ -3005,6 +3005,39 @@ func _test_the_road() -> void:
 		"%.2f m/s a hair past the rail against %.2f m/s a softness past it" % [
 			toe, lane.push().length()])
 
+	# --- a ceiling that drops does not drop the ship with it (ADR 0071) ---
+	# This is the stutter the human flew into: cross the rail at cruise and the lane
+	# halves the drive's ceiling, and with nothing pacing the fall the ship lost eighty
+	# metres a second in ONE FRAME, got pushed back in, got it all back, and drifted
+	# out again. A limit cycle at the rail, which reads as being skipped forward.
+	var frame_time := 1.0 / 60.0
+	var braked := Mothership.brake_limited(160.0, 72.0, 160.0, 2.4, frame_time)
+	_expect(braked > 158.0,
+		"a ceiling that halves in one frame takes the ship's own brakes to follow",
+		"%.1f m/s after one frame of a 160 to 72 drop" % braked)
+	var settle := 160.0
+	var frames := 0
+	while settle > 72.5 and frames < 600:
+		settle = Mothership.brake_limited(settle, 72.0, 160.0, 2.4, frame_time)
+		frames += 1
+	_expect(frames > 30 and frames < 240,
+		"…and gets there in about the seconds its brakes are tuned for, not instantly",
+		"%.2f s to fall from 160 to 72" % (float(frames) * frame_time))
+	# Going UP is not limited. Acceleration is already paced by the throttle lever's
+	# own travel, and pacing it twice would make the lever slower than it is tuned to
+	# be — which is a feel change smuggled in behind a bug fix.
+	_expect(is_equal_approx(
+			Mothership.brake_limited(10.0, 160.0, 160.0, 2.4, frame_time), 160.0),
+		"…while gaining speed is untouched: the throttle already paces that",
+		"acceleration was limited too")
+	# A throttle simply released already falls at exactly this rate, so the guard has
+	# nothing to say about it. If it did, every hull would brake slower than tuned.
+	var released := Mothership.brake_limited(160.0, 160.0 - 160.0 / 2.4 * frame_time,
+		160.0, 2.4, frame_time)
+	_expect(is_equal_approx(released, 160.0 - 160.0 / 2.4 * frame_time),
+		"…and a released throttle is a no-op for it, at exactly the tuned rate",
+		"%.3f m/s" % released)
+
 	# --- the lane is measured against the HULL, not against a point ---
 	# A capital is 76 m across. A lane that only notices the ship's centre lets most
 	# of it hang through the rails before anything reports it, which is what the human
