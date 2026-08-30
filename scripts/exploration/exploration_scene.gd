@@ -28,6 +28,10 @@ var _map: SystemMap
 var _ship: Mothership
 var _camera: ChaseCamera
 var _hud: DebugHud
+## The steering reticle. The ship's nose does not go instantly where the stick says
+## (ADR 0035), and on a road inside a steering cone that lag is the difference
+## between holding a line and guessing at one.
+var _overlay: FlightOverlay
 var _dock: DockScreen
 ## Everything in map space hangs off one node, so the floating origin is a move of
 ## this and nothing else has to know (ADR 0020). At 7.5 km centre to centre the
@@ -128,8 +132,22 @@ func _build_hud() -> void:
 	_hud.name = "DebugHud"
 	add_child(_hud)
 
+	# Its own layer, above the world and below the dock screen, exactly as the arena
+	# stacks it. The tube gauge is off: there is no launch tube here, and a reload
+	# bar for a weapon that cannot fire is decoration that lies.
+	var overlay_layer := CanvasLayer.new()
+	overlay_layer.name = "OverlayLayer"
+	add_child(overlay_layer)
+	_overlay = FlightOverlay.new()
+	_overlay.name = "FlightOverlay"
+	_overlay.ship = _ship
+	_overlay.show_tube = false
+	_overlay.reticle_provider = func() -> Node3D:
+		return null if _map.is_docked() else _ship
+	overlay_layer.add_child(_overlay)
+
 	_hud.add_row("class", func() -> String:
-		return "%s  ·  %.1f m/s top  ·  cruise drive %s" % [
+		return "%s  ·  %.0f m/s top  ·  cruise drive %s" % [
 			HullClass.name_of(_ship.hull_class).to_upper(),
 			_ship.manual_max_speed(),
 			"yes" if _ship.has_cruise_drive() else "NO — no portal opens"])
@@ -151,6 +169,10 @@ func _build_hud() -> void:
 	_hud.add_row("road", func() -> String:
 		var lane := _ship.cruise
 		if lane == null:
+			var winding := _ship.cruise_spool()
+			if winding > 0.001:
+				return "OFF THE ROAD  ·  drive winding down, %.0f%% left" % (
+					winding * 100.0)
 			if not _ship.has_cruise_drive():
 				return "no cruise drive — every portal is red (ADR 0060)"
 			return "off the road  ·  fly a portal to engage"
@@ -159,7 +181,9 @@ func _build_hud() -> void:
 		var moving := _ship.speed() > 0.1
 		var reference := _ship.speed() if moving else _ship.manual_max_speed()
 		var seconds := 0.0 if reference <= 0.001 else lane.metres_remaining / reference
-		return "CRUISE  ·  %s deck, %s  ·  %.0f m left  ·  %.0f s %s" % [
+		var spool := _ship.cruise_spool()
+		return "CRUISE %s ·  %s deck, %s  ·  %.0f m left  ·  %.0f s %s" % [
+			"SPOOLING %.0f%%  " % (spool * 100.0) if spool < 0.999 else " ",
 			"upper" if _map.riding().is_upper else "lower", lane.deck_name,
 			lane.metres_remaining, seconds,
 			"at this speed" if moving else "at full throttle"]
@@ -186,9 +210,9 @@ func _build_hud() -> void:
 		var nearest := _map.nearest_portal(here)
 		if nearest == null:
 			return "—"
+		# The label already says TO or FROM. Prefixing it again reads "to TO SYSTEM B".
 		return "%s  ·  %.0f m  ·  %s" % [
-			"to %s" % nearest.destination if not nearest.destination.is_empty()
-				else "portal",
+			nearest.destination if not nearest.destination.is_empty() else "portal",
 			here.distance_to(nearest.position),
 			"OPEN" if nearest.permitted else "REFUSED — no cruise drive"]
 	)
@@ -200,10 +224,19 @@ func _build_hud() -> void:
 		var links := _map.links()
 		if links.is_empty():
 			return "—"
-		var top := _ship.manual_max_speed()
-		var seconds := INF if top <= 0.0 else links[0].length() / top
-		return "%.0f m mouth to mouth  ·  %.0f s at full throttle (%.1f min)" % [
-			links[0].length(), seconds, seconds / 60.0])
+		# The road's own speed rather than the ship's ceiling right now: mid-spool the
+		# ceiling is somewhere between hull and cruise, and quoting the leg against it
+		# gives a number that is true of no journey. What this row is for is the
+		# comparison — 48 s by road against 223 s by hand — and both halves have to be
+		# the speed the trip is actually made at.
+		var top := Tuning.num("exploration/cruise_speed") if _ship.cruise != null \
+			else HullClass.max_speed(_ship.hull_class)
+		# The ROAD's length, ramp to ramp — what a player actually flies. The
+		# corridor between the two rims is shorter and is not the trip.
+		var span := links[0].road_length()
+		var seconds := INF if top <= 0.0 else span / top
+		return "%.0f m ramp to ramp  ·  %.0f s at full throttle (%.1f min)" % [
+			span, seconds, seconds / 60.0])
 	# How far there is left to go, either way. Off-road travel with no map is the
 	# control condition, not a puzzle — the POC is testing whether the crossing is
 	# worth making, not whether it can be navigated blind.
@@ -307,9 +340,14 @@ func _on_arrived(place: String) -> void:
 	_dock.open(place)
 
 
+## Leaving takes off rather than releasing the controls where they were. The ship
+## arrived pointing down at a surface, and handing it back at rest in that attitude
+## makes every departure start with the same climb out of the same hole. It leaves on
+## the reflection of its arrival instead — see `Mothership.launch_from_dock`.
 func _on_departed() -> void:
 	_dock.close()
 	_ship.piloted = true
+	_ship.launch_from_dock(Tuning.num("exploration/depart_speed_fraction"))
 	_apply_mouse_mode()
 
 

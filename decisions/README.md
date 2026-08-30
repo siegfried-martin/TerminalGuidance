@@ -111,5 +111,7 @@ The reasoning, including what the alternative was and why it lost.
 | [0062](0062-the-rim-is-a-boundary.md) | The rim is a boundary, its openings are funnels, and the outbound clamp reaches zero |
 | [0063](0063-space-is-a-union-of-regions.md) | Playable space is a union of regions; a region says where it does not apply |
 | [0064](0064-the-lane-pushes-the-world-does-not.md) | The lane pushes you back; the world only slows you down |
+| [0065](0065-the-highway-runs-through-a-system.md) | The highway runs through a system, and its ramps sit beside the planet |
+| [0066](0066-transitions-carry-momentum.md) | Transitions carry momentum: the drive spools, a departure leaves flying |
 
-*Next number: 0065.*
+*Next number: 0067.*

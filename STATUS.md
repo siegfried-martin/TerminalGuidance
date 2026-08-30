@@ -15,11 +15,11 @@ the human's explicit direction.
 | | |
 |---|---|
 | Branch | `feat/exploration-tuning-and-hud`, PR #14 |
-| Gate | `make check` — 987 checks, 0 failed |
+| Gate | `make check` — 1007 checks, 0 failed |
 | Run it | `make fly` |
-| Built | Exploration POC steps 1–6 (ADRs 0062–0064) |
-| **Do next** | **POC step 7** — cruise fuel and the debug teleport. See `docs/EXPLORATION_POC_IMPLEMENTATION.md`. |
-| **Waiting on you** | **The third checkpoint is live and flyable**: is a 41-second hop worth the portal at all, or is it ceremony around nothing? Fly A→B both ways — the portal, and the 258 s by hand. Both still exist. |
+| Built | Exploration POC steps 1–6, plus step 8's third system (ADRs 0062–0066) |
+| **Do next** | **POC step 7** — cruise fuel and the debug teleport. Then step 8's remaining half: road curvature and an elevation change, which is what success criterion 1 turns on. |
+| **Waiting on you** | **The third checkpoint, on the retuned numbers**: is a 48-second hop worth the portal, against 223 s by hand? A→B→C now exists, so the case that matters — a system the road passes *through* — is flyable. |
 
 Everything under §Where the build is and below is the **combat POC's history**,
 kept for its reasoning. It is not a to-do list, and its §Next is superseded by the
@@ -299,6 +299,57 @@ back), now "TO SYSTEM B" and "FROM SYSTEM B"; and the road row read `inf s at th
 speed` while stopped, which is a division rather than a reading.
 
 `tools/shots/road_shot.tscn` is new — inside the lane, off the centre-line, cruising.
+
+### ✅ Retuned and reshaped after the first play session — 2026-08-30
+
+The human flew step 6 and came back with six things. All six are in.
+
+**The speed ladder moved: taxi 30, fighter 50, capital 25, cruise 140**, and the
+capital's turn rate up by half to 16.5 deg/s.
+
+**The per-class ceiling fractions had to move with them, and that is the part worth
+remembering.** `HullClass.max_speed` takes the *lower* of the class's speed and
+`missile/base_speed × its ceiling fraction`. At the old fractions a taxi asked for 30
+would have flown at 23.2 and a fighter asked for 50 at 43.5 — silently, with nothing
+reporting it, which is the exact failure mode that comment warns about. They are now
+0.55 / 0.90 / 0.48. **The fighter's margin is thin**: 50 m/s is 86% of a missile, and
+the fighter is the class the hierarchy has least room for. It holds; there is not much
+left to spend.
+
+**The drive spools in and out (ADR 0066).** Crossing a portal used to go from 30 m/s
+to 140 in one frame, and arriving used to do the reverse. The blend is on the ceiling
+rather than the velocity, so the throttle keeps meaning what it meant. It is *not*
+entry ceremony and the distinction is checkable: through the whole wind-up the player
+is past the aperture, steering, holding their own throttle, free to turn round. The
+moment they are waiting rather than flying, it has become the thing ADR 0057 forbids.
+
+**The ramps moved off the rim and inside the systems (ADR 0065).** The highway runs
+all the way through; a system the road passes through has two ramp sites either side
+of its centre, and the stretch between them is where you are off the road and beside
+the planet. Rim ramps put every arrival a three-minute taxi from the only thing worth
+arriving for — the road would be fast and getting anywhere would still be slow. Side
+effect worth having: the on-ramp is now 822 m from spawn instead of 2537.
+
+**The third system and the trunk leg landed early**, because the case that matters for
+ramps is a system the road passes *through*, and two systems cannot show it. That is
+step 8's first half; **curvature and the elevation change are still open**, and they
+are what success criterion 1 turns on.
+
+**Undocking leaves already flying**, on the reflection of the arrival — same bearing,
+vertical flipped, throttle set to match. Handing the ship back at rest pointing at the
+surface it just left starts every visit with the same climb out of the same hole.
+
+**The ship has a steering reticle now**, the same instrument the missile uses. ADR
+0035 applies to both — the nose does not go instantly where the stick says — and on a
+road inside a steering cone that lag is the difference between holding a line and
+guessing at one. `FlightOverlay` grew a `reticle_provider`; the tube gauge is off in
+the exploration scene, because a reload bar for a weapon that cannot fire is
+decoration that lies.
+
+Three bugs, all caught by looking rather than by tests: the leg row quoted its ETA
+against the *spooling* ceiling, which is a number true of no journey; the portal row
+read "to TO SYSTEM B"; and the road's length was still reporting the corridor's — the
+road is ramp to ramp and longer, 6700 m against 4000.
 
 ### 🔵 THE FIRST FEEL QUESTION IS OPEN
 

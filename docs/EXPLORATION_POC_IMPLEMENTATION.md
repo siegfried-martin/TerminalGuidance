@@ -53,6 +53,17 @@ Where this section and the body below disagree, this section wins.
   already is that for the helm. This is not a combat POC, so the exploration scene
   carries the helm and the missile tube and **no turret and no gunner station**.
   The crew roster (ADR 0056) is not exercised; `T` is the only job there is.
+- **The highway runs THROUGH a system, and its ramps sit beside the planet** — not at
+  the rim, which is what step 6 first built. A system the road passes through has two
+  ramp sites, one either side of its centre, and the stretch between them is where the
+  player is off the road and next to the only thing worth arriving for (ADR 0065).
+  This supersedes "each system has portals at both ends where a road connects" below.
+- **The speed ladder was retuned after the first play session**: taxi 30, fighter 50,
+  capital 25, cruise 140, and the capital's turn rate up by half. The per-class
+  ceiling fractions had to rise with them — at the old ones a taxi asked for 30 would
+  have flown at 23.2 with nothing reporting it.
+- **The cruise drive spools in and out** rather than snapping (ADR 0066), and
+  **undocking leaves already flying**, on the reflection of the arrival.
 - **`tuning.cfg` is the source of truth for every number below.** The block in
   §Starting Tuning Values is v1's proposal, kept for its reasoning; read the values
   from the file.
@@ -209,7 +220,7 @@ Each numbered step should leave the build in a playable state.
 5. ✅ **built 2026-08-29** — `SystemMap` (the layout, the composed boundary, the hot reload), `SystemLink` (the corridor), `BoundaryRegion`/`DiscRegion`/`TubeRegion` (ADR 0063). Two systems 7.5 km apart centre to centre, joined by the 4 km corridor, flown by hand: 4.3 min each way in a taxi against 41 s at cruise, which is the ratio step 6 is asking about. *`aperture_bearing_deg` became the map's own bearing rather than a placeholder, so the apertures and the legs cannot disagree.* **Second system and the local leg, off-road only.** No highway yet. Fly A to B manually at each hull speed. This establishes the baseline the highway must beat and is the control condition for success criterion 2.
 6. ✅ **built 2026-08-29** — `RoadDeck` (two decks per leg, stacked, one-way), `Portal` (swept crossing, blue/red by hull class, destination label), `CruiseLane` (the lane sample the ship is handed), `Mothership._fly_cruise`, and the camera's road lock. The corridor was **not replaced** — the road was laid inside it, so declining the portal is still a real choice and step 5's 258 s baseline is still flyable alongside the 41 s one. ADR 0064 records why the lane pushes and the world does not. **Portals and the highway tube, local leg only.** Cruise drive, camera clamp, lane boundary, deck geometry. **⬅ THIRD CHECKPOINT, open** — is a 41-second hop worth the portal at all, or does it feel like ceremony around nothing?
 7. **⬅ NEXT. Cruise fuel and the debug teleport.** Fuel gauge, consumption, empty behaviour. Teleport bound and logged.
-8. **Third system and the trunk leg.** Curvature, elevation change, sustained road. **Fourth checkpoint and the important one** — success criterion 1. Ten minutes on the trunk road. Tune `cruise_turn_clamp_deg` against road curvature here, together, never separately.
+8. *(The third system and the trunk leg landed early, on 2026-08-30 — the human needed the full three-system map to judge how the on and off ramps read in the case that matters, a system the road passes through. Curvature and the elevation change are still open and are what success criterion 1 turns on.)* **Third system and the trunk leg.** Curvature, elevation change, sustained road. **Fourth checkpoint and the important one** — success criterion 1. Ten minutes on the trunk road. Tune `cruise_turn_clamp_deg` against road curvature here, together, never separately.
 9. **NPC traffic, road first.** Same-direction, speed spread, overtaking. **Fifth checkpoint** — does traffic make the road feel populated, and at what density does it tip into busy?
 10. **Open-space traffic.** Sparse. Fly a leg off-road with traffic present and compare against step 5's memory of it empty.
 11. **Verdict session.** Thirty minutes minimum, moving freely between all three systems, switching hulls, choosing routes. All four success criteria.

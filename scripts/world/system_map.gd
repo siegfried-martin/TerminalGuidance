@@ -20,9 +20,10 @@ extends Node3D
 ## to centre is the leg plus one system radius at each end. That is why the system
 ## diameter being a slider moves the systems apart as well as making them bigger.
 
-## The legs, in order. One key per leg; systems are legs + 1. Step 8 appends
-## `"exploration/trunk_leg_length"` here and gets the third system with it.
-const LEG_KEYS: PackedStringArray = ["exploration/local_leg_length"]
+## The legs, in order. One key per leg; systems are legs + 1, and the layout walks
+## the list — so adding a system is adding a leg rather than editing a topology.
+const LEG_KEYS: PackedStringArray = ["exploration/local_leg_length",
+	"exploration/trunk_leg_length"]
 ## Placeholder identity. The POC doc calls them A, B and C, and naming them anything
 ## more is content this POC does not test.
 const NAMES: PackedStringArray = ["SYSTEM A", "SYSTEM B", "SYSTEM C"]
@@ -135,13 +136,23 @@ func relayout() -> void:
 		if i < _links.size():
 			here += step * (Tuning.num(LEG_KEYS[i]) + radius * 2.0)
 
+	# The road's ramps sit INSIDE each system, one either side of its centre — the
+	# highway runs all the way through, and coming off it puts you beside the planet
+	# rather than a system-crossing away from it. A system the road passes through
+	# therefore has two ramp sites and four portals; an end system has one and two.
+	var ramp := Tuning.num("exploration/portal_site_offset")
 	for i in _links.size():
 		_links[i].leg_bearing_deg = bearing
-		# Mouth to mouth. The outgoing aperture is the last on the system you leave
-		# and the first on the one you arrive at, which falls out of the order the
-		# bearings were appended in above.
+		# The CORRIDOR is mouth to mouth: it is the bounded space between two systems.
+		# The outgoing aperture is the last on the system you leave and the first on
+		# the one you arrive at, which falls out of the order the bearings were
+		# appended in above.
 		_links[i].span(_discs[i].aperture_mouth(_discs[i].aperture_count() - 1),
 			_discs[i + 1].aperture_mouth(0))
+		# The ROAD is ramp to ramp, which is longer: it runs out through one rim and
+		# in through the other.
+		_links[i].road_span(_discs[i].position + step * ramp,
+			_discs[i + 1].position - step * ramp)
 
 	_field.regions.clear()
 	for disc in _discs:
@@ -354,6 +365,17 @@ func depart() -> void:
 	for approach in _approaches:
 		if approach.is_docked():
 			approach.depart()
+
+
+## Every ramp site on the map, in order along the road. For the HUD and for tests —
+## an end system has one and a system the road passes through has two.
+func ramp_sites() -> Array[Vector3]:
+	var sites: Array[Vector3] = []
+	for link in _links:
+		for deck in link.decks():
+			if deck.start_portal() != null:
+				sites.append(deck.start_portal().position)
+	return sites
 
 
 func warning() -> float:

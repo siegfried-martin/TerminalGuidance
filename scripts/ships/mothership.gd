@@ -65,6 +65,19 @@ var speed_ceiling_scale: float = 1.0
 ## here fades, loads, or plays.
 var cruise: CruiseLane = null
 
+## 0 to 1: how far the cruise drive has wound up. The ceiling is blended across it,
+## so joining the road accelerates and leaving it decelerates instead of the speed
+## snapping between hull and cruise in one frame.
+##
+## This is NOT entry ceremony and must not become it (ADR 0057). The player is
+## already through the aperture, already steering, already holding their own
+## throttle; what takes time is an engine winding up, which is the ship doing
+## something rather than something being done to the ship.
+var _cruise_spool: float = 0.0
+## The road's top speed, remembered across the spool-down so leaving the road has
+## something to decelerate FROM after `cruise` has already gone null.
+var _cruise_ceiling: float = 0.0
+
 var _velocity: Vector3 = Vector3.ZERO
 var _orbit_sign: float = 1.0
 var _hull: MeshInstance3D
@@ -143,6 +156,7 @@ func _process(delta: float) -> void:
 	# station the player happens to be standing at.
 	_missile_cooldown = maxf(_missile_cooldown - delta, 0.0)
 	_hit_flash = maxf(_hit_flash - delta, 0.0)
+	_spool(delta)
 	if autopilot:
 		_fly_autopilot(delta)
 	elif piloted and cruise != null:
@@ -244,9 +258,36 @@ func manual_max_speed() -> float:
 	# whole of what the road buys, and it is why there is no personal cruise drive
 	# for open space (ADR 0057). The lane's own penalty is already folded into
 	# `top_speed`, so drifting wide shows up here and on the HUD's "of N".
-	var base := HullClass.max_speed(hull_class) if cruise == null \
-		else cruise.top_speed()
-	return base * clampf(speed_ceiling_scale, 0.0, 1.0)
+	#
+	# Blended across the spool rather than switched, in BOTH directions: joining the
+	# road is an acceleration and leaving it is a deceleration, and the blend is on
+	# the ceiling rather than on the velocity so the throttle keeps meaning what it
+	# meant. A ship that arrives in a system still doing 140 has not left the road,
+	# it has been teleported off it.
+	var hull := HullClass.max_speed(hull_class)
+	var road := cruise.top_speed() if cruise != null else _cruise_ceiling
+	return lerpf(hull, maxf(road, hull), _cruise_spool) \
+		* clampf(speed_ceiling_scale, 0.0, 1.0)
+
+
+## Wind the drive up or down. Runs every frame whatever is flying, because the
+## spool-down has to keep going after `cruise` is already null.
+func _spool(delta: float) -> void:
+	if cruise != null:
+		_cruise_ceiling = cruise.top_speed()
+		var up := maxf(Tuning.num("exploration/cruise_spool_seconds"), 0.001)
+		_cruise_spool = minf(_cruise_spool + delta / up, 1.0)
+		return
+	if _cruise_spool <= 0.0:
+		return
+	var down := maxf(Tuning.num("exploration/cruise_spool_down_seconds"), 0.001)
+	_cruise_spool = maxf(_cruise_spool - delta / down, 0.0)
+
+
+## How far the cruise drive has wound up, 0 to 1. For the HUD, which has to show the
+## wind-up as it happens or it reads as sluggishness rather than as an engine.
+func cruise_spool() -> float:
+	return _cruise_spool
 
 
 ## Is the cruise drive running right now?
@@ -571,6 +612,28 @@ func hull_extents() -> Vector3:
 	if _hull == null or _hull.mesh == null:
 		return Vector3.ONE * hull_scale()
 	return _hull.mesh.get_aabb().size * hull_scale()
+
+
+## Leave a dock, already moving.
+##
+## Departing must not put the ship back where it landed, at rest, pointing at the
+## surface it just left: that is a hole to climb out of on every single visit, and
+## the climb is not interesting the second time. It leaves on the REFLECTION of its
+## arrival — same bearing, vertical flipped — so a descent becomes a climb and the
+## planet is behind it on the first frame.
+##
+## The throttle is set to match the speed rather than left at zero, because a ship
+## given velocity and no throttle bleeds it off over the next second and the takeoff
+## reads as a shove instead of as flying away.
+func launch_from_dock(fraction: float) -> void:
+	var facing := -basis.z
+	var away := Vector3(facing.x, -facing.y, facing.z)
+	if away.length_squared() <= 0.000001:
+		away = Vector3.UP
+	basis = FlightGeometry.basis_from_forward(away.normalized())
+	_throttle = clampf(fraction, 0.0, 1.0)
+	_velocity = -basis.z * (_throttle * manual_max_speed())
+	_reticle.reset(basis)
 
 
 ## Park the reticle on the nose. Called when the heading changes for a reason that

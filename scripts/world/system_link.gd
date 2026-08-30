@@ -31,6 +31,13 @@ var leg_bearing_deg: float = 0.0
 var from_name: String = ""
 var to_name: String = ""
 
+## The ROAD's endpoints, which are not the corridor's. The corridor runs rim to rim,
+## because that is the bounded space between two systems; the road runs ramp to ramp,
+## and the ramps are inside the systems near their planets. So the road is longer
+## than the corridor and passes through both apertures on its way.
+var _road_from: Vector3 = Vector3.ZERO
+var _road_to: Vector3 = Vector3.ZERO
+
 var _wall: MeshInstance3D
 ## Reference markers down the length of it. Four kilometres of empty tube reads as a
 ## still image at 15 m/s, and the leg being *long* is the thing under test.
@@ -68,6 +75,16 @@ func span(from: Vector3, to: Vector3) -> void:
 	_region.to = to
 	if _wall != null:
 		rebuild()
+
+
+## The road's own endpoints: the ramp inside each system, not the rim it passes
+## through. Set alongside `span`.
+func road_span(from: Vector3, to: Vector3) -> void:
+	_road_from = from
+	_road_to = to
+	if _wall != null:
+		_rebuild_decks()
+		paint(0.0)
 
 
 func rebuild() -> void:
@@ -187,18 +204,20 @@ func paint(warning_level: float) -> void:
 func _rebuild_decks() -> void:
 	if _decks.size() < 2:
 		return
+	if _road_from.is_equal_approx(_road_to):
+		return
 	var half := Tuning.num("exploration/deck_separation") * 0.5
 	var out_is_upper := RoadDeck.rides_upper(leg_bearing_deg)
 	var back_is_upper := RoadDeck.rides_upper(leg_bearing_deg + 180.0)
 	_decks[0].deck_name = "%s bound" % to_name
 	_decks[0].is_upper = out_is_upper
-	_decks[0].span(_region.from + Vector3.UP * (half if out_is_upper else -half),
-		_region.to + Vector3.UP * (half if out_is_upper else -half),
+	_decks[0].span(_road_from + Vector3.UP * (half if out_is_upper else -half),
+		_road_to + Vector3.UP * (half if out_is_upper else -half),
 		to_name, from_name)
 	_decks[1].deck_name = "%s bound" % from_name
 	_decks[1].is_upper = back_is_upper
-	_decks[1].span(_region.to + Vector3.UP * (half if back_is_upper else -half),
-		_region.from + Vector3.UP * (half if back_is_upper else -half),
+	_decks[1].span(_road_to + Vector3.UP * (half if back_is_upper else -half),
+		_road_from + Vector3.UP * (half if back_is_upper else -half),
 		from_name, to_name)
 
 
@@ -210,8 +229,17 @@ func region() -> TubeRegion:
 	return _region
 
 
+## The CORRIDOR's length: mouth to mouth, which is the bounded space between two
+## systems. Not the road's — see `road_length`, which is longer because the road runs
+## on into both systems to reach their ramps.
 func length() -> float:
 	return _region.length()
+
+
+## The ROAD's length: ramp to ramp, which is what a player actually flies and the
+## number the highway-versus-hand-flying comparison is about.
+func road_length() -> float:
+	return _road_from.distance_to(_road_to)
 
 
 func marker_count() -> int:

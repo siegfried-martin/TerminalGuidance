@@ -160,7 +160,9 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/aperture_bearing_deg",
 	"exploration/lane_corner_roundness", "exploration/lane_rib_spacing",
 	"exploration/lane_color", "exploration/lane_line_alpha",
-	"exploration/portal_label_metres",
+	"exploration/portal_label_metres", "exploration/portal_site_offset",
+	"exploration/cruise_spool_seconds", "exploration/cruise_spool_down_seconds",
+	"exploration/depart_speed_fraction",
 	"exploration/planet_radius", "exploration/planet_center_depth",
 	"exploration/planet_color", "exploration/planet_emission",
 	"exploration/marker_spacing", "exploration/marker_size", "exploration/marker_color",
@@ -2939,6 +2941,18 @@ func _test_the_road() -> void:
 
 ## The exploration scene builds its nodes. Same gate the arena and sandbox get: a
 ## scene that is constructed in code has no editor to catch a missing child.
+## One frame of the exploration scene, the way the engine runs it: the scene's
+## `_process` and then the ship's, in tree order.
+##
+## The tests step by hand rather than awaiting real frames, because a three-second
+## drive spool is 180 of them and awaiting those would make the gate wait three real
+## seconds for a number it can reach instantly. Stepping only the scene was a quiet
+## lie about what a frame is — anything living in `Mothership._process` never ran.
+func _step_exploration(scene: ExplorationScene, delta: float) -> void:
+	scene._process(delta)
+	scene.ship()._process(delta)
+
+
 func _test_exploration_builds() -> void:
 	var packed := load("res://scenes/exploration.tscn") as PackedScene
 	_expect(packed != null, "exploration.tscn loads", "scene failed to load")
@@ -2967,8 +2981,8 @@ func _test_exploration_builds() -> void:
 
 	var map := scene.map()
 	var field := map.field()
-	_expect(map.systems().size() == 2 and map.links().size() == 1,
-		"the map is two systems and the local leg (POC step 5)",
+	_expect(map.systems().size() == 3 and map.links().size() == 2,
+		"the map is three systems in a line: A, the local leg, B, the trunk, C",
 		"%d systems, %d links" % [map.systems().size(), map.links().size()])
 	_expect(map.marker_count() > 0,
 		"the whole map is filled with reference markers, corridor included",
@@ -2993,10 +3007,14 @@ func _test_exploration_builds() -> void:
 	# the leg actually attaches to. An aperture facing nowhere is a hole in the
 	# boundary with unrendered space behind it.
 	var discs := map.systems()
-	_expect(discs[0].aperture_count() == 1 and discs[1].aperture_count() == 1,
-		"each end system opens its rim exactly once — a line, not a ring",
+	_expect(discs[0].aperture_count() == 1
+			and discs[discs.size() - 1].aperture_count() == 1,
+		"each END system opens its rim exactly once — a line, not a ring",
 		"%d and %d apertures" % [discs[0].aperture_count(),
-			discs[1].aperture_count()])
+			discs[discs.size() - 1].aperture_count()])
+	_expect(discs[1].aperture_count() == 2,
+		"…and the one in the middle opens twice, because the road passes through it",
+		"%d apertures" % discs[1].aperture_count())
 	var link := map.links()[0]
 	_expect(link.region().from.distance_to(discs[0].aperture_mouth(0)) < 1.0
 			and link.region().to.distance_to(discs[1].aperture_mouth(0)) < 1.0,
@@ -3016,6 +3034,11 @@ func _test_exploration_builds() -> void:
 				+ Tuning.num("exploration/system_diameter"))) < 1.0,
 		"…so centre to centre is the leg plus one system radius at each end",
 		"%.0f m apart" % discs[0].position.distance_to(discs[1].position))
+	_expect(absf(map.links()[1].length()
+			- Tuning.num("exploration/trunk_leg_length")) < 1.0,
+		"…and the trunk leg is its own tuned length, an order up from the local one",
+		"%.0f m of a tuned %.0f" % [map.links()[1].length(),
+			Tuning.num("exploration/trunk_leg_length")])
 
 	# You can fly from one to the other without leaving the map. This is the whole of
 	# step 5 as one assertion: if any point along the route is out of bounds, the
@@ -3130,24 +3153,79 @@ func _test_exploration_builds() -> void:
 		"%.1f m of clearance on a %.1f m hull" % [
 			Tuning.num("exploration/portal_height") - hull.y, hull.y])
 
+	# --- the ramps are inside the systems, not at the rim ---
+	# The highway runs all the way THROUGH a system, so coming off it puts you beside
+	# the planet rather than a system-crossing away from it.
+	var ramp := decks[0].start_portal().position
+	_expect(is_zero_approx(field.overshoot(ramp))
+			and map.place_of(ramp) == SystemMap.NAMES[0],
+		"the on-ramp is INSIDE system A, not out at its rim",
+		"the ramp is in %s" % map.place_of(ramp))
+	_expect(ramp.distance_to(discs[0].position) < discs[0].radius() * 0.5,
+		"…and near its centre, which is directly above the planet (ADR 0061)",
+		"%.0f m from the centre of a %.0f m disc" % [
+			ramp.distance_to(discs[0].position), discs[0].radius() * 2.0])
+	_expect(link.road_length() > link.length(),
+		"…so the ROAD is longer than the corridor and passes through both apertures",
+		"road %.0f m against a %.0f m corridor" % [
+			link.road_length(), link.length()])
+	# Ramp to ramp is centre to centre minus one ramp offset at each end — the road
+	# runs a system RADIUS in past each rim, not a ramp offset. Confusing the two puts
+	# the on-ramp outside the system it is supposed to serve.
+	_expect(is_equal_approx(link.road_length(),
+			discs[0].position.distance_to(discs[1].position)
+				- Tuning.num("exploration/portal_site_offset") * 2.0),
+		"…by running a system radius in past each rim to reach the ramps",
+		"%.0f m of road, %.0f m of corridor, %.0f m centre to centre" % [
+			link.road_length(), link.length(),
+			discs[0].position.distance_to(discs[1].position)])
+	# System B has the road passing through it, which means two ramp sites with a
+	# stretch between them. At zero offset they would be the same point and a
+	# through-system would be a road with no exit.
+	var arrive_b := decks[0].end_portal().position
+	var leave_b := map.links()[1].decks()[0].start_portal().position
+	_expect(arrive_b.distance_to(leave_b) > 1.0,
+		"a system the road passes through has an off-ramp and an on-ramp, not one gate",
+		"%.1f m between them" % arrive_b.distance_to(leave_b))
+	_expect(is_equal_approx(arrive_b.distance_to(leave_b),
+			Tuning.num("exploration/portal_site_offset") * 2.0),
+		"…the tuned distance apart, with the planet below the gap between them",
+		"%.0f m apart" % arrive_b.distance_to(leave_b))
+	_expect(map.place_of(arrive_b) == SystemMap.NAMES[1]
+			and map.place_of(leave_b) == SystemMap.NAMES[1],
+		"…and both of them are inside system B", "%s and %s" % [
+			map.place_of(arrive_b), map.place_of(leave_b)])
+
 	# Getting on the road. Two frames either side of the start portal, because the
 	# crossing test is swept — and driven through the real scene so the wiring from
 	# portal to cruise drive to speed ceiling is covered, not just the arithmetic.
 	var gate := decks[0].start_portal()
 	var travel := decks[0].axis()
 	scene.ship().position = gate.position - travel * 20.0
-	scene._process(1.0 / 60.0)
+	_step_exploration(scene, 1.0 / 60.0)
 	_expect(scene.ship().cruise == null,
 		"short of the portal the cruise drive is off", "it engaged early")
 	scene.ship().position = gate.position + travel * 20.0
-	scene._process(1.0 / 60.0)
+	_step_exploration(scene, 1.0 / 60.0)
 	_expect(scene.ship().cruise != null and map.riding() == decks[0],
 		"crossing the portal engages cruise ON CONTACT — no sequence (ADR 0057)",
 		"it did not engage")
+	# The drive SPOOLS rather than snapping. Entry is still instant — the ship is
+	# through, steering, holding its own throttle — but the engine takes time to wind
+	# up, which is the ship doing something rather than something done to the ship.
+	var at_entry := scene.ship().manual_max_speed()
+	_expect(at_entry < Tuning.num("exploration/cruise_speed") * 0.5,
+		"…and the ceiling does NOT snap to cruise speed on the entry frame",
+		"%.1f m/s of %.1f in one frame" % [at_entry,
+			Tuning.num("exploration/cruise_speed")])
+	for _i in int(Tuning.num("exploration/cruise_spool_seconds") * 60.0) + 6:
+		_step_exploration(scene, 1.0 / 60.0)
 	_expect(scene.ship().manual_max_speed()
-			> Tuning.num("exploration/taxi_max_speed") * 2.0,
-		"…and the ceiling becomes the cruise drive's, which is what the road buys",
-		"%.1f m/s" % scene.ship().manual_max_speed())
+			> Tuning.num("exploration/taxi_max_speed") * 2.0
+			and scene.ship().cruise_spool() > 0.999,
+		"…but it winds up to the cruise drive's, which is what the road buys",
+		"%.1f m/s at %.0f%% spool" % [scene.ship().manual_max_speed(),
+			scene.ship().cruise_spool() * 100.0])
 	# The camera frames the ROAD while cruising, not the nose: steering left and the
 	# road curving left have to look different or lane position is unreadable.
 	_expect((scene.get_node("ChaseCamera") as ChaseCamera)
@@ -3158,30 +3236,47 @@ func _test_exploration_builds() -> void:
 	# Getting off it, at the far end.
 	var exit_gate := decks[0].end_portal()
 	scene.ship().position = exit_gate.position - travel * 20.0
-	scene._process(1.0 / 60.0)
+	_step_exploration(scene, 1.0 / 60.0)
 	_expect(scene.ship().cruise != null,
 		"still cruising a moment before the far portal", "it dropped early")
 	scene.ship().position = exit_gate.position + travel * 20.0
-	scene._process(1.0 / 60.0)
+	_step_exploration(scene, 1.0 / 60.0)
 	_expect(scene.ship().cruise == null and map.riding() == null,
 		"…and crossing it drops you back into normal flight, in system B",
 		"still cruising past the end of the road")
+	# And it winds DOWN rather than stopping dead. A ship that arrives in a system
+	# still doing cruise speed has not left the road, it has been teleported off it;
+	# one that drops to hull speed in a frame has been caught by a net.
+	_expect(scene.ship().cruise_spool() > 0.5
+			and scene.ship().manual_max_speed()
+				> Tuning.num("exploration/taxi_max_speed") * 2.0,
+		"…still carrying most of its speed on the frame after, not stopped dead",
+		"%.0f%% spool, %.1f m/s" % [scene.ship().cruise_spool() * 100.0,
+			scene.ship().manual_max_speed()])
+	for _i in int(Tuning.num("exploration/cruise_spool_down_seconds") * 60.0) + 6:
+		_step_exploration(scene, 1.0 / 60.0)
+	_expect(is_zero_approx(scene.ship().cruise_spool())
+			and is_equal_approx(scene.ship().manual_max_speed(),
+				HullClass.max_speed(scene.ship().hull_class)),
+		"…and settles back to the hull's own speed once the drive has wound down",
+		"%.1f m/s at %.0f%% spool" % [scene.ship().manual_max_speed(),
+			scene.ship().cruise_spool() * 100.0])
 
 	# ADR 0060: a portal opens for a cruise drive, and its colour says so. One
 	# property wearing a colour, not a second rule about who may use a portal.
 	scene.ship().set_hull_class(HullClass.Kind.FIGHTER)
 	scene.ship().position = gate.position - travel * 20.0
-	scene._process(1.0 / 60.0)
+	_step_exploration(scene, 1.0 / 60.0)
 	_expect(not gate.permitted,
 		"a fighter has no cruise drive, so every portal reads REFUSED (ADR 0060)",
 		"the portal showed permitted")
 	scene.ship().position = gate.position + travel * 20.0
-	scene._process(1.0 / 60.0)
+	_step_exploration(scene, 1.0 / 60.0)
 	_expect(scene.ship().cruise == null,
 		"…and flying into one does nothing — the refusal was visible before contact",
 		"a fighter got onto the road")
 	scene.ship().set_hull_class(HullClass.Kind.TAXI)
-	scene._process(1.0 / 60.0)
+	_step_exploration(scene, 1.0 / 60.0)
 	_expect(gate.permitted,
 		"…while a taxi sees the same portal open, on the frame it switches",
 		"the portal did not recolour")
@@ -3190,12 +3285,12 @@ func _test_exploration_builds() -> void:
 	# dropped by the player's own flying, never by anything else — there is no
 	# interdiction, and the only two ways off are the two portals.
 	scene.ship().position = gate.position - travel * 20.0
-	scene._process(1.0 / 60.0)
+	_step_exploration(scene, 1.0 / 60.0)
 	scene.ship().position = gate.position + travel * 20.0
-	scene._process(1.0 / 60.0)
+	_step_exploration(scene, 1.0 / 60.0)
 	_expect(scene.ship().cruise != null, "back on the road", "it did not engage")
 	scene.ship().position = gate.position - travel * 20.0
-	scene._process(1.0 / 60.0)
+	_step_exploration(scene, 1.0 / 60.0)
 	_expect(scene.ship().cruise == null,
 		"…and flying back out the entry portal drops cruise — the player's choice",
 		"still cruising after leaving the way it came in")
@@ -3210,7 +3305,7 @@ func _test_exploration_builds() -> void:
 	scene.ship().position = discs[0].position \
 		+ Vector3(0.0, discs[0].ceiling_height() + 40.0, 0.0)
 	scene.ship()._velocity = Vector3(0.0, 10.0, 0.0)
-	scene._process(1.0 / 60.0)
+	_step_exploration(scene, 1.0 / 60.0)
 	_expect(scene.ship().speed_ceiling_scale < 1.0,
 		"pushing out past the ceiling strains the ship's speed limit",
 		"scale %.2f" % scene.ship().speed_ceiling_scale)
@@ -3218,7 +3313,7 @@ func _test_exploration_builds() -> void:
 	# Same point, opposite heading. The way home is free at any depth (ADR 0062), so
 	# this releases without the ship having moved an inch.
 	scene.ship()._velocity = Vector3(0.0, -10.0, 0.0)
-	scene._process(1.0 / 60.0)
+	_step_exploration(scene, 1.0 / 60.0)
 	_expect(is_equal_approx(scene.ship().speed_ceiling_scale, 1.0)
 			and scene.ship().manual_max_speed() > strained,
 		"…and TURNING ROUND releases it on the spot, without moving back in",
@@ -3227,10 +3322,35 @@ func _test_exploration_builds() -> void:
 	# boundary following the player across the map is the thing this checks.
 	scene.ship().position = link.region().from.lerp(link.region().to, 0.5)
 	scene.ship()._velocity = Vector3(0.0, 0.0, 10.0)
-	scene._process(1.0 / 60.0)
+	_step_exploration(scene, 1.0 / 60.0)
 	_expect(is_equal_approx(scene.ship().speed_ceiling_scale, 1.0),
 		"…and nothing is clamped in the middle of the corridor either",
 		"scale %.2f" % scene.ship().speed_ceiling_scale)
+
+	# --- leaving a planet (post-test feedback) ---
+	# Departing must not hand the ship back at rest pointing at the surface it just
+	# left: that starts every visit with the same climb out of the same hole. It
+	# leaves on the REFLECTION of its arrival — same bearing, vertical flipped.
+	scene.ship().set_hull_class(HullClass.Kind.TAXI)
+	scene.ship().position = map.planets()[0].position + Vector3(0.0, 300.0, 0.0)
+	scene.ship().look_at(map.planets()[0].global_position, Vector3.FORWARD)
+	var descending := -scene.ship().basis.z
+	scene.ship().launch_from_dock(Tuning.num("exploration/depart_speed_fraction"))
+	var climbing := -scene.ship().basis.z
+	_expect(descending.y < 0.0 and climbing.y > 0.0,
+		"taking off flips the arrival's vertical: a descent becomes a climb",
+		"came in at %.2f, left at %.2f" % [descending.y, climbing.y])
+	_expect(absf(climbing.x - descending.x) < 0.01
+			and absf(climbing.z - descending.z) < 0.01,
+		"…on the same bearing, so it is a reflection rather than a turn",
+		"(%.2f, %.2f) became (%.2f, %.2f)" % [descending.x, descending.z,
+			climbing.x, climbing.z])
+	_expect(scene.ship().speed() > 0.0
+			and is_equal_approx(scene.ship().throttle(),
+				Tuning.num("exploration/depart_speed_fraction")),
+		"…already moving, with the THROTTLE set to match so it is not a shove",
+		"%.1f m/s at %.0f%% throttle" % [scene.ship().speed(),
+			scene.ship().throttle() * 100.0])
 
 	scene.queue_free()
 	await get_tree().process_frame

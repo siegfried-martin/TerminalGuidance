@@ -176,6 +176,9 @@ func _build_views() -> void:
 	_overlay.name = "FlightOverlay"
 	_overlay.target = _target
 	_overlay.missile_provider = func() -> Missile: return _views.piloted_missile()
+	# The arena draws the reticle for the ridden missile only. Giving the ship one
+	# here would change what the combat POC looks like, and that verdict is in.
+	_overlay.reticle_provider = func() -> Node3D: return _views.piloted_missile()
 	_overlay.turret_provider = func() -> Turret: return _turret
 	_overlay.ship = _ship
 	_overlay.enemy = _target
