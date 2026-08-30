@@ -3,10 +3,10 @@ extends Node3D
 ## The bounded space between two systems: a corridor from one rim to the other,
 ## flared at both ends so leaving is aimed rather than threaded (ADR 0062).
 ##
-## **No road in it yet.** POC step 5 is the control condition — fly A to B by hand,
-## at each hull's speed, with nothing but the corridor. That is the baseline the
-## highway has to beat in step 6 and what success criterion 2 is measured against,
-## so it has to be flown before the road exists rather than remembered afterwards.
+## **The corridor is not the road.** The road runs through it and on through the
+## systems at each end, and it belongs to `RoadNetwork`, which spans the whole map
+## rather than one leg. What lives here is the bounded space you fly when you decline
+## the road — the control condition success criterion 2 is measured against.
 ##
 ## The boundary lives in `TubeRegion` and the map owns it; this node draws it, from
 ## the same `profile()` the boundary is enforced with.
@@ -23,28 +23,15 @@ const RINGS_PER_FLARE := 8
 const RINGS_ALONG := 20
 
 var link_name: String = "corridor"
-## The leg's own bearing, in degrees. Used to DECLARE which deck is which under the
-## convention (see `RoadDeck.rides_upper`) — assigned by the map, which is the
-## authoring layer, rather than worked out per frame from a heading.
-var leg_bearing_deg: float = 0.0
-## What each end leads to, for the portals' labels.
+## What each end leads to. Kept for the HUD's naming of the corridor.
 var from_name: String = ""
 var to_name: String = ""
-
-## The ROAD's endpoints, which are not the corridor's. The corridor runs rim to rim,
-## because that is the bounded space between two systems; the road runs ramp to ramp,
-## and the ramps are inside the systems near their planets. So the road is longer
-## than the corridor and passes through both apertures on its way.
-var _road_from: Vector3 = Vector3.ZERO
-var _road_to: Vector3 = Vector3.ZERO
 
 var _wall: MeshInstance3D
 ## Reference markers down the length of it. Four kilometres of empty tube reads as a
 ## still image at 15 m/s, and the leg being *long* is the thing under test.
 var _markers: MultiMeshInstance3D
 var _region: TubeRegion = TubeRegion.new()
-## The road inside the corridor: one deck per direction, stacked (POC step 6).
-var _decks: Array[RoadDeck] = []
 
 
 func _ready() -> void:
@@ -57,11 +44,6 @@ func _ready() -> void:
 	_markers.name = "LinkMarkers"
 	_markers.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_markers)
-	for deck_name in ["DeckOut", "DeckBack"]:
-		var deck := RoadDeck.new()
-		deck.name = deck_name
-		add_child(deck)
-		_decks.append(deck)
 	rebuild()
 	# NOT connected to `Tuning.reloaded` here. The map owns the layout, and this
 	# node's geometry depends on it: reloading in signal order would rebuild against
@@ -77,16 +59,6 @@ func span(from: Vector3, to: Vector3) -> void:
 		rebuild()
 
 
-## The road's own endpoints: the ramp inside each system, not the rim it passes
-## through. Set alongside `span`.
-func road_span(from: Vector3, to: Vector3) -> void:
-	_road_from = from
-	_road_to = to
-	if _wall != null:
-		_rebuild_decks()
-		paint(0.0)
-
-
 func rebuild() -> void:
 	_region.mouth_radius = Tuning.num("exploration/aperture_mouth_diameter") * 0.5
 	_region.radius = Tuning.num("exploration/corridor_diameter") * 0.5
@@ -94,7 +66,6 @@ func rebuild() -> void:
 	_region.name_of = link_name
 	_rebuild_wall()
 	_rebuild_markers()
-	_rebuild_decks()
 	paint(0.0)
 
 
@@ -193,53 +164,19 @@ func paint(warning_level: float) -> void:
 		Tuning.num("exploration/bounds_rim_alpha_scale"))
 
 
-## The two decks, outbound first. Stacked vertically and visible to each other, one
-## per direction, so there is never oncoming traffic in the player's lane — which is
-## structural here rather than a rule about where NPCs may spawn.
-##
-## Which is upper follows the deck convention: headings in the arc clockwise from
-## northwest through north and east to southeast ride the upper deck. The convention
-## earns its keep as a mistake-catcher — *"I am heading east, why am I on the lower
-## deck?"* — and one exception makes it worse than no rule at all.
-func _rebuild_decks() -> void:
-	if _decks.size() < 2:
-		return
-	if _road_from.is_equal_approx(_road_to):
-		return
-	var half := Tuning.num("exploration/deck_separation") * 0.5
-	var out_is_upper := RoadDeck.rides_upper(leg_bearing_deg)
-	var back_is_upper := RoadDeck.rides_upper(leg_bearing_deg + 180.0)
-	_decks[0].deck_name = "%s bound" % to_name
-	_decks[0].is_upper = out_is_upper
-	_decks[0].span(_road_from + Vector3.UP * (half if out_is_upper else -half),
-		_road_to + Vector3.UP * (half if out_is_upper else -half),
-		to_name, from_name)
-	_decks[1].deck_name = "%s bound" % from_name
-	_decks[1].is_upper = back_is_upper
-	_decks[1].span(_road_to + Vector3.UP * (half if back_is_upper else -half),
-		_road_from + Vector3.UP * (half if back_is_upper else -half),
-		from_name, to_name)
-
-
-func decks() -> Array[RoadDeck]:
-	return _decks
-
-
+## The boundary this node draws: the bounded space between two systems. The map
+## composes it into the field alongside the discs (ADR 0063).
 func region() -> TubeRegion:
 	return _region
 
 
-## The CORRIDOR's length: mouth to mouth, which is the bounded space between two
-## systems. Not the road's — see `road_length`, which is longer because the road runs
-## on into both systems to reach their ramps.
+## Mouth to mouth: the bounded space between two systems. The road that runs through
+## it is longer, spans the whole map, and belongs to `RoadNetwork`.
 func length() -> float:
 	return _region.length()
 
 
-## The ROAD's length: ramp to ramp, which is what a player actually flies and the
-## number the highway-versus-hand-flying comparison is about.
-func road_length() -> float:
-	return _road_from.distance_to(_road_to)
+
 
 
 func marker_count() -> int:

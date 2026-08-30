@@ -221,22 +221,25 @@ func _build_hud() -> void:
 	# as during — a figure the player predicted and then lived through is a much
 	# stronger verdict than one they only lived through.
 	_hud.add_row("leg", func() -> String:
-		var links := _map.links()
-		if links.is_empty():
+		var here := _ship_in_map()
+		var next := _map.nearest_system(here)
+		var onward := next + 1 if next + 1 < _map.systems().size() else next - 1
+		if onward < 0:
 			return "—"
 		# The road's own speed rather than the ship's ceiling right now: mid-spool the
 		# ceiling is somewhere between hull and cruise, and quoting the leg against it
 		# gives a number that is true of no journey. What this row is for is the
-		# comparison — 48 s by road against 223 s by hand — and both halves have to be
-		# the speed the trip is actually made at.
-		var top := Tuning.num("exploration/cruise_speed") if _ship.cruise != null \
-			else HullClass.max_speed(_ship.hull_class)
-		# The ROAD's length, ramp to ramp — what a player actually flies. The
-		# corridor between the two rims is shorter and is not the trip.
-		var span := links[0].road_length()
-		var seconds := INF if top <= 0.0 else span / top
-		return "%.0f m ramp to ramp  ·  %.0f s at full throttle (%.1f min)" % [
-			span, seconds, seconds / 60.0])
+		# comparison — by road against by hand — and both halves have to be the speed
+		# the trip is actually made at.
+		var by_road := Tuning.num("exploration/cruise_speed")
+		var by_hand := HullClass.max_speed(_ship.hull_class)
+		var span := _map.system_center(next).distance_to(_map.system_center(onward))
+		if by_road <= 0.0 or by_hand <= 0.0:
+			return "—"
+		return "%s to %s: %.0f m  ·  %.0f s by road, %.0f s by hand" % [
+			_map.system_name(next), _map.system_name(onward), span,
+			span / by_road, span / by_hand]
+	)
 	# How far there is left to go, either way. Off-road travel with no map is the
 	# control condition, not a puzzle — the POC is testing whether the crossing is
 	# worth making, not whether it can be navigated blind.

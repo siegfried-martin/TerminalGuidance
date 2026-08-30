@@ -113,5 +113,6 @@ The reasoning, including what the alternative was and why it lost.
 | [0064](0064-the-lane-pushes-the-world-does-not.md) | The lane pushes you back; the world only slows you down |
 | [0065](0065-the-highway-runs-through-a-system.md) | The highway runs through a system, and its ramps sit beside the planet |
 | [0066](0066-transitions-carry-momentum.md) | Transitions carry momentum: the drive spools, a departure leaves flying |
+| [0067](0067-lanes-unite-there-are-no-junctions.md) | Getting on and off the road is a union of lanes, not a junction |
 
-*Next number: 0067.*
+*Next number: 0068.*

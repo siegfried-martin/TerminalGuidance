@@ -15,11 +15,11 @@ the human's explicit direction.
 | | |
 |---|---|
 | Branch | `feat/exploration-tuning-and-hud`, PR #14 |
-| Gate | `make check` — 1007 checks, 0 failed |
+| Gate | `make check` — 1020 checks, 0 failed |
 | Run it | `make fly` |
-| Built | Exploration POC steps 1–6, plus step 8's third system (ADRs 0062–0066) |
+| Built | Exploration POC steps 1–6, plus step 8's third system (ADRs 0062–0067) |
 | **Do next** | **POC step 7** — cruise fuel and the debug teleport. Then step 8's remaining half: road curvature and an elevation change, which is what success criterion 1 turns on. |
-| **Waiting on you** | **The third checkpoint, on the retuned numbers**: is a 48-second hop worth the portal, against 223 s by hand? A→B→C now exists, so the case that matters — a system the road passes *through* — is flyable. |
+| **Waiting on you** | **The third checkpoint, on the reshaped interchange**: is a 33-second hop worth the portal, against 203 s by hand? The mainline now runs *through* every system with ramps curving off it beside each planet, which is the case that matters. |
 
 Everything under §Where the build is and below is the **combat POC's history**,
 kept for its reasoning. It is not a to-do list, and its §Next is superseded by the
@@ -350,6 +350,44 @@ Three bugs, all caught by looking rather than by tests: the leg row quoted its E
 against the *spooling* ceiling, which is a number true of no journey; the portal row
 read "to TO SYSTEM B"; and the road's length was still reporting the corridor's — the
 road is ramp to ramp and longer, 6700 m against 4000.
+
+### ✅ The interchange — 2026-08-30, second pass
+
+The first pass got ADR 0065 wrong in the code while getting it right in the ADR: the
+road ran **ramp to ramp** and stopped at each system, when what was asked for — and
+what 0065 says — is a highway that runs **entirely through** with ramps branching off
+it beside the planet. Rebuilt.
+
+**A road is now a path, not a line** (`RoadPath`). That is what lets a ramp curve away
+tangentially, and it is also what step 8's curved trunk leg will need — the curvature
+work is now a matter of putting more points in a polyline rather than a new shape.
+
+**The network is two mainlines spanning the whole map, plus a pair of ramps at each
+system.** A ramp leaves the mainline tangentially, curves down and out, and ends at a
+portal *beside* the planet — beside rather than above, because directly above is
+inside the approach envelope and taking a ramp would arm a landing sequence nobody
+asked for. A ramp that serves nobody is not built, so the end systems get two each and
+the middle one gets four.
+
+**ADR 0067 — getting on and off is a union of lanes, not a junction.** Every deck
+going the player's way is asked how far outside it they are and the nearest governs,
+exactly as `BoundaryField` resolves regions. Merging and diverging fall straight out:
+steering toward a ramp makes the ramp the nearer answer. Written as a state machine
+the same interchange needs a trigger volume, a commitment rule, a change-of-mind path
+and a sideways-arrival recovery — every one of them a place for the road to grab the
+player, which is the conveyor this design rejects.
+
+**Numbers**: cruise 160, local leg 2600, trunk 18000. **Flagged**: the trunk was cut
+from 40 km because seven minutes of straight road outran the human's patience for a
+test — but success criterion 1 wants *"ten continuous minutes on a trunk highway"*,
+and at 18 km this leg is under two. Judging that criterion needs the number back up or
+several legs run together; it is about endurance and a short road cannot answer it
+however good it feels.
+
+Two things the frames caught: the camera parked above the ceiling and above the rim,
+so the first two interchange shots photographed the boundary treatment working rather
+than the interchange; and every portal at system B read "TO SYSTEM B" — a sign has to
+name the neighbour it serves, not the system it is standing in.
 
 ### 🔵 THE FIRST FEEL QUESTION IS OPEN
 

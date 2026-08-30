@@ -27,11 +27,13 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
-	if _scene == null or _scene.map().links().is_empty():
+	if _scene == null or _scene.map().road() == null:
 		return
-	var deck := _scene.map().links()[0].decks()[0]
+	var deck := _scene.map().road().get_node_or_null("RampOnAUpper") as RoadDeck
+	if deck == null:
+		return
 	var gate := deck.start_portal()
-	var travel := deck.axis()
+	var travel := deck.path().tangent_at(0.0)
 	if not _armed:
 		# Two frames either side of the portal, because engaging is a swept crossing
 		# — teleporting straight onto the road would never touch the aperture.
@@ -41,7 +43,11 @@ func _process(_delta: float) -> void:
 	if _scene.ship().cruise == null:
 		_scene.ship().position = gate.position + travel * 20.0
 		return
-	var frame := CruiseLane.frame_for(travel)
-	_scene.ship().position = gate.position + travel * ALONG_METRES \
-		+ frame[0] * OFF_CENTRE_METRES
-	_scene.ship().look_at(_scene.ship().position + travel, Vector3.UP)
+	# Up the ramp and out onto the mainline, which is where the road actually reads.
+	var main := _scene.map().road().get_node_or_null("MainlineUpper") as RoadDeck
+	var along: float = main.path().closest(deck.path().finish())[0] + ALONG_METRES
+	var here: Vector3 = main.path().point_at(along)
+	var heading: Vector3 = main.path().tangent_at(along)
+	var frame := CruiseLane.frame_for(heading)
+	_scene.ship().position = here + frame[0] * OFF_CENTRE_METRES
+	_scene.ship().look_at(_scene.ship().position + heading, Vector3.UP)

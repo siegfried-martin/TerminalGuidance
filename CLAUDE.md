@@ -196,7 +196,7 @@ scripts/world/         marker lattice, reference field, the system map and road
 scripts/effects/       detonation flash, pulse-beam tracer
 scripts/lib/           pure helpers — no scene tree, no disk, unit tested:
                        FlightGeometry, ReticleSteering, Damage, HullClass,
-                       BoundaryField and its regions, CruiseLane,
+                       BoundaryField and its regions, CruiseLane, RoadPath,
                        EnvelopeMeter, TuningSchema, TuningWriter
 scripts/sandbox/       the asset harness scene
 scripts/debug/         HUD, debug fly-cam, the F2 tuning panel

@@ -53,11 +53,13 @@ Where this section and the body below disagree, this section wins.
   already is that for the helm. This is not a combat POC, so the exploration scene
   carries the helm and the missile tube and **no turret and no gunner station**.
   The crew roster (ADR 0056) is not exercised; `T` is the only job there is.
-- **The highway runs THROUGH a system, and its ramps sit beside the planet** — not at
-  the rim, which is what step 6 first built. A system the road passes through has two
-  ramp sites, one either side of its centre, and the stretch between them is where the
-  player is off the road and next to the only thing worth arriving for (ADR 0065).
-  This supersedes "each system has portals at both ends where a road connects" below.
+- **The highway runs THROUGH a system and never stops** (ADR 0065). It is one
+  continuous mainline per direction spanning the whole map; the way on and off is a
+  **ramp** that leaves it tangentially and curves down to a portal beside the planet.
+  A ramp that serves nobody is not built, so an end system has two and a system the
+  road passes through has four. This supersedes "each system has portals at both ends
+  where a road connects" below. Which deck you are on is a union of lanes rather than
+  a junction (ADR 0067).
 - **The speed ladder was retuned after the first play session**: taxi 30, fighter 50,
   capital 25, cruise 140, and the capital's turn rate up by half. The per-class
   ceiling fractions had to rise with them — at the old ones a taxi asked for 30 would

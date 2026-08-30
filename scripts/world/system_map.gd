@@ -38,6 +38,10 @@ var _discs: Array[SystemDisc] = []
 var _planets: Array[Planet] = []
 var _approaches: Array[ApproachEnvelope] = []
 var _links: Array[SystemLink] = []
+## The road: two mainlines running the length of the map, and a pair of ramps at each
+## system. It spans the whole map rather than one leg, because the highway runs
+## through the systems rather than stopping at them (ADR 0065).
+var _road: RoadNetwork
 ## Every piece of playable space, united. Systems and corridors are regions in one
 ## list rather than two systems to be checked in turn (ADR 0062).
 var _field: BoundaryField = BoundaryField.new()
@@ -94,6 +98,10 @@ func _build() -> void:
 		approach.arrived.connect(func() -> void: arrived.emit(place))
 		approach.departed.connect(func() -> void: departed.emit())
 
+	_road = RoadNetwork.new()
+	_road.name = "Road"
+	add_child(_road)
+
 	for i in LEG_KEYS.size():
 		var link := SystemLink.new()
 		link.name = "Link%s%s" % [LETTERS[i], LETTERS[i + 1]]
@@ -136,23 +144,21 @@ func relayout() -> void:
 		if i < _links.size():
 			here += step * (Tuning.num(LEG_KEYS[i]) + radius * 2.0)
 
-	# The road's ramps sit INSIDE each system, one either side of its centre — the
-	# highway runs all the way through, and coming off it puts you beside the planet
-	# rather than a system-crossing away from it. A system the road passes through
-	# therefore has two ramp sites and four portals; an end system has one and two.
-	var ramp := Tuning.num("exploration/portal_site_offset")
 	for i in _links.size():
-		_links[i].leg_bearing_deg = bearing
-		# The CORRIDOR is mouth to mouth: it is the bounded space between two systems.
-		# The outgoing aperture is the last on the system you leave and the first on
-		# the one you arrive at, which falls out of the order the bearings were
-		# appended in above.
+		# The CORRIDOR is mouth to mouth: it is the bounded space between two systems,
+		# and it is what you fly when you decline the road. The outgoing aperture is
+		# the last on the system you leave and the first on the one you arrive at,
+		# which falls out of the order the bearings were appended in above.
 		_links[i].span(_discs[i].aperture_mouth(_discs[i].aperture_count() - 1),
 			_discs[i + 1].aperture_mouth(0))
-		# The ROAD is ramp to ramp, which is longer: it runs out through one rim and
-		# in through the other.
-		_links[i].road_span(_discs[i].position + step * ramp,
-			_discs[i + 1].position - step * ramp)
+
+	# The ROAD spans the whole map in one piece, through every system, and is built
+	# once rather than per leg — a highway that stops at each system is the thing
+	# ADR 0065 exists to forbid.
+	var centres: Array[Vector3] = []
+	for disc in _discs:
+		centres.append(disc.position)
+	_road.rebuild(centres, NAMES, bearing)
 
 	_field.regions.clear()
 	for disc in _discs:
@@ -220,9 +226,7 @@ func observe(ship: Mothership, delta: float) -> void:
 ## colour rather than a second rule about who may use a portal.
 func _ride_the_road(ship: Mothership, here: Vector3) -> void:
 	var allowed := ship.has_cruise_drive()
-	for link in _links:
-		for deck in link.decks():
-			deck.set_permitted(allowed)
+	_road.set_permitted(allowed)
 	if not _has_previous:
 		return
 
@@ -230,25 +234,60 @@ func _ride_the_road(ship: Mothership, here: Vector3) -> void:
 		# Losing the drive mid-road drops you where you are, at hull speed. That is
 		# the honest reading of the drive belonging to the hull, and it is the only
 		# way the roster can answer "what is the road worth" for a fighter.
-		if not allowed \
-				or _riding.end_portal().crossed(_previous, here) > 0 \
-				or _riding.start_portal().crossed(_previous, here) < 0:
+		if not allowed or _left_through_a_portal(here):
 			_riding = null
 			ship.cruise = null
 			ship.reset_reticle()
-		else:
-			ship.cruise = _riding.sample(here)
+			return
+		# Merging and diverging, with no junction logic in it. Every deck going the
+		# player's way is asked how far outside it they are; steering toward a ramp
+		# makes the ramp the nearer answer and it takes over, and running to the end
+		# of a ramp hands off to whatever else contains the ship. The handover happens
+		# because the geometry says so, not because a rule fired (ADR 0063's rule,
+		# applied to lanes instead of regions).
+		var lane := _riding.sample(here)
+		var alternative := _road.governing(here, _riding.is_upper, _riding)
+		if lane.metres_remaining <= 0.001:
+			# Off the end of this deck. A ramp ends on the mainline and hands over; a
+			# mainline ends at the edge of the map, where there is nothing to hand to
+			# and the road has simply run out.
+			if alternative == null or alternative.sample(here).is_outside():
+				_riding = null
+				ship.cruise = null
+				ship.reset_reticle()
+				return
+			_riding = alternative
+		elif alternative != null \
+				and alternative.sample(here).edge_distance() < lane.edge_distance():
+			_riding = alternative
+		ship.cruise = _riding.sample(here)
 		return
 
 	if not allowed:
 		return
-	for link in _links:
-		for deck in link.decks():
-			if deck.start_portal().crossed(_previous, here) > 0:
-				_riding = deck
-				ship.cruise = deck.sample(here)
-				ship.reset_reticle()
-				return
+	for deck in _road.decks():
+		if deck.start_portal() != null \
+				and deck.start_portal().crossed(_previous, here) > 0:
+			_riding = deck
+			ship.cruise = deck.sample(here)
+			ship.reset_reticle()
+			return
+
+
+## Did the ship just fly out through a portal? Out an off-ramp's mouth, or back out
+## the on-ramp it came in by.
+##
+## Both are the player's own flying. Nothing else ends cruise — there is no
+## interdiction, and a road that could drop you would be one.
+func _left_through_a_portal(here: Vector3) -> bool:
+	for deck in _road.decks():
+		if deck.end_portal() != null \
+				and deck.end_portal().crossed(_previous, here) > 0:
+			return true
+		if deck.start_portal() != null \
+				and deck.start_portal().crossed(_previous, here) < 0:
+			return true
+	return false
 
 
 ## The deck the player is riding, or null. For the HUD and for tests.
@@ -256,16 +295,14 @@ func riding() -> RoadDeck:
 	return _riding
 
 
-## Every portal on the map, both decks of every leg, both ends.
+## Every portal on the map. Only the ramps carry one — a mainline is joined and left
+## through them, which is what keeps the highway continuous through a system.
 func portals() -> Array[Portal]:
-	var found: Array[Portal] = []
-	for link in _links:
-		for deck in link.decks():
-			if deck.start_portal() != null:
-				found.append(deck.start_portal())
-			if deck.end_portal() != null:
-				found.append(deck.end_portal())
-	return found
+	return _road.portals()
+
+
+func road() -> RoadNetwork:
+	return _road
 
 
 ## The nearest way on or off the road. For the HUD — the player is meant to read the
@@ -367,14 +404,11 @@ func depart() -> void:
 			approach.depart()
 
 
-## Every ramp site on the map, in order along the road. For the HUD and for tests —
-## an end system has one and a system the road passes through has two.
+## Every ramp mouth on the map. For the HUD and for tests.
 func ramp_sites() -> Array[Vector3]:
 	var sites: Array[Vector3] = []
-	for link in _links:
-		for deck in link.decks():
-			if deck.start_portal() != null:
-				sites.append(deck.start_portal().position)
+	for portal in _road.portals():
+		sites.append(portal.position)
 	return sites
 
 

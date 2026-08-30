@@ -1,6 +1,6 @@
 class_name RoadDeck
 extends Node3D
-## One direction of one road: a lane you fly down, with a portal at each end.
+## One stretch of road in one direction: a mainline, or a ramp on or off one.
 ##
 ## Lanes are **one-way**, and each direction is a physically separate deck stacked
 ## above or below the other, visible to each other. There is no oncoming traffic in
@@ -15,24 +15,30 @@ extends Node3D
 ## nudges you back toward the centre-line. It is an incentive, not a wall — if the
 ## player can be stopped by it, it is wrong (ADR 0064).
 ##
+## **A deck follows a path, not a line** (`RoadPath`). That is what lets a ramp curve
+## away from the mainline tangentially, and what will let the trunk leg curve in step
+## 8. Portals are optional per end: a mainline has none — you join it from a ramp —
+## and a ramp carries one at whichever end sits by the planet.
+##
 ## Geometry is built in the MAP'S frame with the node left at identity, as with
 ## `SystemLink`: there is no rotation to get backwards that way.
 
-## How finely a rib is drawn, and how many samples a rail follows the flare with.
-## Infrastructure, not feel.
+## How finely a rib is drawn. Infrastructure, not feel.
 const RIB_SEGMENTS := 28
 
 var deck_name: String = "deck"
-## What the portal at the far end leads to.
-var destination: String = ""
 ## Upper or lower, per the deck convention. **Declared, not derived** — a road
 ## segment carries its deck, and a test asserts the declaration matches the
 ## orientation. The convention's value is as a mistake-catcher ("I'm heading east,
 ## why am I on the lower deck?"), and one exception makes it worse than no rule.
 var is_upper: bool = true
+## Which ends carry a way on or off. A mainline has neither: it is joined and left
+## through the ramps, which is what makes the highway continuous through a system
+## rather than something that stops at each one (ADR 0065).
+var has_start_portal: bool = false
+var has_end_portal: bool = false
 
-var _from: Vector3 = Vector3.ZERO
-var _to: Vector3 = Vector3.ZERO
+var _path: RoadPath = RoadPath.new()
 var _structure: MeshInstance3D
 var _start: Portal
 var _end: Portal
@@ -44,12 +50,6 @@ func _ready() -> void:
 	_structure.material_override = _make_material()
 	_structure.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_structure)
-	_start = Portal.new()
-	_start.name = "StartPortal"
-	add_child(_start)
-	_end = Portal.new()
-	_end.name = "EndPortal"
-	add_child(_end)
 	rebuild()
 
 
@@ -69,46 +69,57 @@ static func rides_upper(bearing_deg: float) -> bool:
 	return bearing <= 135.0 or bearing >= 315.0
 
 
-## Lay this deck between two points, both in the map's frame and already offset to
-## the deck's own height.
-func span(start: Vector3, finish: Vector3, leads_to: String, back_to: String) -> void:
-	_from = start
-	_to = finish
-	destination = leads_to
+## Lay this deck along a path, in the map's frame.
+func follow(line: PackedVector3Array, leads_to: String, back_to: String) -> void:
+	_path.set_points(line)
 	if _structure == null:
 		return
-	# Both portals at a site connect to the same neighbour — one is the way there and
-	# one is the way back — so the label has to say WHICH, not just where. The deck
-	# convention answers it too, but a player reading the sign should not have to
-	# derive their answer from a mnemonic about compass arcs.
-	_start.destination = "TO %s" % leads_to
-	_end.destination = "FROM %s" % back_to
+	_name_portals(leads_to, back_to)
 	rebuild()
 
 
+func _name_portals(leads_to: String, back_to: String) -> void:
+	# Both portals at a site connect to the same neighbour — one is the way there and
+	# one is the way back — so the label has to say WHICH, not just where.
+	if has_start_portal:
+		if _start == null:
+			_start = Portal.new()
+			_start.name = "StartPortal"
+			add_child(_start)
+		_start.destination = "TO %s" % leads_to
+	if has_end_portal:
+		if _end == null:
+			_end = Portal.new()
+			_end.name = "EndPortal"
+			add_child(_end)
+		_end.destination = "FROM %s" % back_to
+
+
 func rebuild() -> void:
-	if length() <= 0.001:
+	if _path.is_empty():
 		_structure.mesh = null
 		return
-	_start.place(_from, axis())
-	_end.place(_to, axis())
+	if _start != null:
+		_start.place(_path.start(), _path.tangent_at(0.0))
+	if _end != null:
+		_end.place(_path.finish(), _path.tangent_at(_path.length()))
 	_rebuild_structure()
 	repaint()
 
 
-func axis() -> Vector3:
-	var run := _to - _from
-	return Vector3.FORWARD if run.length_squared() <= 0.000001 else run.normalized()
+func path() -> RoadPath:
+	return _path
 
 
 func length() -> float:
-	return _from.distance_to(_to)
+	return _path.length()
 
 
-## The lane's half-extents this far along it. Full in the middle, narrowing to the
-## portal's own opening at each end over `portal_flare_length` — a freeway on-ramp
-## is narrower than the road it feeds, and the flare is what makes entry a piloting
-## act rather than a formality.
+## The lane's half-extents this far along it. Full through the middle, narrowing to
+## the portal's own opening at whichever end carries one — a freeway on-ramp is
+## narrower than the road it feeds, and the flare is what makes entry a piloting act
+## rather than a formality. An end with no portal does not narrow: the mainline is
+## full width where a ramp merges into it.
 func profile(along: float) -> Vector2:
 	var full := Vector2(Tuning.num("exploration/lane_width"),
 		Tuning.num("exploration/lane_height")) * 0.5
@@ -117,7 +128,11 @@ func profile(along: float) -> Vector2:
 	var flare := Tuning.num("exploration/portal_flare_length")
 	if flare <= 0.0:
 		return full
-	var from_end := minf(along, length() - along)
+	var from_end := INF
+	if has_start_portal:
+		from_end = minf(from_end, along)
+	if has_end_portal:
+		from_end = minf(from_end, length() - along)
 	if from_end >= flare:
 		return full
 	return mouth.lerp(full, clampf(from_end / flare, 0.0, 1.0))
@@ -127,10 +142,12 @@ func profile(along: float) -> Vector2:
 ## object, so the ship never has to look the road up (`CruiseLane`).
 func sample(point: Vector3) -> CruiseLane:
 	var lane := CruiseLane.new()
-	var direction := axis()
+	var found := _path.closest(point)
+	var along: float = found[0]
+	var centre: Vector3 = found[1]
+	var direction: Vector3 = found[2]
 	var frame := CruiseLane.frame_for(direction)
-	var along := clampf((point - _from).dot(direction), 0.0, length())
-	var offset := point - (_from + direction * along)
+	var offset := point - centre
 	var extents := profile(along)
 	lane.axis = direction
 	lane.right = frame[0]
@@ -157,8 +174,6 @@ func sample(point: Vector3) -> CruiseLane:
 ## allowed to hide, and a rib you can see the war through is still unmistakably a
 ## road.
 func _rebuild_structure() -> void:
-	var direction := axis()
-	var frame := CruiseLane.frame_for(direction)
 	var spacing := maxf(Tuning.num("exploration/lane_rib_spacing"), 1.0)
 	var span := length()
 	var count := maxi(int(span / spacing), 1)
@@ -167,16 +182,18 @@ func _rebuild_structure() -> void:
 		PackedVector3Array(), PackedVector3Array(), PackedVector3Array()]
 	for i in count + 1:
 		var along := span * float(i) / float(count)
-		var centre := _from + direction * along
+		var centre := _path.point_at(along)
+		var frame := CruiseLane.frame_for(_path.tangent_at(along))
 		var extents := profile(along)
 		var ring := PackedVector3Array()
 		for s in RIB_SEGMENTS:
-			var angle := TAU * float(s) / float(RIB_SEGMENTS)
-			ring.append(centre + _lozenge(frame, extents, angle))
+			ring.append(centre + _lozenge(frame, extents,
+				TAU * float(s) / float(RIB_SEGMENTS)))
 		for s in RIB_SEGMENTS:
 			verts.append(ring[s])
 			verts.append(ring[(s + 1) % RIB_SEGMENTS])
-		# The four extremes, followed along so the rails taper with the flare.
+		# The four extremes, followed along so the rails taper with the flare and
+		# lean with the curve.
 		for r in 4:
 			rails[r].append(centre + _lozenge(frame, extents, TAU * float(r) / 4.0))
 	for rail in rails:
@@ -208,8 +225,8 @@ func repaint() -> void:
 	(_structure.material_override as StandardMaterial3D).albedo_color = color
 
 
-## Blue or red on both this deck's portals, decided against the hull the player is
-## flying right now (ADR 0060).
+## Blue or red on this deck's portals, decided against the hull the player is flying
+## right now (ADR 0060).
 func set_permitted(allowed: bool) -> void:
 	if _start != null:
 		_start.permitted = allowed

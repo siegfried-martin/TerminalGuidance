@@ -9,10 +9,10 @@ extends Node
 ## it. Whether the hole reads as a way out from inside the volume is only visible in
 ## a frame.
 ##
-## Since step 6 it also carries the portal site: two stacked apertures at the mouth,
-## one per direction, whose colour is the whole of "may I use this?" (ADR 0060). That
-## the blue reads from inside the system, before the trip toward it, is the other
-## thing only a frame can answer.
+## Since the interchange landed it also carries the road running THROUGH the system
+## and out the aperture, with its ramps curving away beside the planet (ADR 0065).
+## Whether that reads as one continuous highway with exits, rather than as several
+## roads that happen to line up, is the other thing only a frame can answer.
 ##
 ## Lives in tools/ rather than in the scene, because the game should not carry a
 ## code path that exists for screenshots.
