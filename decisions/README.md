@@ -108,5 +108,6 @@ The reasoning, including what the alternative was and why it lost.
 | [0055](0055-countermeasures-inherit-velocity.md) | Countermeasures inherit the launcher's velocity; aimed shots do not |
 | [0056](0056-pilot-or-gunner.md) | The player holds a job, not a mode; the autopilot follows from it |
 | [0058](0058-npcs-are-worse-than-a-player.md) | NPCs are worse than an engaged player at every station, gunners included |
+| [0062](0062-the-rim-is-a-boundary.md) | The rim is a boundary, its openings are funnels, and the outbound clamp reaches zero |
 
-*Next number: 0062.*
+*Next number: 0063.*

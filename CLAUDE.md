@@ -192,7 +192,7 @@ scripts/world/         marker lattice, reference field
 scripts/effects/       detonation flash, pulse-beam tracer
 scripts/lib/           pure helpers — no scene tree, no disk, unit tested:
                        FlightGeometry, ReticleSteering, Damage, HullClass,
-                       TuningSchema,
+                       BoundaryField, EnvelopeMeter, TuningSchema,
                        TuningWriter
 scripts/sandbox/       the asset harness scene
 scripts/debug/         HUD, debug fly-cam, the F2 tuning panel

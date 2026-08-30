@@ -153,25 +153,24 @@ func _build_hud() -> void:
 	# The disc, stated as the three things it decomposes into (ADR 0061) rather than
 	# as one height, because that is how it is tuned.
 	_hud.add_row("system", func() -> String:
-		return "%.0f m across  ·  %.0f m tall (%.0f up / %.0f down)" % [
+		return "%.0f m across  ·  %.0f m tall (%.0f up / %.0f down)  ·  %d aperture" % [
 			_system.radius() * 2.0, _system.height(),
-			_system.ceiling_height(), _system.floor_depth()])
+			_system.ceiling_height(), _system.floor_depth(),
+			_system.aperture_count()])
 	_hud.add_row("altitude", func() -> String:
-		return "%+.0f m  ·  %.0f m to the nearer face" % [
-			_ship.position.y,
-			DiscBounds.distance_to_face(_ship.position.y,
-				_system.ceiling_height(), _system.floor_depth())])
+		return "%+.0f m  ·  %.0f m of open space to the nearest edge" % [
+			_ship.position.y, _system.field().distance_to_edge(_ship.position)])
 	# The telegraph, in words as well as in red. A timer the player cannot see is
 	# not a telegraph, and this POC is where the treatment gets read for the first
 	# time — it has never been built before.
 	_hud.add_row("bounds", func() -> String:
-		var overshoot := DiscBounds.overshoot(_ship.position.y,
-			_system.ceiling_height(), _system.floor_depth())
+		var field := _system.field()
+		var overshoot := field.overshoot(_ship.position)
 		if overshoot <= 0.0:
 			if _system.warning() <= 0.0:
 				return "clear"
-			return "APPROACHING A FACE  ·  %.0f%%" % (_system.warning() * 100.0)
-		var rate := DiscBounds.damage_per_second(_system.seconds_outside(),
+			return "NEARING THE EDGE  ·  %.0f%%" % (_system.warning() * 100.0)
+		var rate := BoundaryField.damage_per_second(_system.seconds_outside(),
 			Tuning.num("exploration/bounds_grace_seconds"),
 			Tuning.num("exploration/bounds_damage_ramp_seconds"),
 			Tuning.num("exploration/bounds_damage_per_second"))
@@ -180,6 +179,22 @@ func _build_hud() -> void:
 				Tuning.num("exploration/bounds_grace_seconds")
 					- _system.seconds_outside()]
 		return "OUTSIDE  ·  %.0f m past  ·  taking %.0f hp/s" % [overshoot, rate])
+	# Where the rim opens, and how far off that bearing the nose currently is. Step 6
+	# hangs the local leg's portal here; until then this is how the aperture is found
+	# without a map, and it is the only way out of the volume.
+	_hud.add_row("aperture", func() -> String:
+		if _system.aperture_count() <= 0:
+			return "the rim is closed"
+		var mouth := _system.aperture_mouth(0)
+		var to_mouth := mouth - _ship.position
+		var off := rad_to_deg((-_ship.basis.z).angle_to(to_mouth))
+		var where := "bearing %.0f deg" % Tuning.num("exploration/aperture_bearing_deg")
+		if _system.field().throat_at(_ship.position) >= 0:
+			where = "IN THE THROAT"
+		elif _system.field().aperture_at(_ship.position) >= 0:
+			where = "lined up — no rim ahead"
+		return "%.0f m away  ·  %.0f deg off the nose  ·  %s" % [
+			to_mouth.length(), off, where])
 	# Damage means nothing while the ship cannot be hurt, and the bounds row above
 	# reports an hp/s rate whether or not it costs anything. Saying so here keeps
 	# that from reading as a lie during a session where the flag is on.
@@ -187,10 +202,14 @@ func _build_hud() -> void:
 		if Tuning.flag("ship/invulnerable"):
 			return "INVULNERABLE  ·  boundary damage is counted, not taken"
 		return "%.0f hp" % Tuning.num("ship/hp"))
+	# The clamp is heading-proportional (ADR 0062), so this row has to say what the
+	# ship is doing as well as how hard it is being held: at the same point in the
+	# red, straight out is stopped, along the edge is halved, and back in is free.
 	_hud.add_row("strain", func() -> String:
 		if is_equal_approx(_ship.speed_ceiling_scale, 1.0):
 			return "—"
-		return "outbound speed limit at %.0f%%" % (_ship.speed_ceiling_scale * 100.0))
+		return "speed limit at %.0f%%  ·  heading is %.0f%% outbound" % [
+			_ship.speed_ceiling_scale * 100.0, _system.outbound() * 100.0])
 	_hud.add_row("approach", func() -> String: return _approach.state_label())
 	_hud.add_row("planet", func() -> String:
 		return "%.0f m below  ·  r %.0f  ·  %.0f m away" % [

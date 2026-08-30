@@ -15,10 +15,10 @@ the human's explicit direction.
 | | |
 |---|---|
 | Branch | `feat/exploration-tuning-and-hud`, PR #14 |
-| Gate | `make check` — 870 checks, 0 failed |
+| Gate | `make check` — 906 checks, 0 failed |
 | Run it | `make run SCENE=res://scenes/exploration.tscn` |
-| Built | Exploration POC steps 1–4 |
-| **Do next** | **The system border.** Fully designed and agreed, not yet written — see §SETTLED, NOT YET BUILT below. Then POC step 5. |
+| Built | Exploration POC steps 1–4, plus the system border (ADR 0062) |
+| **Do next** | **POC step 5** — the second system and the local leg, off-road. See `docs/EXPLORATION_POC_IMPLEMENTATION.md`. The aperture the leg attaches to already exists: `SystemDisc.aperture_mouth(0)`. |
 
 Everything under §Where the build is and below is the **combat POC's history**,
 kept for its reasoning. It is not a to-do list, and its §Next is superseded by the
@@ -130,21 +130,36 @@ and a large ship feeling slow on a descent is *correct* rather than a cost being
 paid. The whole ladder derives from this, so everything below it — cruise, leg
 times, system size — is now anchored rather than provisional.
 
-### 🔜 SETTLED, NOT YET BUILT: the system border
+### ✅ The system border is built — ADR 0062
 
-Decided with the human 2026-08-29, before implementation. **Build this next.**
+Decided with the human and built the same day, 2026-08-29. `BoundaryField` replaces
+`DiscBounds`; `SystemDisc` grew a rim and a funnel. What was agreed, and what it
+became:
 
-**The rim becomes a boundary**, which supersedes ADR 0011's *"do not put a wall,
+**The rim became a boundary**, which supersedes ADR 0011's *"do not put a wall,
 threshold, or prompt at the rim"*. That clause existed because lateral exit **was**
 departure; once roads exist, departure is through the corridor and an open rim leads
 somewhere nothing is rendered. That is the highway design's own renderability
-argument, so ADR 0057 is untouched and it is 0011 that gives. **Needs an ADR.**
+argument, so ADR 0057 is untouched and it is 0011 that gives. **ADR 0062.**
 
 **Apertures are funnels.** The rim opens where a road attaches — wider at the rim,
 narrowing into the corridor, so the player is guided in rather than threading a
-1750 m hole. The current single-system scene declares a **placeholder aperture** at
-the bearing the local leg will use, so the rim is testable before step 6 rather than
-being closed now and reopened later.
+1750 m hole. The single-system scene declares a **placeholder aperture** on
+`aperture_bearing_deg` (90°, due east), so the rim is testable before step 6 rather
+than being closed now and reopened later. Step 5 replaces the bearing with the local
+leg's own and attaches the road at `SystemDisc.aperture_mouth(0)`.
+
+Two things about it that are not obvious from the numbers, and both surprised me:
+
+- **The mouth is measured across the throat, not along the rim.** 2200 m of mouth in
+  a 3500 m disc sounds like two thirds of the boundary gone; it is about 78° of arc,
+  a fifth. The rim is still overwhelmingly a rim.
+- **The throat opens out vertically.** Past the rim plane the disc's 400/750 faces
+  stop applying and the funnel wall — 1100 m at the mouth — is the only constraint.
+  Leaving a flat system for a round tube should feel like a ceiling lifting, and it
+  does. There is a step at the rim plane for anything hugging the ceiling right at
+  the mouth; that is real geometry, not a bug, and the aperture sits on the combat
+  plane where nothing approaches it from up there.
 
 **The clamp becomes heading-proportional, and reaches zero.** The old version was a
 boolean — any outbound velocity component at all triggered the full clamp on the
@@ -161,21 +176,41 @@ pushing outward arrives at zero and must turn. **The boundary stops you by makin
 outward cost everything, never by taking the stick** — magnitude, never direction,
 exactly as before.
 
-Note that "the faces slow the player, they never stop them" currently appears in
-`tuning.cfg`'s comments. That was mine, not ADR 0011's, and it is wrong — drop it.
+("The faces slow the player, they never stop them" used to appear in `tuning.cfg`.
+That was mine, not ADR 0011's, and it was wrong. Gone.)
 
 **Two distances, previously conflated.** `bounds_warning_band` is metres *inside*
 the edge where the faces redden: pure telegraph, no mechanical effect. A new
 `bounds_stop_distance` is metres *outside* the edge over which the cap ramps to
 zero. The red zone is genuinely outside the good zone and can be entered.
 
-**Boundaries become a list of constraints**, each contributing a distance and an
-outward normal, rather than ceiling/floor/rim being three special cases. `warning`
-is the max over them; `outward` is their normals summed weighted by depth. Every
-corner then falls out of the arithmetic — at a ceiling∩rim corner the combined
-normal is the diagonal, so down-and-inward is free and up-and-out is stopped, with
-no case written for it. A disc is one constraint set; the whole-map boundary the
-human expects to want later is a different set, not different code.
+**Boundaries became a list of constraints**, each contributing a distance and an
+outward normal, rather than ceiling/floor/rim being three special cases. `outward` is
+their normals summed weighted by depth, so every corner falls out of the arithmetic —
+at a ceiling∩rim corner the combined normal is the diagonal, down-and-inward is
+cheapest and up-and-out is stopped, with no case written for it. A disc is one
+constraint set; the whole-map boundary the human expects to want later is a different
+set, not different code.
+
+Verified by rendering it: `tools/shots/aperture_shot.tscn` sits obliquely inside the
+disc looking at the mouth, because a funnel photographed down its own centre-line is
+invisible by construction — every wall is edge-on and the frame shows a black circle
+with no way to tell a funnel from a hole. From the side the taper reads, the hole in
+the rim reads, and the rim itself reads as a translucent wall with markers visible
+through it rather than as a lid.
+
+That frame also caught the HUD calling the middle of the disc "IN THE THROAT" — being
+*lined up* with an opening a kilometre away is not being in it, and `throat_at` is now
+a separate question from `aperture_at`.
+
+**One thing the plan did not anticipate: the volume is a UNION, not one flat list.**
+The playable space is the disc *plus* a funnel out of each aperture. Written as a
+single list it goes wrong in two visible ways — a red glow while flying up the middle
+of the opening (the rim is still "right there" even though it has a hole in it), and
+a ship drifting wide in the corridor being told to fly *backward into the disc*
+rather than sideways toward the axis. So constraints intersect within a region
+(deepest wins) and unite between regions (shallowest wins), and the throat is
+continuous with the disc instead of having a seam. Both cases are now tests.
 
 ### 🔵 THE FIRST FEEL QUESTION IS OPEN
 
@@ -210,11 +245,12 @@ no turret, no roster — only the pilot exists here.
 
 **ADR 0011 was built for the first time.** The combat arena has always been an
 unbounded marker lattice; there was no "existing boundary treatment" for the POC doc
-to reuse. The disc now has hard flat faces, an open rim, a red volume, a telegraphed
-grace period, ramping damage and the outbound speed clamp.
+to reuse. The disc got hard flat faces, a red volume, a telegraphed grace period,
+ramping damage and the outbound speed clamp. *(The open rim and the clamp shape were
+both superseded the same day by ADR 0062 — see above.)*
 
 The clamp is **on the speed limit, not on the velocity vector**, which is what makes
-ADR 0011's *"magnitude only, never direction"* structural: `DiscBounds` returns a
+ADR 0011's *"magnitude only, never direction"* structural: `BoundaryField` returns a
 scale and never sees a heading it could return, so no code path exists that can turn
 the player's ship. It shows on the HUD — the speed row's "of N" comes down.
 

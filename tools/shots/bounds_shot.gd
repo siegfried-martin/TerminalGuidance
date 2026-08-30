@@ -4,7 +4,7 @@ extends Node
 ## the desk.
 ##
 ## This exists because the one thing ADR 0011 asks for that no test can check is
-## *"the volume is visibly red"*. The logic is covered by `DiscBounds` and the
+## *"the volume is visibly red"*. The logic is covered by `BoundaryField` and the
 ## wiring by the scene test; what neither can see is whether the red actually
 ## arrives on screen, in time, at a strength a player would notice.
 ##
