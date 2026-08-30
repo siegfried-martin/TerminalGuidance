@@ -173,6 +173,10 @@ protect is not implemented yet.
 - `make shot` renders frames to `.shots/` via the movie writer, so a visual change
   can be verified from the command line without opening a window or the editor.
   Use it; do not ask the human to look at something you have not looked at.
+- `make run` plays the combat arena, `make fly` the exploration POC, `make sandbox`
+  the asset harness. One command per scene rather than a `SCENE=` argument to
+  remember: the scenes are separate because they carry different stations, and
+  telling the human the wrong one wastes a session.
 - Systems logic is verified by tests. Physics and feel are verified by the human.
 
 ## Project layout

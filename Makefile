@@ -6,13 +6,21 @@ SCENE ?= res://scenes/arena.tscn
 SHOTS ?= .shots
 
 .DEFAULT_GOAL := help
-.PHONY: help run check import assets shot editor apiref clean
+.PHONY: help run fly sandbox check import assets shot editor apiref clean
 
 help:  ## Show this help
 	@grep -E '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
 
-run:  ## Play the combat arena in a window (SCENE=res://scenes/exploration.tscn for the travel POC, sandbox.tscn for the asset harness)
+run:  ## Play the combat arena in a window (SCENE=... to override)
 	$(GODOT) --scene $(SCENE)
+
+# The travel POC is a separate scene on purpose: it carries the helm and nothing
+# else, because only the pilot matters there. Two scenes means two commands.
+fly:  ## Play the exploration POC — systems, the corridor, the road, docking
+	$(GODOT) --scene res://scenes/exploration.tscn
+
+sandbox:  ## Open the asset harness with the debug fly-cam
+	$(GODOT) --scene res://scenes/sandbox.tscn
 
 check: import  ## Headless gate: compiles, Godot-3 API lint, tuning keys, assets, scene build
 	@# `timeout` is a watchdog, not a nicety: if the runner script itself fails to

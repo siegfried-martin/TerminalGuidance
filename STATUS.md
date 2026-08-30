@@ -16,7 +16,7 @@ the human's explicit direction.
 |---|---|
 | Branch | `feat/exploration-tuning-and-hud`, PR #14 |
 | Gate | `make check` — 987 checks, 0 failed |
-| Run it | `make run SCENE=res://scenes/exploration.tscn` |
+| Run it | `make fly` |
 | Built | Exploration POC steps 1–6 (ADRs 0062–0064) |
 | **Do next** | **POC step 7** — cruise fuel and the debug teleport. See `docs/EXPLORATION_POC_IMPLEMENTATION.md`. |
 | **Waiting on you** | **The third checkpoint is live and flyable**: is a 41-second hop worth the portal at all, or is it ceremony around nothing? Fly A→B both ways — the portal, and the 258 s by hand. Both still exist. |
@@ -215,8 +215,8 @@ continuous with the disc instead of having a seam. Both cases are now tests.
 
 ### ✅ Exploration step 5 is built — two systems and the local leg
 
-`make run SCENE=res://scenes/exploration.tscn`. System A, 4 km of corridor, system
-B. **No road, no portals, no cruise drive** — the crossing is flown by hand, which is
+`make fly`. System A, 4 km of corridor, system B. **No road, no portals, no
+cruise drive** — the crossing is flown by hand, which is
 the whole point: it is the control condition success criterion 2 is measured against,
 and it has to be flown before the highway exists rather than remembered afterwards.
 
@@ -262,8 +262,8 @@ POC doc puts the teleport in step 7. Say so if it should move earlier.
 
 ### ✅ Exploration step 6 is built — the road
 
-`make run SCENE=res://scenes/exploration.tscn`. Two stacked one-way decks down the
-corridor, a portal at each end of each, and a cruise drive that engages on contact.
+`make fly`. Two stacked one-way decks down the corridor, a portal at each end of
+each, and a cruise drive that engages on contact.
 
 **Both ways of making the crossing exist at once, which is the point.** The road did
 not replace the corridor — it was laid *inside* it. The HUD's `leg` row reads 41 s
@@ -303,7 +303,7 @@ speed` while stopped, which is a division rather than a reading.
 ### 🔵 THE FIRST FEEL QUESTION IS OPEN
 
 Step 4's checkpoint: **does approach feel like arriving somewhere, or like a menu
-with a runway?** `make run SCENE=res://scenes/exploration.tscn`.
+with a runway?** `make fly`.
 
 Worth knowing while reading it: the camera boom scales with hull size, so the ship
 stays the same size on screen and the *world* changes scale instead — a small ship
@@ -327,8 +327,8 @@ makes the system feel large. That is `camera/boom_hull_scale_influence`; drop it
   3–4x the fight in both dimensions. Whether that comes down is a feel call.
 ### Exploration step 2 is built — the first system disc
 
-`make run SCENE=res://scenes/exploration.tscn`. A 3500 m disc, 1150 m tall (400 up,
-750 down), a planet 450 m below the combat plane, and manual flight. No missiles,
+`make fly`. A 3500 m disc, 1150 m tall (400 up, 750 down), a planet 450 m below
+the combat plane, and manual flight. No missiles,
 no turret, no roster — only the pilot exists here.
 
 **ADR 0011 was built for the first time.** The combat arena has always been an
