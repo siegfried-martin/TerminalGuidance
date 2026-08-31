@@ -555,17 +555,26 @@ func _fly_berthed(delta: float) -> void:
 	# NO INPUT IS READ HERE, and that is the whole of what a berth is. The throttle,
 	# the stick and the strafe all do nothing; the one control that still works is the
 	# one that leaves (ADR 0082).
-	var top := manual_max_speed()
+	# THE RAIL LEADS AND THE SHIP FOLLOWS IT. The berth advances its own point along
+	# the road and the ship is drawn toward that point — it is never pushed along an
+	# axis, because a ship pushed along an axis while also chasing a projection of
+	# itself chases a target that runs away at its own speed.
+	#
+	# Onto the rail at a bounded rate rather than onto it at once. Taking a berth is a
+	# move the ship makes — the one moment on the road that must not be a teleport
+	# (ADR 0066) — so the step is the rail's own speed plus what the pull allows.
+	#
+	# The budget eases DOWN from whatever the ship was already doing, so arriving at
+	# 250 and settling to 188 is a transition rather than a step. It cannot overshoot:
+	# `move_toward` stops at the rail's point, so a larger budget only closes the gap
+	# sooner.
 	var brake_seconds := maxf(
 		HullClass.num(hull_class, "brake_seconds", "ship/manual_brake_seconds"), 0.01)
-	_speed = brake_limited(_speed, berth.speed, top, brake_seconds, delta)
-
-	# Onto the rail at a bounded rate rather than onto it at once. Engaging a berth is
-	# a move the ship makes — the one moment on the road that must not be a teleport
-	# (ADR 0066).
-	var toward := berth.point - position
-	var slide := toward.limit_length(berth.closing_speed() * delta) \
-		if toward.length() > 0.001 else Vector3.ZERO
+	var budget := brake_limited(_speed, berth.speed, manual_max_speed(),
+		brake_seconds, delta)
+	var was_at := position
+	position = position.move_toward(berth.point,
+		(budget + berth.closing_speed()) * delta)
 
 	# The nose comes round to the road at the ship's OWN turn rate, so a berth taken
 	# while pointing off the lane looks like the ship straightening rather than like
@@ -587,11 +596,11 @@ func _fly_berthed(delta: float) -> void:
 		Tuning.num("controls/mouse_sensitivity"), 0.0,
 		Tuning.num("exploration/berth_look_cone_deg"))
 
-	_velocity = berth.axis * _speed + slide / maxf(delta, 0.0001)
-	position += berth.axis * _speed * delta + slide
+	_velocity = (position - was_at) / delta
+	_speed = _velocity.length()
 	# The throttle is kept honest against the speed being held, so leaving the berth
 	# does not lurch: the ship carries on at what it was already doing.
-	_throttle = clampf(_speed / maxf(top, 0.001), 0.0, 1.0)
+	_throttle = clampf(_speed / maxf(manual_max_speed(), 0.001), 0.0, 1.0)
 
 
 ## Sitting in a berth on the road, carried rather than flown.

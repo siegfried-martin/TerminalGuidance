@@ -206,16 +206,29 @@ func _build_hud() -> void:
 			return "DOCKED"
 		var settling := "settling, %.0f m off the rail" % hold.error \
 			if hold.error > 1.0 else "on the rail"
-		var taking := _map.berth().taking()
-		if taking != null:
-			return "DOCKED  ·  %s  ·  taking %s  ·  C to leave" % [
-				hold.deck_name, taking.deck_name]
-		var aimed := _map.aimed_sign()
-		if aimed != null:
-			return "DOCKED  ·  %s  ·  click to take %s" % [hold.deck_name,
-				aimed.label_text]
 		return "DOCKED  ·  %s  ·  %.0f m/s  ·  %s  ·  C to leave" % [
 			hold.deck_name, hold.speed, settling]
+	)
+	# WHAT HAPPENS IF YOU DO NOTHING. While berthed this is the only thing telling the
+	# player the road is theirs to redirect, and it is why the default is a sentence
+	# rather than a dash: "stay on highway A-377B" says both what will happen and that
+	# something else could (ADR 0083).
+	_hud.add_row("route", func() -> String:
+		if not _map.berth().is_berthed():
+			return "—"
+		var riding := _map.riding()
+		var staying := "stay on highway %s" % riding.route_name \
+			if riding != null and not riding.route_name.is_empty() \
+			else "stay on this road"
+		var taken := _map.selected_sign()
+		var aimed := _map.aimed_sign()
+		if taken != null:
+			return "%s  ·  %s to cancel" % [taken.label_text.to_upper(),
+				"click it again" if aimed == taken else "look back at the sign"]
+		if aimed != null:
+			return "%s  ·  click to take %s instead" % [staying.to_upper(),
+				aimed.label_text]
+		return "%s  ·  look at an exit sign and click to take it" % staying.to_upper()
 	)
 	# Lane position, stated as metres rather than as a bar. The lane boundary is soft
 	# and the penalty is proportional, so "how far out am I" is the number that

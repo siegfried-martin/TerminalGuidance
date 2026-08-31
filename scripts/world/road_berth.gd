@@ -39,11 +39,21 @@ var _hold: BerthHold = null
 ## and a rail that pulled the ship back onto its start would be a route rather than a
 ## rebind (ADR 0083).
 var _taking: RoadDeck = null
+## How far along the bound road the RAIL has got. The berth advances this by arc
+## length and the ship is drawn toward the point it names.
+##
+## It has to be integrated rather than re-derived from the ship each frame. Projecting
+## the ship onto the road and adding a step from there makes the target recede
+## whenever the ship is off the rail — the ship chases a point that runs away from it
+## at its own speed, and on a ramp that dives away from the mainline it never catches
+## up. Measured at 644 m off the rail before this was integrated.
+var _along: float = 0.0
 
 
 ## Offer, hold, or release, for this frame. `riding` is the deck the ship is on, or
 ## null when it is off the road.
-func observe(ship: Mothership, riding: RoadDeck, pressed: bool) -> void:
+func observe(ship: Mothership, riding: RoadDeck, pressed: bool,
+		delta: float) -> void:
 	if riding == null or ship.cruise == null:
 		release(ship)
 		return
@@ -55,10 +65,15 @@ func observe(ship: Mothership, riding: RoadDeck, pressed: bool) -> void:
 		# Running out of road ends the berth the same way it ends cruise: there is
 		# nothing to hand to, so the ship is handed back to itself, still moving.
 		if _deck == null or _deck.length() <= 0.0 \
-				or _deck.sample(ship.position).metres_remaining <= 0.001:
+				or _deck.length() - _along <= 0.001:
 			release(ship)
 			return
 		_rebind_if_reached(ship)
+		# The rail runs on at the berth's own speed. Clamped to the road, so a berth
+		# that reaches the end stops advancing rather than running off the end of the
+		# path and being reported as sitting on its last metre for ever (ADR 0076).
+		_along = clampf(_along + _hold.speed * delta, 0.0, _deck.length()) \
+			if _hold != null else _along
 		_hold = _sample(ship)
 		ship.berth = _hold
 		return
@@ -74,6 +89,7 @@ func engage(ship: Mothership, riding: RoadDeck) -> void:
 		return
 	_deck = riding
 	_state = State.BERTHED
+	_along = _deck.path().closest(ship.position)[0]
 	_hold = _sample(ship)
 	ship.berth = _hold
 
@@ -87,6 +103,7 @@ func release(ship: Mothership) -> void:
 	_deck = null
 	_hold = null
 	_taking = null
+	_along = 0.0
 
 
 ## Near enough the roadway to be offered a berth. Measured from the FLOOR of the lane,
@@ -102,10 +119,9 @@ func _within_reach(ship: Mothership) -> bool:
 
 func _sample(ship: Mothership) -> BerthHold:
 	var hold := BerthHold.new()
-	var found := _deck.path().closest(ship.position)
-	var along: float = found[0]
-	var centre: Vector3 = found[1]
-	var direction: Vector3 = found[2]
+	var along := clampf(_along, 0.0, _deck.length())
+	var centre := _deck.path().point_at(along)
+	var direction := _deck.path().tangent_at(along)
 	var frame := CruiseLane.frame_for(direction)
 	var extents := _deck.profile(along)
 	hold.axis = direction
@@ -129,8 +145,11 @@ func _sample(ship: Mothership) -> BerthHold:
 ## **This is a rail rebind, not a route.** Nothing is planned, nothing is chosen for
 ## the player, and there is no destination held anywhere: the road the berth follows
 ## changes, once, at a place the player could see (ADR 0083).
+## Passing null cancels a choice already made — clicking the lit sign again puts the
+## ship back on the highway, which is the only way out of a decision made in a hurry
+## short of leaving the berth.
 func take_exit(ramp: RoadDeck) -> void:
-	if _state != State.BERTHED or ramp == null:
+	if _state != State.BERTHED:
 		return
 	_taking = ramp
 
@@ -153,6 +172,7 @@ func _rebind_if_reached(ship: Mothership) -> void:
 	if onto.metres_travelled <= 0.001 or onto.metres_remaining <= 0.001:
 		return
 	_deck = _taking
+	_along = onto.metres_travelled
 	_taking = null
 
 

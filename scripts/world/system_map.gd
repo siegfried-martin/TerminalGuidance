@@ -28,6 +28,15 @@ const LEG_KEYS: PackedStringArray = ["exploration/local_leg_length",
 ## more is content this POC does not test.
 const NAMES: PackedStringArray = ["SYSTEM A", "SYSTEM B", "SYSTEM C"]
 const LETTERS: PackedStringArray = ["A", "B", "C"]
+## ROADS HAVE NAMES. "Stay on highway A-377B" is a sentence a player can act on;
+## "stay on this road" is not, and while berthed the routing readout is the only thing
+## telling them what happens if they do nothing (ADR 0083).
+##
+## Authored here rather than derived from the systems they connect, because a real
+## route number outlives the places on it — a road keeps its name when a new system is
+## built on it, and deriving one would rename the whole highway.
+const TRUNK_ROUTE := "A-377B"
+const CROSSING_ROUTE := "K-112"
 
 ## Relayed from whichever system's envelope fired, so the dock screen can say where
 ## it is without the scene tracking which envelope belongs to which planet.
@@ -219,7 +228,7 @@ func relayout() -> void:
 		crossing.append(meets - cross_step * reach)
 		crossing.append(meets)
 		crossing.append(meets + cross_step * reach)
-	_road.rebuild(_spine, centres, NAMES, crossing)
+	_road.rebuild(_spine, centres, NAMES, TRUNK_ROUTE, crossing, CROSSING_ROUTE)
 
 	_field.regions.clear()
 	for disc in _discs:
@@ -267,7 +276,7 @@ func observe(ship: Mothership, delta: float) -> void:
 	# AFTER the road, because a berth binds to the deck the ship is on and the road is
 	# what decides which one that is. Reading the key here rather than inside the
 	# berth keeps `RoadBerth` drivable by the gate, which has no input device.
-	_berth.observe(ship, _riding, Input.is_action_just_pressed("dock"))
+	_berth.observe(ship, _riding, Input.is_action_just_pressed("dock"), delta)
 	_aim_signs(ship, Input.is_action_just_pressed("fire_primary"))
 	_road.set_active(_riding)
 	# The starfield rides with the player so it never gets nearer, the way a sky does.
@@ -413,18 +422,46 @@ func _left_through_a_portal(here: Vector3) -> bool:
 ## way of pointing at a thing in the world (ADR 0035).
 func _aim_signs(ship: Mothership, clicked: bool) -> void:
 	var picked: ExitSign = null
-	if _berth.is_berthed():
+	if _berth.is_berthed() and _berth.hold() != null:
 		var looking := ship.aim_direction()
 		var best := Tuning.num("exploration/exit_sign_pick_deg")
+		# ONLY EXITS OFF THE ROAD YOU ARE ON. The two carriageways share one building
+		# with glass down the middle, so the oncoming side's signs are perfectly
+		# visible from here — and clicking one would bind the berth to a ramp leaving
+		# a road going the other way.
+		#
+		# The test is the one the union already uses (ADR 0072, ADR 0081): a ramp
+		# whose direction where it leaves is outside the steering cone around the road
+		# you are held against is not a road you could take. An oncoming carriageway's
+		# ramp is 180 degrees outside it. No new flag, and it stays right when a road
+		# crosses at an angle.
+		var heading := _berth.hold().axis
+		var cone := cos(deg_to_rad(Tuning.num("exploration/cruise_turn_clamp_deg")))
 		for sign in _road.signs():
+			if sign.ramp == null \
+					or sign.ramp.path().tangent_at(0.0).dot(heading) < cone:
+				continue
 			var off := sign.offset_degrees(ship.position, looking)
 			if off >= 0.0 and off < best:
 				best = off
 				picked = sign
+	var taking := _berth.taking()
 	for sign in _road.signs():
 		sign.set_aimed(sign == picked)
+		sign.set_selected(taking != null and sign.ramp == taking)
 	if picked != null and clicked:
-		_berth.take_exit(picked.ramp)
+		# A TOGGLE. Clicking the exit that is already going to happen cancels it and
+		# puts the ship back on the highway, which is the only way out of a choice made
+		# in a hurry short of leaving the berth entirely.
+		_berth.take_exit(null if picked.ramp == taking else picked.ramp)
+
+
+## The exit that is going to happen, as its sign. For the HUD and for tests.
+func selected_sign() -> ExitSign:
+	for sign in _road.signs():
+		if sign.is_selected():
+			return sign
+	return null
 
 
 ## The exit sign the reticle is on, or null. For the HUD and for tests.

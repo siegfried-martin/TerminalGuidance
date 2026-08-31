@@ -74,16 +74,10 @@ func _process(_delta: float) -> void:
 	# Look at the nearest exit sign ahead, which is the other thing only a frame can
 	# answer: whether a sign is READABLE from the roadway at the lead distance the
 	# road gives, or whether it is a smudge by the time it matters.
-	var signs := _scene.map().road().signs()
-	var nearest: ExitSign = null
-	var closest := INF
-	for sign: ExitSign in signs:
-		var toward: Vector3 = sign.position - _scene.ship().position
-		if toward.dot(-_scene.ship().basis.z) <= 0.0:
-			continue
-		if toward.length() < closest:
-			closest = toward.length()
-			nearest = sign
-	if nearest != null:
-		_scene.ship().reset_reticle()
-		_scene.ship().add_mouse_steer(Vector2.ZERO)
+	# Ask the MAP which sign is live rather than picking one here. The harness picking
+	# its own nearest-ahead is what produced a frame of the ship taking an exit off
+	# the oncoming carriageway — which turned out to be a real defect in the pick, not
+	# a defect in the harness, and the harness should not be able to reproduce it.
+	var live := _scene.map().aimed_sign()
+	if live != null and _scene.map().berth().taking() == null:
+		_scene.map().berth().take_exit(live.ramp)

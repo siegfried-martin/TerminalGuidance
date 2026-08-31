@@ -49,6 +49,15 @@ Signs are a small extension rather than new machinery: `Portal` already mounts a
 world-space destination label. An exit sign is that idea moved onto the structure, with
 a pick radius.
 
+> *Amended 2026-08-31, from a play session: the decision is unchanged and one clause
+> was missing.* **A sign is only live for an exit off the road you are on.** The two
+> carriageways share one building with glass down the middle, so the oncoming side's
+> signs are perfectly visible from here, and clicking one bound the berth to a ramp
+> leaving a road going the other way. The test is the one the union already uses (ADRs
+> 0072 and 0081): a ramp whose direction where it leaves is outside the steering cone
+> around the road you are held against is not a road you could take. No new flag, and
+> it stays right when a road crosses at an angle.
+
 ## What this forbids
 
 - Do not make a sign clickable while flying. That is the line between a berth and an
@@ -61,5 +70,7 @@ a pick radius.
   Anything that survives is a plan.
 - Do not shorten `exit_sign_lead_metres` to "fix" a missed turn. Missing one costs a
   hop off and back on, and that price is the design.
+- Do not make a sign live for a road you could not steer onto. Visible is not
+  pickable, and the oncoming carriageway is visible from every metre of this one.
 - Do not fix a jump at a rebind by smoothing the berth. If a rebind jumps, the ramp is
   not tangential and ADR 0070 is the thing that is broken.

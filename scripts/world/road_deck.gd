@@ -50,6 +50,10 @@ const MARKING_LIFT := 0.02
 const STATION_METRES := 120.0
 
 var deck_name: String = "deck"
+## The highway this carriageway belongs to. Roads have names, and the berth's readout
+## says which one it is staying on — "stay on highway A-377B" is a different sentence
+## from "stay on this road", and the first one is the one a player can act on.
+var route_name: String = ""
 ## Which way along the spine this deck's traffic runs. It is a grouping key and
 ## nothing else: the union may only ever consider decks that agree on it, so
 ## "no oncoming traffic in your lane" stays structural (ADR 0067).

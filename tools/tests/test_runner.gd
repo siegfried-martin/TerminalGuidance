@@ -178,6 +178,9 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/exit_sign_inset", "exploration/exit_sign_rise",
 	"exploration/exit_sign_color", "exploration/exit_sign_aimed_color",
 	"exploration/exit_sign_panel_alpha",
+	"exploration/exit_sign_selected_color", "exploration/exit_sign_aimed_scale",
+	"exploration/exit_sign_selected_scale",
+	"exploration/exit_sign_selected_panel_alpha",
 	"exploration/exit_sign_pick_deg", "exploration/berth_look_cone_deg",
 	"camera/near_plane", "camera/far_plane",
 	"exploration/deep_seed",
@@ -4127,6 +4130,57 @@ func _test_exploration_builds() -> void:
 			"…and the exit is spent, so nothing is still holding a destination",
 			"the berth is still carrying a route")
 		berth.release(scene.ship())
+
+	# LIT, AND CANCELLABLE. "I am pointing at this" and "this is what is going to
+	# happen" are different facts, and the second is the one a player docking just
+	# before an exit is relying on. Exactly one sign is lit, and clicking it again
+	# puts the ship back on the highway.
+	scene.ship().position = floor_point
+	_step_exploration(scene, 1.0 / 60.0)
+	berth.engage(scene.ship(), map.riding())
+	var some_exit := road.get_node_or_null("RampOffCForward") as RoadDeck
+	berth.take_exit(some_exit)
+	_step_exploration(scene, 1.0 / 60.0)
+	var glowing := 0
+	for sign: ExitSign in signs:
+		if sign.is_selected():
+			glowing += 1
+	_expect(glowing == 1 and map.selected_sign() != null
+			and map.selected_sign().ramp == some_exit,
+		"exactly one sign is lit, and it is the exit that is going to happen",
+		"%d signs lit" % glowing)
+	berth.take_exit(null)
+	_step_exploration(scene, 1.0 / 60.0)
+	_expect(berth.taking() == null and map.selected_sign() == null,
+		"…and taking it back stays on the highway, so a choice made in a hurry is not final",
+		"the exit could not be cancelled")
+	_expect(map.riding() != null and not map.riding().route_name.is_empty(),
+		"…and the road has a NAME to stay on, which is what the readout says by default",
+		"the road the berth is on is unnamed")
+
+	# NO EXIT OFF THE ONCOMING CARRIAGEWAY. The two share one building with glass down
+	# the middle, so the other side's signs are perfectly visible from here — and
+	# clicking one would bind the berth to a ramp leaving a road going the other way.
+	# Reported from a play session, watching the ship take an exit to its left.
+	var wrong_way := 0
+	var heading: Vector3 = berth.hold().axis
+	var cone := cos(deg_to_rad(Tuning.num("exploration/cruise_turn_clamp_deg")))
+	for sign: ExitSign in signs:
+		if sign.ramp.path().tangent_at(0.0).dot(heading) < cone:
+			wrong_way += 1
+	_expect(wrong_way > 0,
+		"the oncoming carriageway's exit signs ARE visible from here — they are one building",
+		"there is nothing on the other side to exclude")
+	# …and none of them can be the live one, whatever the reticle is doing.
+	var reachable := true
+	for sign: ExitSign in signs:
+		if sign.is_aimed() \
+				and sign.ramp.path().tangent_at(0.0).dot(heading) < cone:
+			reachable = false
+	_expect(reachable,
+		"…and none of them is ever the live pick, because you could not steer onto it",
+		"a sign for a road going the other way was live")
+	berth.release(scene.ship())
 
 	# Getting off, through an off-ramp's portal beside a planet.
 	var off_ramp := road.get_node_or_null("RampOffCForward") as RoadDeck

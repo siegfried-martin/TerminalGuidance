@@ -68,8 +68,9 @@ var _spine: RoadPath = RoadPath.new()
 ## move when the diameter or a leg length does, and the legs change shape when the
 ## curvature does.
 func rebuild(spine: PackedVector3Array, centres: Array[Vector3],
-		names: PackedStringArray,
-		crossing: PackedVector3Array = PackedVector3Array()) -> void:
+		names: PackedStringArray, route_name: String = "",
+		crossing: PackedVector3Array = PackedVector3Array(),
+		crossing_name: String = "") -> void:
 	for child in get_children():
 		remove_child(child)
 		child.queue_free()
@@ -108,8 +109,9 @@ func rebuild(spine: PackedVector3Array, centres: Array[Vector3],
 		var mainline := _make_deck(
 			"Mainline" + ("Forward" if runs_forward else "Reverse"),
 			runs_forward, false, false)
-		mainline.deck_name = "%s bound mainline" % (
-			names[names.size() - 1] if sense > 0.0 else names[0])
+		mainline.route_name = route_name
+		mainline.deck_name = "%s %s bound" % [route_name,
+			names[names.size() - 1] if sense > 0.0 else names[0]]
 		mainline.follow(_lifted(deck_base, sense, across), "", "")
 
 		# Which neighbour a ramp serves depends on which way this deck runs. On the
@@ -120,11 +122,12 @@ func rebuild(spine: PackedVector3Array, centres: Array[Vector3],
 			var ahead := i + onward
 			var behind := i - onward
 			_build_ramps(centres[i], names[i], sense, deck_base, across, runs_forward,
+				route_name,
 				names[ahead] if ahead >= 0 and ahead < names.size() else "",
 				names[behind] if behind >= 0 and behind < names.size() else "")
 
 	if crossing.size() >= 2:
-		_build_crossing(crossing, across)
+		_build_crossing(crossing, across, crossing_name)
 
 
 ## The spine, raised to the road's height and moved to this deck's side of it, and
@@ -182,7 +185,8 @@ func _across_at(route: RoadPath, index: int) -> Vector3:
 ## two ramps would be openings onto a road with no traffic and a sign with no name on
 ## it. An empty `ahead` or `behind` is how the caller says so.
 func _build_ramps(centre: Vector3, place: String, sense: float, base: Vector3,
-		across: float, runs_forward: bool, ahead: String, behind: String) -> void:
+		across: float, runs_forward: bool, route_name: String, ahead: String,
+		behind: String) -> void:
 	var run := Tuning.num("exploration/ramp_run_length")
 	var gap := Tuning.num("exploration/portal_site_offset")
 	# An exit and an entry are different shapes, and this is where that is decided: an
@@ -202,6 +206,7 @@ func _build_ramps(centre: Vector3, place: String, sense: float, base: Vector3,
 		var off_mouth := _mouth(here - sense * gap, exit_out, exit_down, sense,
 			base, across)
 		var off_ramp := _make_deck("RampOff" + suffix, runs_forward, false, true)
+		off_ramp.route_name = route_name
 		off_ramp.deck_name = "%s off-ramp" % place
 		var off_curve := RoadPath.ramp(leaves[0], leaves[1], off_mouth[0],
 			off_mouth[1], tightness, RAMP_SEGMENTS)
@@ -222,6 +227,7 @@ func _build_ramps(centre: Vector3, place: String, sense: float, base: Vector3,
 			base, across)
 		var rejoins := _at(here + sense * run, base, sense, across)
 		var on_ramp := _make_deck("RampOn" + suffix, runs_forward, true, false)
+		on_ramp.route_name = route_name
 		on_ramp.deck_name = "%s to %s on-ramp" % [place, ahead]
 		# Built FORWARDS, from the mouth up to the merge. It used to be built backwards
 		# and reversed, because a quadratic could only be told one tangent and the
@@ -339,7 +345,8 @@ static func crossing(built: RoadStructure, ramp: RoadPath,
 ## the map: run off it and you drop into normal flight. That is deliberate rather than
 ## unfinished — a portal at the end would make a mainline read as a ramp (ADR 0076
 ## keyed that off the portal), and there is nothing on the far side of it yet.
-func _build_crossing(line: PackedVector3Array, across: float) -> void:
+func _build_crossing(line: PackedVector3Array, across: float,
+		route_name: String) -> void:
 	var route := RoadPath.new()
 	route.set_points(line)
 	var pair := Vector2(across * 2.0 + Tuning.num("exploration/lane_width"),
@@ -353,7 +360,8 @@ func _build_crossing(line: PackedVector3Array, across: float) -> void:
 		var deck := _make_deck(
 			"Crossing" + ("Forward" if runs_forward else "Reverse"),
 			runs_forward, false, false)
-		deck.deck_name = "crossing highway"
+		deck.route_name = route_name
+		deck.deck_name = "%s crossing" % route_name
 		deck.follow(_laid_on(route, Vector3.ZERO, sense, across), "", "")
 		carriageways.append(deck)
 
@@ -398,7 +406,8 @@ func _build_interchange(onto: RoadDeck, meeting: float, to_the_right: bool,
 	lands = clampf(lands, 0.0, onto.length())
 	var ramp := _make_deck("Interchange" + ("Right" if to_the_right else "Over"),
 		true, false, false, true)
-	ramp.deck_name = "to the crossing highway"
+	ramp.route_name = onto.route_name
+	ramp.deck_name = "to %s" % onto.route_name
 	var tightness := Tuning.num("exploration/ramp_curve_tightness")
 	var arrives: Vector3 = onto.path().point_at(lands)
 	var joins: Vector3 = onto.path().tangent_at(lands)

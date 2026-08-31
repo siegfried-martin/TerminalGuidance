@@ -23,9 +23,15 @@ var label_text: String = ""
 
 var _label: Label3D
 var _panel: MeshInstance3D
-## Whether the reticle is on this sign right now. Set by the map each frame; the sign
-## does not look for the player.
+## Whether the reticle is on this sign right now, and whether it is the exit the berth
+## has been told to take. Both are SET by the map each frame; the sign does not look
+## for the player.
+##
+## Three states rather than two, because "I am pointing at this" and "this is the one
+## that will happen" are different facts and the second is the one a player in a hurry
+## needs at a glance (ADR 0083).
 var _aimed: bool = false
+var _selected: bool = false
 
 
 func _ready() -> void:
@@ -54,6 +60,13 @@ func rebuild() -> void:
 	if _label == null:
 		return
 	var size := Tuning.num("exploration/exit_sign_metres")
+	# A LIT SIGN IS A BIGGER SIGN. Colour alone is a weak signal at the lead distance
+	# the road gives — a sign 1400 m out is a small mark in the frame — so the one that
+	# is going to happen grows as well as brightens.
+	if _selected:
+		size *= Tuning.num("exploration/exit_sign_selected_scale")
+	elif _aimed:
+		size *= Tuning.num("exploration/exit_sign_aimed_scale")
 	(_panel.mesh as QuadMesh).size = Vector2(size * 2.6, size)
 	_label.text = label_text
 	_label.pixel_size = size / 64.0
@@ -63,12 +76,17 @@ func rebuild() -> void:
 func repaint() -> void:
 	if _label == null:
 		return
-	var color := Tuning.color("exploration/exit_sign_aimed_color" if _aimed
-		else "exploration/exit_sign_color")
+	var key := "exploration/exit_sign_color"
+	if _selected:
+		key = "exploration/exit_sign_selected_color"
+	elif _aimed:
+		key = "exploration/exit_sign_aimed_color"
+	var color := Tuning.color(key)
 	_label.modulate = color
 	_label.outline_modulate = Color(0.0, 0.0, 0.0, 0.6)
 	var panel := color.darkened(0.72)
-	panel.a = Tuning.num("exploration/exit_sign_panel_alpha")
+	panel.a = Tuning.num("exploration/exit_sign_selected_panel_alpha" if _selected
+		else "exploration/exit_sign_panel_alpha")
 	(_panel.material_override as StandardMaterial3D).albedo_color = panel
 
 
@@ -78,11 +96,24 @@ func set_aimed(on: bool) -> void:
 	if on == _aimed:
 		return
 	_aimed = on
-	repaint()
+	rebuild()
+
+
+## Is this the exit that is actually going to happen? The one state a player in a
+## hurry has to be able to read at a glance.
+func set_selected(on: bool) -> void:
+	if on == _selected:
+		return
+	_selected = on
+	rebuild()
 
 
 func is_aimed() -> bool:
 	return _aimed
+
+
+func is_selected() -> bool:
+	return _selected
 
 
 ## How far off the reticle this sign is, in degrees, from a point looking a way.
