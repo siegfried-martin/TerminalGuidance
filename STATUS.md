@@ -17,7 +17,7 @@ the human's explicit direction.
 | Branch | `feat/exploration-tuning-and-hud`, PR #14 |
 | Gate | `make check` — 1091 checks, 0 failed |
 | Run it | `make fly` |
-| Built | Exploration POC steps 1–6 and **step 8** (ADRs 0062–0074) |
+| Built | Exploration POC steps 1–6 and **step 8** (ADRs 0062–0075) |
 | **Do next** | **POC step 7** — cruise fuel and the debug teleport. It is the only step left before traffic. |
 | **Waiting on you** | **The fourth checkpoint, and the important one**: success criterion 1, on a trunk road that now weaves and undulates. Ten minutes on it. `cruise_turn_clamp_deg` is tuned WITH `road_curve_deg` and `road_curve_period`, never against them. The third checkpoint is still open too — is a 38-second hop worth the portal, against 203 s by hand? |
 
@@ -112,6 +112,23 @@ see how it reads with no air between them. One slider back up and the gap return
 - **The deep field is thinned hard** — 16 bodies and 420 dust across the whole map.
   The highway carries "am I moving" wherever there is a highway, and between systems
   there was simply too much of it.
+
+### Fourth session — the tunnel reads
+
+- **The ramps' "rendering fault" was one lane lit.** Taking a ramp handed the shell
+  over to it, so the mainline's tube stopped being drawn straight ahead: the road
+  vanished for a few seconds and then the ramp swung into view beside you. Every deck
+  draws its shell now, the ridden one brighter (ADR 0075, superseding 0074's clause).
+  This also answers *"the translucent blue should show from the outside"*.
+- **A lane has a floor.** Flat colour was why the tube did not read as a tunnel —
+  every part of the sheen identical means no left, right, above or below. The shell is
+  vertex-coloured around its section with the floor its own colour and carrying more
+  of the alpha, and the ridden deck draws **sixteen longitudinal lines** rather than
+  four: converging longitudinals are the cue a real tunnel actually gives.
+- **Open feel question**: the lane is 240 x 150 m and the ship is 44 m across, so the
+  walls are ~100 m away. That is the remaining reason it may not feel like a tunnel,
+  and `lane_width` / `lane_height` are the lever — but shrinking them is bounded by
+  the capital fitting (ADR 0068) and the gate will say so.
 
 Everything under §Where the build is and below is the **combat POC's history**,
 kept for its reasoning. It is not a to-do list, and its §Next is superseded by the

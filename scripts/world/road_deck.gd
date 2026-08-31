@@ -25,8 +25,13 @@ extends Node3D
 
 ## How finely a rib is drawn. Infrastructure, not feel.
 const RIB_SEGMENTS := 28
-## Rails around the cross-section: the four extremes, always drawn on every deck.
+## Rails around the cross-section, on a deck you are not on: the four extremes, which
+## is enough to say "a road goes that way" without adding to the thicket.
 const RAIL_COUNT := 4
+## And on the deck you ARE on. Longitudinal lines converging to a vanishing point are
+## the strongest tunnel cue there is — it is what makes a real tunnel obvious from
+## inside one — and four of them is a wireframe box, not a tunnel.
+const LANE_LINE_COUNT := 16
 ## How often the translucent shell puts a ring of geometry down. Close enough that a
 ## weaving lane reads as a tube rather than as a chain of prisms. Infrastructure.
 const SHELL_STATION_METRES := 120.0
@@ -47,15 +52,23 @@ var _path: RoadPath = RoadPath.new()
 ## Rails run the length of the deck and are always drawn: they are what says a road
 ## goes that way, from anywhere.
 var _rails: MeshInstance3D
-## The lane as a TRANSLUCENT SURFACE, on the deck being ridden. Wireframe alone did
-## not read as a road — the human flew it and the tube did not exist — so the lane you
-## are in is a solid you can see straight through, and the ribs below become a speed
-## cue rather than the whole of the structure.
+## The same lines, many more of them, on the deck being ridden.
+var _lines: MeshInstance3D
+## The lane as a TRANSLUCENT SURFACE. Wireframe alone did not read as a road — the
+## human flew it and the tube did not exist — so a lane is a solid you can see straight
+## through, and the rings become a speed cue rather than the whole of the structure.
+##
+## **Drawn on EVERY deck**, brighter on the one being ridden. It used to be the active
+## deck alone, and that produced a bug that reads as a rendering fault: taking a ramp
+## handed the shell over to it, so the mainline's tube stopped being drawn straight
+## ahead and the road appeared to vanish for a few seconds before the ramp swung into
+## view beside you. A road you can only see once you are committed to it is not a road
+## you can choose.
 ##
 ## ADR 0057's requirement is that the surrounding space stays RENDERED, not that the
-## lane is drawn as lines. A shell at a tenth of an alpha keeps the system, the war and
-## the deep field visible through it, which is the thing that must never be lost; a
-## test asserts the alpha rather than the primitive.
+## lane is drawn as lines. A shell at a twentieth of an alpha keeps the system, the war
+## and the deep field visible through it, which is the thing that must never be lost;
+## a test asserts the alpha rather than the primitive (ADR 0074).
 var _shell: MeshInstance3D
 ## Ribs are the cross-sections, and they are drawn ONLY on the deck the player is
 ## riding. Four decks meet at an interchange and every one of them was drawing a rib
@@ -79,8 +92,13 @@ func _ready() -> void:
 	_shell.name = "Shell"
 	_shell.material_override = _make_material()
 	_shell.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_shell.visible = false
 	add_child(_shell)
+	_lines = MeshInstance3D.new()
+	_lines.name = "Lines"
+	_lines.material_override = _make_material()
+	_lines.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_lines.visible = false
+	add_child(_lines)
 	_ribs = MeshInstance3D.new()
 	_ribs.name = "Ribs"
 	_ribs.material_override = _make_material()
@@ -95,6 +113,11 @@ func _make_material() -> StandardMaterial3D:
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	# The shell's floor, walls and roof are told apart by VERTEX colour rather than by
+	# lighting: unshaded keeps the road looking the same wherever the system's key
+	# light happens to be pointing, and a lane that changes character between systems
+	# is a lane the player cannot learn.
+	mat.vertex_color_use_as_albedo = true
 	return mat
 
 
@@ -135,6 +158,7 @@ func _name_portals(leads_to: String, back_to: String) -> void:
 func rebuild() -> void:
 	if _path.is_empty():
 		_rails.mesh = null
+		_lines.mesh = null
 		_ribs.mesh = null
 		_shell.mesh = null
 		return
@@ -215,46 +239,49 @@ func sample(point: Vector3, clearance: Vector2 = Vector2.ZERO) -> CruiseLane:
 	return lane
 
 
-## The lane's three pieces, all built ONCE and shown or hidden per deck.
+## The lane's four pieces, all built ONCE and shown or hidden per deck.
 ##
 ## Built once and not on activation, deliberately: a mainline's shell is tens of
 ## thousands of vertices, and rebuilding it at the moment the ship merges would put a
 ## hitch exactly where the player is doing the one thing this road is for.
 ##
-##     rails   four wires the length of it        every deck, always
-##     shell   a translucent tube                 the deck you are on
-##     ribs    rings at a wide spacing            the deck you are on
+##     shell   a translucent tube             EVERY deck, brighter on yours
+##     rails   four wires the length of it    a deck you are not on
+##     lines   sixteen of them                the deck you are on
+##     rings   cross-sections, widely spaced  the deck you are on
 ##
-## The shell is what says *this is the lane*; the ribs are what say *this is how fast
-## you are going*, which is the only job left for them once a surface exists.
+## The shell is what says *there is a lane there*; the lines are what make it read as
+## a tunnel from inside, because converging longitudinals are the cue a real tunnel
+## gives; the rings are what say *this is how fast you are going*.
 func _rebuild_structure() -> void:
 	var span := length()
 	var rib_spacing := maxf(Tuning.num("exploration/lane_rib_spacing"), 1.0)
-	_rails.mesh = _line_mesh(_rails_along(span))
+	_rails.mesh = _line_mesh(_runs_along(span, RAIL_COUNT))
+	_lines.mesh = _line_mesh(_runs_along(span, LANE_LINE_COUNT))
 	_ribs.mesh = _line_mesh(_rings_along(span, rib_spacing))
 	_shell.mesh = _shell_along(span)
 
 
-## The four extremes, followed along so they taper with the flare and lean with the
-## curve.
-func _rails_along(span: float) -> PackedVector3Array:
-	var count := maxi(int(span / SHELL_STATION_METRES), 1)
-	var rails: Array[PackedVector3Array] = []
-	for r in RAIL_COUNT:
-		rails.append(PackedVector3Array())
-	for i in count + 1:
-		var along := span * float(i) / float(count)
+## Lines running the length of the lane, evenly around its section, followed along so
+## they taper with the flare and lean with the curve.
+func _runs_along(span: float, count_around: int) -> PackedVector3Array:
+	var stations := maxi(int(span / SHELL_STATION_METRES), 1)
+	var runs: Array[PackedVector3Array] = []
+	for r in count_around:
+		runs.append(PackedVector3Array())
+	for i in stations + 1:
+		var along := span * float(i) / float(stations)
 		var frame := CruiseLane.frame_for(_path.tangent_at(along))
 		var centre := _path.point_at(along)
 		var extents := profile(along)
-		for r in RAIL_COUNT:
-			rails[r].append(centre + _lozenge(frame, extents,
-				TAU * float(r) / float(RAIL_COUNT)))
+		for r in count_around:
+			runs[r].append(centre + _lozenge(frame, extents,
+				TAU * float(r) / float(count_around)))
 	var verts := PackedVector3Array()
-	for rail in rails:
-		for i in rail.size() - 1:
-			verts.append(rail[i])
-			verts.append(rail[i + 1])
+	for run in runs:
+		for i in run.size() - 1:
+			verts.append(run[i])
+			verts.append(run[i + 1])
 	return verts
 
 
@@ -271,22 +298,30 @@ func _rings_along(span: float, spacing: float) -> PackedVector3Array:
 	return verts
 
 
-## The translucent tube itself.
+## The translucent tube itself, vertex-coloured so the floor, the walls and the roof
+## are told apart.
+##
+## Flat colour was the thing that stopped it reading as a tunnel: the human could not
+## say which part of the sheen was left, right, above or below, because every part of
+## it was the same. A road has a floor. This gives it one, and darkens the roof, so
+## the section has an up and a down from anywhere inside it.
 func _shell_along(span: float) -> ArrayMesh:
 	var count := maxi(int(span / SHELL_STATION_METRES), 1)
+	var shades := _section_shades()
 	var verts := PackedVector3Array()
+	var colors := PackedColorArray()
 	var normals := PackedVector3Array()
 	var previous := _section_at(0.0)
 	for i in range(1, count + 1):
 		var here := _section_at(span * float(i) / float(count))
 		for s in RIB_SEGMENTS:
 			var t := (s + 1) % RIB_SEGMENTS
-			# Wound both ways is unnecessary — the material culls nothing, because the
-			# player can be inside the lane or outside it and the tube has to exist
-			# from both.
-			for corner: Vector3 in [previous[s], previous[t], here[t],
-					previous[s], here[t], here[s]]:
-				verts.append(corner)
+			# Wound one way only, and the material culls nothing: the player can be
+			# inside the lane or outside it, and the tube has to exist from both.
+			for corner: Array in [[previous[s], s], [previous[t], t], [here[t], t],
+					[previous[s], s], [here[t], t], [here[s], s]]:
+				verts.append(corner[0])
+				colors.append(shades[corner[1]])
 			var out: Vector3 = (previous[s] + here[s]) * 0.5
 			for _n in 6:
 				normals.append(out.normalized())
@@ -296,10 +331,31 @@ func _shell_along(span: float) -> ArrayMesh:
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_COLOR] = colors
 	arrays[Mesh.ARRAY_NORMAL] = normals
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	return mesh
+
+
+## The colour of each point around the section: the floor's colour at the bottom, the
+## wall's at the top, and a heavier alpha down low.
+##
+## The alpha carried here is RELATIVE — the material's own alpha is what decides how
+## translucent the lane is overall, and these multiply into it — so the one slider that
+## could turn the road into a tunnel stays the one slider.
+func _section_shades() -> PackedColorArray:
+	var wall := Tuning.color("exploration/lane_shell_color")
+	var floor_color := Tuning.color("exploration/lane_shell_floor_color")
+	var bias := clampf(Tuning.num("exploration/lane_shell_floor_bias"), 0.0, 1.0)
+	var shades := PackedColorArray()
+	for s in RIB_SEGMENTS:
+		# `_lozenge` measures from +right, so this is 1 at the floor and 0 at the roof.
+		var down := (1.0 - sin(TAU * float(s) / float(RIB_SEGMENTS))) * 0.5
+		var tint := wall.lerp(floor_color, down)
+		tint.a = lerpf(1.0 - bias, 1.0 + bias, down)
+		shades.append(tint)
+	return shades
 
 
 ## One cross-section, as a closed ring of points.
@@ -325,14 +381,15 @@ func _line_mesh(verts: PackedVector3Array) -> ArrayMesh:
 	return mesh
 
 
-## Is this the deck the ship is riding? Shows the shell and the ribs; the geometry is
-## already built, so this costs nothing and can happen mid-merge.
+## Is this the deck the ship is riding? The geometry is already built, so this costs
+## nothing and can happen mid-merge.
 func set_active(on: bool) -> void:
 	if on == _active:
 		return
 	_active = on
-	_shell.visible = _active
 	_ribs.visible = _active
+	_lines.visible = _active
+	_rails.visible = not _active
 	repaint()
 
 
@@ -356,10 +413,13 @@ func repaint() -> void:
 	color.a = Tuning.num("exploration/lane_active_alpha" if _active
 		else "exploration/lane_line_alpha")
 	(_rails.material_override as StandardMaterial3D).albedo_color = color
+	(_lines.material_override as StandardMaterial3D).albedo_color = color
 	(_ribs.material_override as StandardMaterial3D).albedo_color = color
-	var skin := Tuning.color("exploration/lane_shell_color")
-	skin.a = Tuning.num("exploration/lane_shell_alpha")
-	(_shell.material_override as StandardMaterial3D).albedo_color = skin
+	# White, because the SHELL'S colour lives in its vertices — the floor and the roof
+	# are different colours and this would flatten them back into one.
+	(_shell.material_override as StandardMaterial3D).albedo_color = Color(
+		1.0, 1.0, 1.0, Tuning.num("exploration/lane_shell_alpha" if _active
+			else "exploration/lane_shell_idle_alpha"))
 
 
 ## Blue or red on this deck's portals, decided against the hull the player is flying

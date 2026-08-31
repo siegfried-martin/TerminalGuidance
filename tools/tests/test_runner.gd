@@ -166,6 +166,8 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/bounds_grid_alpha", "exploration/road_height",
 	"exploration/lane_active_color", "exploration/lane_active_alpha",
 	"exploration/lane_shell_color", "exploration/lane_shell_alpha",
+	"exploration/lane_shell_floor_color", "exploration/lane_shell_floor_bias",
+	"exploration/lane_shell_idle_alpha",
 	"camera/near_plane", "camera/far_plane",
 	"exploration/deep_seed",
 	"exploration/starfield_count", "exploration/starfield_distance",
@@ -3563,6 +3565,21 @@ func _test_exploration_builds() -> void:
 	# space stays rendered — not that the lane is drawn as lines. It is a translucent
 	# shell now, because wireframe alone did not read as a road. So what is checked is
 	# the thing the ADR actually protects: you can see through it.
+	# Every deck carries one, so a road is visible before you are on it.
+	var shell_count := 0
+	for deck in road.decks():
+		var sk := deck.get_node_or_null("Shell") as MeshInstance3D
+		if sk != null and sk.mesh != null and sk.visible:
+			shell_count += 1
+	_expect(shell_count == road.decks().size(),
+		"every deck draws its shell, ridden or not — a road you cannot see is not a choice",
+		"%d shells for %d decks" % [shell_count, road.decks().size()])
+	_expect(Tuning.num("exploration/lane_shell_idle_alpha")
+			< Tuning.num("exploration/lane_shell_alpha"),
+		"…and the one you are on is the brighter of them",
+		"idle %.3f against active %.3f" % [
+			Tuning.num("exploration/lane_shell_idle_alpha"),
+			Tuning.num("exploration/lane_shell_alpha")])
 	var skin := mainlines[0].get_node_or_null("Shell") as MeshInstance3D
 	var skin_mat := skin.material_override as StandardMaterial3D if skin != null else null
 	_expect(skin != null and skin.mesh != null and skin_mat != null

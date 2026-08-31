@@ -1,6 +1,8 @@
 # ADR 0074 — The lane is a translucent solid, and "visually open" means you can see through it
 
 *Status: accepted · 2026-08-30 · from the human flying the wireframe road*
+*The "one lane lit" clause is superseded by ADR 0075 — every deck draws its shell, and
+the ridden one is brighter. Everything else here stands.*
 
 ## Decision
 
@@ -50,8 +52,9 @@ exists for.
   would do it.
 - Do not give the shell a bright albedo. You are inside it; a bright skin is a
   full-screen colour filter over everything the lane was supposed to leave visible.
-- Do not draw the shell on every deck. One lane lit is how the player knows which lane
-  they are in; four is the thicket this replaced.
+- ~~Do not draw the shell on every deck.~~ **Superseded by ADR 0075**: hiding a lane
+  until you are on it made the road appear to vanish at every ramp. Brightness, not
+  absence.
 - Do not rebuild lane geometry inside `set_active`. Build it in `rebuild` and toggle
   visibility.
 - Do not restore the wireframe-only lane on the strength of ADR 0057. That reading is

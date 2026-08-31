@@ -120,6 +120,7 @@ The reasoning, including what the alternative was and why it lost.
 | [0071](0071-a-ceiling-that-drops-does-not-drop-the-ship.md) | A ceiling that drops does not drop the ship with it |
 | [0072](0072-the-road-axis-is-followed-not-adopted.md) | The road's direction is followed at a bounded rate, and a handover cannot hand you a lane you could not steer onto |
 | [0073](0073-the-fighter-may-outrun-a-missile.md) | The fighter may outrun a missile; the classes a missile is *for* may not |
-| [0074](0074-the-lane-is-a-translucent-solid.md) | The lane is a translucent solid, and "visually open" means you can see through it |
+| [0074](0074-the-lane-is-a-translucent-solid.md) | The lane is a translucent solid, and "visually open" means you can see through it — its "one lane lit" clause is superseded by 0075 |
+| [0075](0075-every-lane-is-drawn-and-a-lane-has-a-floor.md) | Every lane is drawn; the one you are on is brighter, and a lane has a floor |
 
-*Next number: 0075.*
+*Next number: 0076.*
