@@ -144,6 +144,37 @@ static func ramp(from: Vector3, from_tangent: Vector3, to: Vector3,
 	return line
 
 
+## A ROAD-TO-ROAD TURN: leaves `from` along `from_tangent` and arrives at `to` along
+## `to_tangent`, the same as `ramp`, but sized for a curve whose point is the change
+## of heading rather than the change of place.
+##
+## The difference is one line and it matters. `ramp` measures its control arms along
+## the LEAVING direction, because a ramp to a planet is mostly along the road and
+## mostly sideways at the end, and measuring the straight-line chord there would give
+## an arm long enough to loop back on itself. An interchange is the other shape: half
+## of a fifty-five degree turn is across the leaving direction, so that projection
+## under-measures the curve badly, the arms come out short, and the whole turn is
+## crammed into the middle. Measured at 52 deg/s against a ship that turns at 34 —
+## from a curve whose honest requirement is under 3.
+##
+## So this one measures the chord. The tightness is clamped harder for the same reason
+## `ramp` avoids the chord: past a half the arms are long enough to overshoot.
+static func sweep(from: Vector3, from_tangent: Vector3, to: Vector3,
+		to_tangent: Vector3, tightness: float, segments: int) -> PackedVector3Array:
+	var reach := maxf((to - from).length() * clampf(tightness, 0.05, 0.5), 0.001)
+	var c1 := from + from_tangent.normalized() * reach
+	var c2 := to - to_tangent.normalized() * reach
+	var line := PackedVector3Array()
+	for i in maxi(segments, 1) + 1:
+		var t := float(i) / float(maxi(segments, 1))
+		var u := 1.0 - t
+		line.append(from * (u * u * u)
+			+ c1 * (3.0 * u * u * t)
+			+ c2 * (3.0 * u * t * t)
+			+ to * (t * t * t))
+	return line
+
+
 ## A leg of the highway: a run of `length` along `forward` that **weaves and
 ## undulates** instead of going straight.
 ##

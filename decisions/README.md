@@ -131,5 +131,6 @@ The reasoning, including what the alternative was and why it lost.
 | [0082](0082-the-road-is-a-dock-host.md) | The road is a dock host, and a berth is left on purpose |
 | [0083](0083-a-sign-is-clicked-not-planned.md) | An exit is a sign you click, and taking it is a rail rebind |
 | [0084](0084-a-road-may-refuse-to-let-you-off-it.md) | A road may refuse to let you off it, and it refuses by not being a candidate |
+| [0085](0085-the-map-is-a-network-of-routes.md) | The map is a network of routes, and an interchange swings out before it changes height |
 
-*Next number: 0085.*
+*Next number: 0086.*

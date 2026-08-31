@@ -34,8 +34,8 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	if _scene == null or _scene.map().road() == null:
 		return
-	var ramp := _scene.map().road().get_node_or_null("RampOnAForward") as RoadDeck
-	var main := _scene.map().road().get_node_or_null("MainlineForward") as RoadDeck
+	var ramp := _scene.map().road().get_node_or_null("A377BRampOnAForward") as RoadDeck
+	var main := _scene.map().road().get_node_or_null("A377BMainlineForward") as RoadDeck
 	if ramp == null or main == null:
 		return
 	_frames += 1

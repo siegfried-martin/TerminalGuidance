@@ -172,7 +172,7 @@ func rebuild() -> void:
 		# opposite walls within metres of each other — so this walks the openings in
 		# order rather than handling "the" opening.
 		var here := from
-		for opening: Array in _openings_in(from, to, mouth):
+		for opening: Array in _openings_in(i, step, from, to, mouth):
 			var gap_from: float = opening[0]
 			var gap_to: float = opening[1]
 			var face: int = opening[2]
@@ -230,12 +230,19 @@ func _fill(placed: Dictionary, from: float, to: float, face: int) -> void:
 		placed["Panes"].append(piece)
 
 
-## Every opening inside this stretch, in order along the road, as
-## `[gap_from, gap_to, face]`. Each is one ring wide and kept inside the stretch.
-func _openings_in(from: float, to: float, mouth: float) -> Array:
+## Every opening belonging to this BAY, in order along the road, as
+## `[gap_from, gap_to, face]`. Each is one ring wide and kept inside the bay.
+##
+## Assigned by bay index rather than by falling inside the bay's clear stretch,
+## because the stretch excludes the collars at each end and an aperture landing under
+## a collar would belong to no bay at all — it lost its ring and its opening, which is
+## a ramp going through a solid wall with nothing to say so. Every aperture belongs to
+## exactly one bay and is nudged inside it.
+func _openings_in(bay: int, step: float, from: float, to: float,
+		mouth: float) -> Array:
 	var found: Array = []
 	for i in _pierced_at.size():
-		if _pierced_at[i] < from or _pierced_at[i] >= to:
+		if int(_pierced_at[i] / step) != bay:
 			continue
 		var at := clampf(_pierced_at[i], from + mouth * 0.5, to - mouth * 0.5)
 		found.append([at - mouth * 0.5, at + mouth * 0.5, _pierced_face[i]])

@@ -118,6 +118,8 @@ Faction ownership of portals, reputation gating, the economy, missions, combat (
     4 km leg              40 km leg
 ```
 
+- **The map is five systems on two crossing highways** (ADR 0085). A-377B runs A, B, C; K-112 runs D, B, E across it, higher. B is on both. *(It was three systems in a line until 2026-08-31.)*
+- **Every leg is a different length, on purpose.** Legs that are all the same make a grid, and a grid makes system-to-system transport a distance rather than a decision. The gate asserts no two match.
 - **A → B is a local leg**, ~4 km, ~41 s at cruise.
 - **B → C is a trunk leg**, ~40 km, ~6.9 min at cruise.
 - Each system is a disc **3–4 km in diameter** with the existing ceiling/floor treatment.

@@ -23,11 +23,27 @@ extends Node3D
 ## The legs, in order. One key per leg; systems are legs + 1, and the layout walks
 ## the list — so adding a system is adding a leg rather than editing a topology.
 const LEG_KEYS: PackedStringArray = ["exploration/local_leg_length",
-	"exploration/trunk_leg_length"]
-## Placeholder identity. The POC doc calls them A, B and C, and naming them anything
-## more is content this POC does not test.
-const NAMES: PackedStringArray = ["SYSTEM A", "SYSTEM B", "SYSTEM C"]
-const LETTERS: PackedStringArray = ["A", "B", "C"]
+	"exploration/trunk_leg_length", "exploration/cross_inbound_leg_length",
+	"exploration/cross_outbound_leg_length"]
+## Placeholder identity. The POC doc calls them A, B and C; D and E arrived with the
+## crossing highway, and naming them anything more is content this POC does not test.
+const NAMES: PackedStringArray = ["SYSTEM A", "SYSTEM B", "SYSTEM C",
+	"SYSTEM D", "SYSTEM E"]
+const LETTERS: PackedStringArray = ["A", "B", "C", "D", "E"]
+
+## TWO HIGHWAYS, CROSSING AT SYSTEM B. A route is the systems on it in order, the legs
+## between them, a bearing off the map's own, and the height its road rides at. A
+## system on more than one route is where they meet (ADR 0085).
+##
+## Each route is anchored on one system whose position is already fixed: route 0
+## anchors A at the origin and lays the rest out from it; route 1 anchors on B, which
+## route 0 has already placed, so the two can never drift apart.
+const ROUTE_SYSTEMS := [[0, 1, 2], [3, 1, 4]]
+const ROUTE_LEGS := [[0, 1], [2, 3]]
+const ROUTE_ANCHORS := [0, 1]
+const ROUTE_BEARING_KEYS: PackedStringArray = ["", "exploration/crossing_bearing_deg"]
+const ROUTE_HEIGHT_KEYS: PackedStringArray = ["exploration/road_height",
+	"exploration/crossing_road_height"]
 ## ROADS HAVE NAMES. "Stay on highway A-377B" is a sentence a player can act on;
 ## "stay on this road" is not, and while berthed the routing readout is the only thing
 ## telling them what happens if they do nothing (ADR 0083).
@@ -35,8 +51,7 @@ const LETTERS: PackedStringArray = ["A", "B", "C"]
 ## Authored here rather than derived from the systems they connect, because a real
 ## route number outlives the places on it — a road keeps its name when a new system is
 ## built on it, and deriving one would rename the whole highway.
-const TRUNK_ROUTE := "A-377B"
-const CROSSING_ROUTE := "K-112"
+const ROUTE_NAMES: PackedStringArray = ["A-377B", "K-112"]
 
 ## Relayed from whichever system's envelope fired, so the dock screen can say where
 ## it is without the scene tracking which envelope belongs to which planet.
@@ -95,7 +110,7 @@ func _ready() -> void:
 
 
 func _build() -> void:
-	var count := LEG_KEYS.size() + 1
+	var count := NAMES.size()
 	_berth = RoadBerth.new()
 	_berth.name = "Berth"
 	add_child(_berth)
@@ -128,14 +143,20 @@ func _build() -> void:
 	_deep.name = "DeepField"
 	add_child(_deep)
 
-	for i in LEG_KEYS.size():
-		var link := SystemLink.new()
-		link.name = "Link%s%s" % [LETTERS[i], LETTERS[i + 1]]
-		link.link_name = "%s to %s" % [NAMES[i], NAMES[i + 1]]
-		link.from_name = NAMES[i]
-		link.to_name = NAMES[i + 1]
-		add_child(link)
-		_links.append(link)
+	# One corridor per leg, across every route. The corridor is what you fly when you
+	# decline the road, so a leg without one is a leg you may only travel by highway.
+	for route in ROUTE_SYSTEMS.size():
+		var on_route: Array = ROUTE_SYSTEMS[route]
+		for i in on_route.size() - 1:
+			var from_system: int = on_route[i]
+			var to_system: int = on_route[i + 1]
+			var link := SystemLink.new()
+			link.name = "Link%s%s" % [LETTERS[from_system], LETTERS[to_system]]
+			link.link_name = "%s to %s" % [NAMES[from_system], NAMES[to_system]]
+			link.from_name = NAMES[from_system]
+			link.to_name = NAMES[to_system]
+			add_child(link)
+			_links.append(link)
 
 
 ## Place everything, and recompose the boundary from what was placed.
@@ -145,90 +166,94 @@ func _build() -> void:
 func relayout() -> void:
 	var radius := Tuning.num("exploration/system_diameter") * 0.5
 	var bearing := Tuning.num("exploration/aperture_bearing_deg")
-	var step := SystemDisc.bearing_to_direction(bearing)
-	var curve_deg := Tuning.num("exploration/road_curve_deg")
-	var curve_period := Tuning.num("exploration/road_curve_period")
-	var rise_deg := Tuning.num("exploration/road_rise_deg")
-	var rise_period := Tuning.num("exploration/road_rise_period")
-	var here := Vector3.ZERO
-	# Each leg's centre-line, mouth to mouth. Built during the layout because the next
-	# system sits at the end of the leg that reaches it.
-	var legs: Array[PackedVector3Array] = []
+	# Apertures accumulate across routes: a system on two roads has a mouth facing
+	# each way along each of them, which is what makes B an interchange rather than a
+	# place two roads happen to pass.
+	var facings: Array[Array] = []
+	for i in _discs.size():
+		facings.append([] as Array[float])
+	var spines: Array[PackedVector3Array] = []
+	var link_index := 0
+
+	for route in ROUTE_SYSTEMS.size():
+		var on_route: Array = ROUTE_SYSTEMS[route]
+		var key: String = ROUTE_BEARING_KEYS[route]
+		var route_bearing := bearing \
+			+ (0.0 if key.is_empty() else Tuning.num(key))
+		var step := SystemDisc.bearing_to_direction(route_bearing)
+		var anchor: int = ROUTE_ANCHORS[route]
+
+		# Walk BACK from the anchor and then forward from it, so a route hung on a
+		# system another route already placed cannot move it.
+		var here: Vector3 = _discs[on_route[anchor]].position
+		var legs: Array[PackedVector3Array] = []
+		var lengths := PackedFloat32Array()
+		for i in on_route.size() - 1:
+			lengths.append(Tuning.num(LEG_KEYS[(ROUTE_LEGS[route] as Array)[i]]))
+		var at := here
+		for i in range(anchor - 1, -1, -1):
+			at -= step * (lengths[i] + radius * 2.0)
+			_discs[on_route[i]].position = at
+		at = here
+		for i in range(anchor, on_route.size() - 1):
+			at += step * (lengths[i] + radius * 2.0)
+			_discs[on_route[i + 1]].position = at
+
+		# The legs, once every system on the route is placed.
+		for i in on_route.size() - 1:
+			var from_at: Vector3 = _discs[on_route[i]].position
+			legs.append(RoadPath.weave(from_at + step * radius, step, lengths[i],
+				Tuning.num("exploration/road_curve_deg"),
+				Tuning.num("exploration/road_curve_period"),
+				Tuning.num("exploration/road_rise_deg"),
+				Tuning.num("exploration/road_rise_period")))
+			# The CORRIDOR is mouth to mouth: the bounded space between two systems,
+			# handed the leg's own centre-line rather than two endpoints, so the
+			# corridor and the highway inside it cannot drift apart.
+			_links[link_index].follow(legs[i])
+			link_index += 1
+			(facings[on_route[i]] as Array[float]).append(route_bearing)
+			(facings[on_route[i + 1]] as Array[float]).append(route_bearing + 180.0)
+
+		# The SPINE: behind the first system on the route, through every centre, along
+		# every leg, and out past the last. The road is laid on this and the deep field
+		# is scattered around it, so one polyline per route is the only place a route
+		# is written down.
+		var spine := PackedVector3Array()
+		spine.append(_discs[on_route[0]].position - step * radius)
+		for i in on_route.size():
+			spine.append(_discs[on_route[i]].position)
+			if i < legs.size():
+				for point: Vector3 in legs[i]:
+					spine.append(point)
+		spine.append(_discs[on_route[on_route.size() - 1]].position + step * radius)
+		spines.append(spine)
 
 	for i in _discs.size():
 		var disc := _discs[i]
-		disc.position = here
 		disc.system_name = NAMES[i]
-		# Apertures face the legs, in order: back down the leg you arrived by, then
-		# on down the next one. The last system has only the one, which is what makes
-		# a line a line rather than a ring with a missing piece.
-		#
-		# Still ONE bearing for every aperture, even though the legs now weave: the
-		# weave leaves and arrives exactly on the bearing (`RoadPath.weave` tapers its
-		# amplitude to zero at both ends), so a curving leg does not move a mouth.
-		var bearings: Array[float] = []
-		if i > 0:
-			bearings.append(bearing + 180.0)
-		if i < _discs.size() - 1:
-			bearings.append(bearing)
-		disc.bearings = bearings
+		disc.bearings = facings[i] as Array[float]
 		disc.rebuild()
-
-		_planets[i].base = here
+		_planets[i].base = disc.position
 		_planets[i].rebuild()
 		_approaches[i].position = _planets[i].position
 		_approaches[i].rebuild()
 
-		if i < _links.size():
-			var leg := Tuning.num(LEG_KEYS[i])
-			legs.append(RoadPath.weave(here + step * radius, step, leg,
-				curve_deg, curve_period, rise_deg, rise_period))
-			here += step * (leg + radius * 2.0)
-
-	for i in _links.size():
-		# The CORRIDOR is mouth to mouth: it is the bounded space between two systems,
-		# and it is what you fly when you decline the road. It is handed the leg's own
-		# centre-line rather than two endpoints, so the corridor and the highway inside
-		# it are the same curve and cannot drift apart.
-		_links[i].follow(legs[i])
-
-	# The SPINE: behind the first system, through every centre, along every leg, and
-	# out past the last. The road is laid on this and the deep field is scattered
-	# around it, so one polyline is the only place the route is written down.
-	_spine = PackedVector3Array()
-	_spine.append(_discs[0].position - step * radius)
-	for i in _discs.size():
-		_spine.append(_discs[i].position)
-		if i < legs.size():
-			for point: Vector3 in legs[i]:
-				_spine.append(point)
-	_spine.append(_discs[_discs.size() - 1].position + step * radius)
-
-	# The ROAD spans the whole map in one piece, through every system, and is built
-	# once rather than per leg — a highway that stops at each system is the thing
-	# ADR 0065 exists to forbid.
-	var centres: Array[Vector3] = []
-	for disc in _discs:
-		centres.append(disc.position)
-	# A SECOND HIGHWAY, crossing the first over system B. It is here so the exit-face
-	# rules can be flown rather than only read (ADR 0081): turning right onto a road
-	# going right, and going over the top to reach one coming the other way, are the
-	# two cases, and both need a road to turn onto.
-	#
-	# It rides ABOVE the main road, stays inside the system's own disc, and simply
-	# ends at both ends — run off it and you drop into normal flight, exactly as at
-	# the edge of the map. Straight, because its job is to be crossed, not driven.
-	var crossing := PackedVector3Array()
-	if _discs.size() > 1:
-		var cross_step := SystemDisc.bearing_to_direction(
-			bearing + Tuning.num("exploration/crossing_bearing_deg"))
-		var reach := Tuning.num("exploration/crossing_road_length") * 0.5
-		var meets := _discs[1].position \
-			+ Vector3.UP * Tuning.num("exploration/crossing_road_height")
-		crossing.append(meets - cross_step * reach)
-		crossing.append(meets)
-		crossing.append(meets + cross_step * reach)
-	_road.rebuild(_spine, centres, NAMES, TRUNK_ROUTE, crossing, CROSSING_ROUTE)
+	# THE ROAD NETWORK. Each route spans its whole run in one piece, through every
+	# system on it — a highway that stops at each system is the thing ADR 0065 exists
+	# to forbid — and the routes are joined afterwards, where they cross (ADR 0085).
+	_spine = spines[0]
+	_road.rebuild()
+	for route in ROUTE_SYSTEMS.size():
+		var on_route: Array = ROUTE_SYSTEMS[route]
+		var centres: Array[Vector3] = []
+		var names := PackedStringArray()
+		for index: int in on_route:
+			centres.append(_discs[index].position)
+			names.append(NAMES[index])
+		_road.add_route(spines[route], centres, names, ROUTE_NAMES[route],
+			Tuning.num(ROUTE_HEIGHT_KEYS[route]))
+	_road.link_routes()
 
 	_field.regions.clear()
 	for disc in _discs:

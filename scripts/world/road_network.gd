@@ -49,13 +49,17 @@ const RAMP_SEGMENTS := 24
 const END_TOLERANCE := 0.5
 
 var _decks: Array[RoadDeck] = []
+## Every route on the map, in the order they were added. A route is a spine, a
+## building over both its carriageways, and the height it rides at. Roads cross;
+## nothing here is "the" road (ADR 0085).
+var _routes: Array[RoadPath] = []
+var _route_buildings: Array[RoadStructure] = []
+var _route_bases: Array[Vector3] = []
+var _route_pairs: Array = []
 ## The buildings. **One structure per pair of decks** — the mainline pair share a
 ## single building straddling the spine, and every ramp is a building of its own with
 ## one lane in it (ADR 0078). A deck is the lane you fly in; this is what it is inside.
 var _structures: Array[RoadStructure] = []
-## The building over both mainlines. Held because every ramp has to tell it where it
-## goes through, and that cannot be known until the ramp's curve exists.
-var _mainline_structure: RoadStructure = null
 ## Every exit sign on the network. Mounted on the mainline's building ahead of each
 ## off-ramp, naming where that exit goes.
 var _signs: Array[ExitSign] = []
@@ -66,15 +70,16 @@ var _gates: Array[RampGate] = []
 ## The line the whole highway is laid on, in the map's frame. Not a road itself — the
 ## mainlines are this lifted to each deck, and the ramps branch off it.
 var _spine: RoadPath = RoadPath.new()
+## A short, stable node-name prefix for a route, so two roads' carriageways and ramps
+## do not collide in the tree. "A-377B" becomes "A377B".
+static func _tag(route_name: String) -> String:
+	return route_name.replace("-", "").replace(" ", "")
 
 
 ## Wipe and rebuild the whole network. Called on every layout, because the systems
 ## move when the diameter or a leg length does, and the legs change shape when the
 ## curvature does.
-func rebuild(spine: PackedVector3Array, centres: Array[Vector3],
-		names: PackedStringArray, route_name: String = "",
-		crossing: PackedVector3Array = PackedVector3Array(),
-		crossing_name: String = "") -> void:
+func rebuild() -> void:
 	for child in get_children():
 		remove_child(child)
 		child.queue_free()
@@ -82,16 +87,31 @@ func rebuild(spine: PackedVector3Array, centres: Array[Vector3],
 	_structures.clear()
 	_signs.clear()
 	_gates.clear()
-	_spine.set_points(spine)
-	if centres.size() < 2 or _spine.is_empty():
-		return
+	_routes.clear()
+	_route_buildings.clear()
+	_route_bases.clear()
+	_route_pairs.clear()
 
-	# The whole stack rides at `road_height` above the combat plane, not around it. A
-	# highway through the middle of a system is in the way of everything that happens
-	# there; up near the ceiling it is scenery you fly under, and an obstacle if a
-	# fight goes that way.
+
+## Lay one highway: a spine, a building over both carriageways, and a pair of ramps at
+## every system on it that has traffic for them.
+##
+## Called once per route. There is no "the" road any more — the map carries a network,
+## and the first road on it is not special (ADR 0085). Everything that used to reach
+## for a single spine or a single building is handed this route's instead.
+##
+## `height` is how high above the combat plane this road rides. A road through the
+## middle of a system is in the way of everything that happens there; up near the
+## ceiling it is scenery you fly under, and an obstacle if a fight goes that way. Two
+## roads crossing need two heights.
+func add_route(spine: PackedVector3Array, centres: Array[Vector3],
+		names: PackedStringArray, route_name: String, height: float) -> void:
+	if centres.size() < 2 or spine.size() < 2:
+		return
+	var route := RoadPath.new()
+	route.set_points(spine)
 	var across := Tuning.num("exploration/deck_separation") * 0.5
-	var deck_base := Vector3.UP * Tuning.num("exploration/road_height")
+	var base := Vector3.UP * height
 
 	# ONE building for both carriageways. It straddles the spine, a carriageway either
 	# side of the median, and it is the reason the deck and the structure had to be
@@ -100,57 +120,112 @@ func rebuild(spine: PackedVector3Array, centres: Array[Vector3],
 	# outermost lane edge is exactly its inside face.
 	var pair := Vector2(across * 2.0 + Tuning.num("exploration/lane_width"),
 		Tuning.num("exploration/lane_height")) * 0.5
-	_mainline_structure = _make_structure("StructureMainline", false, true)
-	_mainline_structure.follow(_lifted(deck_base, 1.0, 0.0), pair, pair,
-		false, false)
+	var tag := _tag(route_name)
+	var built := _make_structure(tag + "Structure", false, true)
+	built.follow(_laid_on(route, base, 1.0, 0.0), pair, pair, false, false)
+	_routes.append(route)
+	_route_buildings.append(built)
+	_route_bases.append(base)
 
+	var carriageways: Array[RoadDeck] = []
 	for runs_forward in [true, false]:
-		# The reversed deck runs the other way, sits on the other side of the spine,
-		# and puts its ramps on the other side of the planet — so a divided highway
-		# reads as two roads rather than as one road drawn twice. `sense` is which way
-		# along the spine this deck's traffic moves, and every placement below is
-		# written in it, including which side of the spine "right" is.
+		# The reversed carriageway runs the other way, sits on the other side of the
+		# spine, and puts its ramps on the other side of the planet — so a divided
+		# highway reads as two roads rather than as one road drawn twice. `sense` is
+		# which way along the spine this carriageway's traffic moves, and every
+		# placement below is written in it, including which side of the spine "right"
+		# is.
 		var sense := 1.0 if runs_forward else -1.0
 		var mainline := _make_deck(
-			"Mainline" + ("Forward" if runs_forward else "Reverse"),
+			tag + "Mainline" + ("Forward" if runs_forward else "Reverse"),
 			runs_forward, false, false)
 		mainline.route_name = route_name
 		mainline.deck_name = "%s %s bound" % [route_name,
 			names[names.size() - 1] if sense > 0.0 else names[0]]
-		mainline.follow(_lifted(deck_base, sense, across), "", "")
+		mainline.follow(_laid_on(route, base, sense, across), "", "")
+		carriageways.append(mainline)
 
-		# Which neighbour a ramp serves depends on which way this deck runs. On the
-		# eastbound deck B's on-ramp leads to C and its off-ramp comes from A; on the
-		# westbound deck both are the other way round.
+		# Which neighbour a ramp serves depends on which way this carriageway runs. On
+		# the eastbound one B's on-ramp leads to C and its off-ramp comes from A; on
+		# the westbound one both are the other way round.
 		var onward := 1 if sense > 0.0 else -1
 		for i in centres.size():
 			var ahead := i + onward
 			var behind := i - onward
-			_build_ramps(centres[i], names[i], sense, deck_base, across, runs_forward,
-				route_name,
+			_build_ramps(route, built, base, centres[i], names[i], sense, across,
+				runs_forward, route_name,
 				names[ahead] if ahead >= 0 and ahead < names.size() else "",
 				names[behind] if behind >= 0 and behind < names.size() else "")
-
-	if crossing.size() >= 2:
-		_build_crossing(crossing, across, crossing_name)
+	_route_pairs.append(carriageways)
 
 
-## The spine, raised to the road's height and moved to this deck's side of it, and
-## reversed for the deck that runs the other way.
+## Where routes cross, join them.
+##
+## Every carriageway gets its RIGHT-HAND TURN onto the road it crosses: swing out
+## through the wall and climb or drop to it. Four carriageways at a crossing, four
+## ramps, and the interchange is symmetric.
+##
+## **The left turns are not built**, and that is a real gap rather than an omission of
+## taste. Turning onto the carriageway coming the other way is better than ninety
+## degrees of rotation, and `RoadPath.ramp` is a cubic told two tangents: asked to hold
+## that much it puts all the turning in one place — measured at 72 deg/s against a
+## ship that turns at 34, and 132 for two chained cubics through a crest. What that
+## ramp needs is a curve built to a bounded RADIUS, which `RoadPath` cannot make yet.
+## It must not be "fixed" by relaxing ADR 0070's turn check.
+func link_routes() -> void:
+	var across := Tuning.num("exploration/deck_separation") * 0.5
+	for a in _routes.size():
+		for b in _routes.size():
+			if a == b:
+				continue
+			_link(a, b, across)
+
+
+func _link(from_route: int, to_route: int, across: float) -> void:
+	var here: RoadPath = _routes[from_route]
+	var there: RoadPath = _routes[to_route]
+	# WHERE THEY CROSS, in plan. Both roads are near-level, so the nearest approach of
+	# one to the other along its own length is the crossing — and it is measured
+	# rather than authored, because a weaving leg moves it.
+	var meeting := -1.0
+	var nearest := INF
+	for i in CROSSING_STEPS + 1:
+		var along := here.length() * float(i) / float(CROSSING_STEPS)
+		var flat := here.point_at(along)
+		flat.y = 0.0
+		var other := there.closest(Vector3(flat.x, there.points[0].y, flat.z))
+		var gap: float = (Vector3(flat.x, 0.0, flat.z)
+			- Vector3((other[1] as Vector3).x, 0.0, (other[1] as Vector3).z)).length()
+		if gap < nearest:
+			nearest = gap
+			meeting = along
+	if meeting < 0.0 or nearest > Tuning.num("exploration/system_diameter") * 0.5:
+		return
+	# EVERY CARRIAGEWAY GETS ITS OWN RIGHT-HAND TURN, and "right" is asked of that
+	# carriageway rather than of the route: the two run opposite ways, so the road
+	# that is a right turn from one is a left turn from the other and they cannot
+	# share an answer.
+	var at: Vector3 = here.point_at(meeting)
+	for leaving: RoadDeck in _route_pairs[from_route]:
+		var leaving_travel := leaving.path().tangent_at(
+			leaving.path().closest(at)[0])
+		for onto: RoadDeck in _route_pairs[to_route]:
+			var turn := leaving_travel.cross(onto.path().tangent_at(
+				onto.path().closest(at)[0])).dot(Vector3.UP)
+			if turn >= 0.0:
+				continue
+			_build_interchange(from_route, leaving, onto, meeting, across)
+
+
+## A route, raised to its road's height and moved to one carriageway's side of it, and
+## reversed for the carriageway that runs the other way.
 ##
 ## The offset is LATERAL — along the spine's rightward normal at each point, signed by
-## which way this deck travels. It used to be vertical, chosen so that both decks came
+## which way this carriageway travels. It used to be vertical, chosen so that both came
 ## out the same length on a bend; a divided highway does not have that property, and
-## the inner deck is genuinely shorter through a curve. What that costs is a floor on
+## the inner one is genuinely shorter through a curve. What that costs is a floor on
 ## the geometry: a bend tighter than the deck separation folds the inner lane through
 ## itself, so the gate checks the spine's minimum curve radius against it (ADR 0077).
-func _lifted(base: Vector3, sense: float, across: float) -> PackedVector3Array:
-	return _laid_on(_spine, base, sense, across)
-
-
-## The same, for any route. The crossing road is laid exactly like the main one — its
-## own spine, a carriageway to the right of each direction — because there is nothing
-## special about the first road on the map (ADR 0081).
 func _laid_on(route: RoadPath, base: Vector3, sense: float,
 		across: float) -> PackedVector3Array:
 	var line := PackedVector3Array()
@@ -189,8 +264,9 @@ func _across_at(route: RoadPath, index: int) -> Vector3:
 ## system has nothing arriving at it and the easternmost has nowhere to go, so those
 ## two ramps would be openings onto a road with no traffic and a sign with no name on
 ## it. An empty `ahead` or `behind` is how the caller says so.
-func _build_ramps(centre: Vector3, place: String, sense: float, base: Vector3,
-		across: float, runs_forward: bool, route_name: String, ahead: String,
+func _build_ramps(route: RoadPath, built: RoadStructure, base: Vector3,
+		centre: Vector3, place: String, sense: float, across: float,
+		runs_forward: bool, route_name: String, ahead: String,
 		behind: String) -> void:
 	var run := Tuning.num("exploration/ramp_run_length")
 	var gap := Tuning.num("exploration/portal_site_offset")
@@ -202,15 +278,16 @@ func _build_ramps(centre: Vector3, place: String, sense: float, base: Vector3,
 	var entry_out := Tuning.num("exploration/ramp_entry_side_offset")
 	var entry_down := Tuning.num("exploration/ramp_entry_depth")
 	var tightness := Tuning.num("exploration/ramp_curve_tightness")
-	var here: float = _spine.closest(centre)[0]
+	var here: float = route.closest(centre)[0]
 	var letter := place.substr(place.length() - 1, 1)
-	var suffix := letter + ("Forward" if runs_forward else "Reverse")
+	var suffix := _tag(route_name) + "Ramp%s" + letter \
+		+ ("Forward" if runs_forward else "Reverse")
 
 	if not behind.is_empty():
-		var leaves := _at(here - sense * run, base, sense, across)
-		var off_mouth := _mouth(here - sense * gap, exit_out, exit_down, sense,
+		var leaves := _at(route, here - sense * run, base, sense, across)
+		var off_mouth := _mouth(route, here - sense * gap, exit_out, exit_down, sense,
 			base, across)
-		var off_ramp := _make_deck("RampOff" + suffix, runs_forward, false, true)
+		var off_ramp := _make_deck(suffix % "Off", runs_forward, false, true)
 		off_ramp.route_name = route_name
 		off_ramp.deck_name = "%s off-ramp" % place
 		var off_curve := RoadPath.ramp(leaves[0], leaves[1], off_mouth[0],
@@ -218,21 +295,21 @@ func _build_ramps(centre: Vector3, place: String, sense: float, base: Vector3,
 		off_ramp.follow(off_curve, place, behind)
 		# A ramp is a building with one lane in it and no median, narrowing to its
 		# portal at the end it meets the planet.
-		_make_structure("StructureRampOff" + suffix, true, false).follow(
+		_make_structure("Structure" + (suffix % "Off"), true, false).follow(
 			off_curve, _lane_section(), _mouth_section(), false, true)
 		# The mainline's wall has to open where this ramp leaves through it — and a
 		# sign has to hang far enough back that the choice arrives before the exit
 		# does. Reading it in time is a piloting act, and missing it costs one hop off
 		# and back on, which is the price ADR 0057 already sets (ADR 0083).
-		_open_for(off_ramp.path(), true)
-		_sign_for(off_ramp, place)
-		_gate_for(off_ramp)
+		_open_for(built, off_ramp.path(), true)
+		_sign_for(built, off_ramp, place)
+		_gate_for(built, off_ramp)
 
 	if not ahead.is_empty():
-		var on_mouth := _mouth(here + sense * gap, entry_out, entry_down, sense,
+		var on_mouth := _mouth(route, here + sense * gap, entry_out, entry_down, sense,
 			base, across)
-		var rejoins := _at(here + sense * run, base, sense, across)
-		var on_ramp := _make_deck("RampOn" + suffix, runs_forward, true, false)
+		var rejoins := _at(route, here + sense * run, base, sense, across)
+		var on_ramp := _make_deck(suffix % "On", runs_forward, true, false)
 		on_ramp.route_name = route_name
 		on_ramp.deck_name = "%s to %s on-ramp" % [place, ahead]
 		# Built FORWARDS, from the mouth up to the merge. It used to be built backwards
@@ -242,19 +319,20 @@ func _build_ramps(centre: Vector3, place: String, sense: float, base: Vector3,
 		var on_curve := RoadPath.ramp(on_mouth[0], on_mouth[1], rejoins[0],
 			rejoins[1], tightness, RAMP_SEGMENTS)
 		on_ramp.follow(on_curve, ahead, place)
-		_make_structure("StructureRampOn" + suffix, true, false).follow(
+		_make_structure("Structure" + (suffix % "On"), true, false).follow(
 			on_curve, _lane_section(), _mouth_section(), true, false)
 		# …and its roadway has to open where this one comes up through it.
-		_open_for(on_ramp.path(), false)
+		_open_for(built, on_ramp.path(), false)
 
 
 ## A point on the mainline and the direction traffic runs there, as `[point, tangent]`.
 ## On this deck's own side of the spine, so a ramp leaves the road rather than the
 ## line the road was laid on.
-func _at(along: float, base: Vector3, sense: float, across: float) -> Array:
-	var clamped := clampf(along, 0.0, _spine.length())
-	var travel := _spine.tangent_at(clamped) * sense
-	return [_spine.point_at(clamped) + base + _side_of(travel) * across, travel]
+func _at(route: RoadPath, along: float, base: Vector3, sense: float,
+		across: float) -> Array:
+	var clamped := clampf(along, 0.0, route.length())
+	var travel := route.tangent_at(clamped) * sense
+	return [route.point_at(clamped) + base + _side_of(travel) * across, travel]
 
 
 ## A ramp mouth beside the planet, and the direction the road runs past it.
@@ -264,11 +342,11 @@ func _at(along: float, base: Vector3, sense: float, across: float) -> Array:
 ## drift off the side of the interchange it belongs to.
 ## `out` is measured from the DECK, not from the spine, so the shape of a ramp does not
 ## change when the two carriageways are moved apart.
-func _mouth(along: float, out: float, down: float, sense: float, base: Vector3,
-		across: float) -> Array:
-	var clamped := clampf(along, 0.0, _spine.length())
-	var travel := _spine.tangent_at(clamped) * sense
-	return [_spine.point_at(clamped) + base + _side_of(travel) * (across + out)
+func _mouth(route: RoadPath, along: float, out: float, down: float, sense: float,
+		base: Vector3, across: float) -> Array:
+	var clamped := clampf(along, 0.0, route.length())
+	var travel := route.tangent_at(clamped) * sense
+	return [route.point_at(clamped) + base + _side_of(travel) * (across + out)
 		+ Vector3.DOWN * down, travel]
 
 
@@ -291,14 +369,13 @@ func _side_of(travel: Vector3) -> Vector3:
 ## nothing else; an exit leaves through whichever wall or roof its own curve reaches,
 ## and never the floor (ADR 0080). What is measured is WHERE, and — through
 ## `crossing()` — whether the ramp actually obeys the rule it was authored to.
-func _open_for(ramp: RoadPath, leaving: bool) -> void:
-	if _mainline_structure == null or ramp.length() <= 0.0:
+func _open_for(built: RoadStructure, ramp: RoadPath, leaving: bool) -> void:
+	if built == null or ramp.length() <= 0.0:
 		return
-	var found := crossing(_mainline_structure, ramp, leaving)
+	var found := crossing(built, ramp, leaving)
 	if found.is_empty():
 		return
-	_mainline_structure.pierce(found[0],
-		found[1] if leaving else RoadStructure.Face.BELOW)
+	built.pierce(found[0], found[1] if leaving else RoadStructure.Face.BELOW)
 
 
 ## Where a ramp first leaves the building it is inside, walking from the end that
@@ -339,90 +416,63 @@ static func crossing(built: RoadStructure, ramp: RoadPath,
 	return []
 
 
-## A SECOND HIGHWAY, crossing the first. Its own spine, its own pair of carriageways
-## in its own building, and two ramps from the main road onto it.
+## One RIGHT-HAND TURN from one carriageway onto another road's.
 ##
-## It exists so the exit-face rules can be FLOWN. An exit rule you cannot fly is an
-## exit rule you cannot judge, and both interesting cases — turning right onto a road
-## going right, and going over the top to reach one coming the other way — need a
-## second road to turn onto.
-##
-## It carries no portals and simply ENDS, the way the main road ends at the edge of
-## the map: run off it and you drop into normal flight. That is deliberate rather than
-## unfinished — a portal at the end would make a mainline read as a ramp (ADR 0076
-## keyed that off the portal), and there is nothing on the far side of it yet.
-func _build_crossing(line: PackedVector3Array, across: float,
-		route_name: String) -> void:
-	var route := RoadPath.new()
-	route.set_points(line)
-	var pair := Vector2(across * 2.0 + Tuning.num("exploration/lane_width"),
-		Tuning.num("exploration/lane_height")) * 0.5
-	_make_structure("StructureCrossing", false, true).follow(
-		_laid_on(route, Vector3.ZERO, 1.0, 0.0), pair, pair, false, false)
-
-	var carriageways: Array[RoadDeck] = []
-	for runs_forward in [true, false]:
-		var sense := 1.0 if runs_forward else -1.0
-		var deck := _make_deck(
-			"Crossing" + ("Forward" if runs_forward else "Reverse"),
-			runs_forward, false, false)
-		deck.route_name = route_name
-		deck.deck_name = "%s crossing" % route_name
-		deck.follow(_laid_on(route, Vector3.ZERO, sense, across), "", "")
-		carriageways.append(deck)
-
-	# WHICH WAY EACH ONE GOES, from the main road's point of view. The exit-face rule
-	# is written in those terms — right onto a road going right, over the top onto one
-	# going left — so this is the one thing the interchange has to work out, and it is
-	# a cross product rather than a decision.
-	var meeting: float = _spine.closest(route.point_at(route.length() * 0.5))[0]
-	var main_travel := _spine.tangent_at(meeting)
-	# ONLY THE RIGHT-HAND TURN IS BUILT, and that is a real gap rather than an
-	# omission of taste. Turning onto the carriageway coming the OTHER way is better
-	# than ninety degrees of rotation, and `RoadPath.ramp` is a cubic: asked to hold
-	# that much it puts all the turning in one place, measured at 72 deg/s against a
-	# ship that turns at 34, and chaining two cubics through a crest measured worse
-	# still at 132. What that ramp needs is an arc — a curve built to a bounded
-	# radius rather than to two tangents — and that is a `RoadPath` primitive that
-	# does not exist yet, with its own gate. It is not a tuning problem and it must
-	# not be "fixed" by relaxing ADR 0070's check.
-	for deck: RoadDeck in carriageways:
-		var turn := main_travel.cross(
-			deck.path().tangent_at(deck.length() * 0.5)).dot(Vector3.UP)
-		if turn < 0.0:
-			_build_interchange(deck, meeting, true, across)
-
-
-## One ramp from the main road onto the crossing road.
-##
-## `to_the_right` says which of the two rules applies. Only the right-hand turn is
-## built: swing out through the wall and climb. The other rule — over the top and down
-## onto the carriageway coming the other way — is more than ninety degrees of rotation
-## and needs a curve built to a bounded radius, which `RoadPath` cannot make yet.
-## Which face the ramp actually uses is measured, and the gate holds the rule (ADR
-## 0080).
-func _build_interchange(onto: RoadDeck, meeting: float, to_the_right: bool,
-		across: float) -> void:
+## Swing out through the wall and climb or drop to it. The left turn — over the top
+## and down onto the carriageway coming the other way — is more than ninety degrees of
+## rotation and needs a curve built to a bounded radius, which `RoadPath` cannot make
+## yet (ADR 0085). Which face the ramp actually uses is measured, and the gate holds
+## the rule (ADR 0080).
+func _build_interchange(from_route: int, leaving: RoadDeck, onto: RoadDeck,
+		meeting: float, across: float) -> void:
+	var route: RoadPath = _routes[from_route]
+	var built: RoadStructure = _route_buildings[from_route]
+	var base: Vector3 = _route_bases[from_route]
 	var run := Tuning.num("exploration/interchange_run_length")
-	var base := Vector3.UP * Tuning.num("exploration/road_height")
-	var lead := run if to_the_right else run * 1.7
-	var leaves := _at(meeting - lead, base, 1.0, across)
-	var lands: float = onto.path().closest(
-		_spine.point_at(meeting))[0] + run * 0.45
+	var sense := 1.0 if leaving.runs_forward else -1.0
+	var leaves := _at(route, meeting - sense * run, base, sense, across)
+	var lands: float = onto.path().closest(route.point_at(meeting))[0] + run * 0.45
 	lands = clampf(lands, 0.0, onto.length())
-	var ramp := _make_deck("Interchange" + ("Right" if to_the_right else "Over"),
-		true, false, false, true)
-	ramp.route_name = onto.route_name
-	ramp.deck_name = "to %s" % onto.route_name
-	var tightness := Tuning.num("exploration/ramp_curve_tightness")
+	var ramp := _make_deck("%sTo%s%s" % [_tag(leaving.route_name),
+		_tag(onto.route_name), "Forward" if leaving.runs_forward else "Reverse"],
+		leaving.runs_forward, false, false, true)
+	ramp.route_name = leaving.route_name
+	ramp.deck_name = "%s to %s" % [leaving.route_name, onto.route_name]
+	var tightness := Tuning.num("exploration/interchange_curve_tightness")
 	var arrives: Vector3 = onto.path().point_at(lands)
 	var joins: Vector3 = onto.path().tangent_at(lands)
-	var curve := RoadPath.ramp(leaves[0], leaves[1], arrives, joins, tightness,
+	# OUT FIRST, THEN ACROSS. An interchange ramp goes to a road at a different height,
+	# and a curve aimed straight at it leaves through the FLOOR or the roof of the one
+	# it is on — measured, on the ramp down from the upper road. The exit-face rule
+	# says a ramp leaves through a wall (ADR 0080), and the human's own statement of
+	# it is "to the right if the highway is below": you swing out of the building
+	# first, and you climb or drop once you are outside it.
+	#
+	# So it is two sweeps through a point out to the side at the SAME height. The
+	# first is a lane change and clears the wall; the second is the turn and the
+	# height, entirely outside the building.
+	var out := _side_of(leaves[1] as Vector3) \
+		* Tuning.num("exploration/interchange_side_offset")
+	var via: Vector3 = (leaves[0] as Vector3) + (leaves[1] as Vector3) \
+		* (run * 0.45) + out
+	# A SWEEP, not a ramp. The two differ in how the control arms are measured, and an
+	# interchange is the case `ramp` measures badly: half of a fifty-five degree turn
+	# is across the leaving direction, so the along-road projection under-measures it
+	# and crams the whole turn into the middle (ADR 0085).
+	var curve := RoadPath.sweep(leaves[0], leaves[1], via, leaves[1], tightness,
 		RAMP_SEGMENTS)
+	var onward := RoadPath.sweep(via, leaves[1], arrives, joins, tightness,
+		RAMP_SEGMENTS * 2)
+	for i in range(1, onward.size()):
+		curve.append(onward[i])
 	ramp.follow(curve, "", "")
 	_make_structure("Structure" + ramp.name, true, false).follow(
 		curve, _lane_section(), _lane_section(), false, false)
-	_open_for(ramp.path(), true)
+	# An interchange is an exit like any other: it opens the wall it leaves through,
+	# it hangs a sign naming where it goes, and it carries a gate that can refuse.
+	_open_for(built, ramp.path(), true)
+	_sign_for(built, ramp, onto.route_name)
+	_gate_for(built, ramp)
 
 
 ## A sign on the mainline, ahead of an exit, naming where it goes.
@@ -430,20 +480,20 @@ func _build_interchange(onto: RoadDeck, meeting: float, to_the_right: bool,
 ## Placed from the opening the ramp actually makes, not from the ramp's own start: what
 ## the player has to see coming is the hole in the wall, and the sign belongs a lead
 ## distance back from that, on the same side, tucked just inside the section.
-func _sign_for(ramp: RoadDeck, place: String) -> void:
-	if _mainline_structure == null:
+func _sign_for(built: RoadStructure, ramp: RoadDeck, place: String) -> void:
+	if built == null:
 		return
-	var openings := _mainline_structure.apertures()
+	var openings := built.apertures()
 	if openings.is_empty():
 		return
 	var opening: Array = openings[openings.size() - 1]
 	var at: float = opening[0]
 	var face: int = opening[1]
 	var lead := Tuning.num("exploration/exit_sign_lead_metres")
-	var along := clampf(at - lead, 0.0, _mainline_structure.length())
-	var line := _mainline_structure.path()
+	var along := clampf(at - lead, 0.0, built.length())
+	var line := built.path()
 	var frame := CruiseLane.frame_for(line.tangent_at(along))
-	var extents := _mainline_structure.extents_at(along)
+	var extents := built.extents_at(along)
 	var side := 1.0 if face == int(RoadStructure.Face.LEFT) else -1.0
 	var sign := ExitSign.new()
 	sign.name = "Sign" + ramp.name
@@ -463,18 +513,18 @@ func _sign_for(ramp: RoadDeck, place: String) -> void:
 ## the decision to LEAVE — it has to be read from the road you are on, before you are
 ## committed, which is the same clause ADR 0012 asks of everything else that offers
 ## you something.
-func _gate_for(ramp: RoadDeck) -> void:
-	if _mainline_structure == null:
+func _gate_for(built: RoadStructure, ramp: RoadDeck) -> void:
+	if built == null:
 		return
-	var openings := _mainline_structure.apertures()
+	var openings := built.apertures()
 	if openings.is_empty():
 		return
 	var opening: Array = openings[openings.size() - 1]
 	var at: float = opening[0]
 	var face: int = opening[1]
-	var line := _mainline_structure.path()
+	var line := built.path()
 	var frame := CruiseLane.frame_for(line.tangent_at(at))
-	var extents := _mainline_structure.extents_at(at)
+	var extents := built.extents_at(at)
 	var out := frame[0]
 	var reach := extents.x
 	match face:
@@ -549,15 +599,30 @@ func decks() -> Array[RoadDeck]:
 	return _decks
 
 
-## Every building on the network: one for the mainline pair, one per ramp.
+## Every building on the network: one per route's pair of carriageways, one per ramp.
 func structures() -> Array[RoadStructure]:
 	return _structures
 
 
-## The line the whole highway is laid on. For the map and for tests; nothing steers
-## by it.
+## The building over one route's carriageways, by the route's name. Every ramp on that
+## route goes through THIS building and no other, which is the thing a check on the
+## exit-face rule has to get right — measured against the wrong road's walls, a ramp
+## that comes up perfectly through its own floor reads as going through a wall.
+func building_for(route_name: String) -> RoadStructure:
+	for built in _structures:
+		if built.structure_name == _tag(route_name) + "Structure":
+			return built
+	return null
+
+
+## Every route's spine. For the map and for tests; nothing steers by them.
+func routes() -> Array[RoadPath]:
+	return _routes
+
+
+## The first route's spine. For the map and for tests; nothing steers by it.
 func spine() -> RoadPath:
-	return _spine
+	return _routes[0] if not _routes.is_empty() else _spine
 
 
 ## Which deck governs this point, among those going the same way: the one the ship is

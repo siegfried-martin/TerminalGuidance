@@ -29,7 +29,7 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	if _scene == null or _scene.map().road() == null:
 		return
-	var deck := _scene.map().road().get_node_or_null("RampOnAForward") as RoadDeck
+	var deck := _scene.map().road().get_node_or_null("A377BRampOnAForward") as RoadDeck
 	if deck == null:
 		return
 	var gate := deck.start_portal()
@@ -44,7 +44,7 @@ func _process(_delta: float) -> void:
 		_scene.ship().position = gate.position + travel * 20.0
 		return
 	# Up the ramp and out onto the mainline, which is where the road actually reads.
-	var main := _scene.map().road().get_node_or_null("MainlineForward") as RoadDeck
+	var main := _scene.map().road().get_node_or_null("A377BMainlineForward") as RoadDeck
 	var along: float = main.path().closest(deck.path().finish())[0] + ALONG_METRES
 	var here: Vector3 = main.path().point_at(along)
 	var heading: Vector3 = main.path().tangent_at(along)

@@ -26,7 +26,7 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	if _scene == null or _scene.map().road() == null:
 		return
-	var deck := _scene.map().road().get_node_or_null("RampOnAForward") as RoadDeck
+	var deck := _scene.map().road().get_node_or_null("A377BRampOnAForward") as RoadDeck
 	if deck == null:
 		return
 	var gate := deck.start_portal()

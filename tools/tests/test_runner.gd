@@ -171,7 +171,11 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/structure_glass_color", "exploration/ramp_ring_diameter",
 	"exploration/ramp_ring_depth", "exploration/ramp_ring_color",
 	"exploration/crossing_bearing_deg", "exploration/crossing_road_height",
-	"exploration/crossing_road_length", "exploration/interchange_run_length",
+	"exploration/cross_inbound_leg_length",
+	"exploration/cross_outbound_leg_length",
+	"exploration/interchange_run_length",
+	"exploration/interchange_curve_tightness",
+	"exploration/interchange_side_offset",
 	"exploration/berth_speed_fraction", "exploration/berth_offer_height",
 	"exploration/berth_ride_height", "exploration/berth_pull_rate",
 	"exploration/exit_sign_lead_metres", "exploration/exit_sign_metres",
@@ -3186,20 +3190,33 @@ func _test_exploration_builds() -> void:
 			"SystemRoot/SystemMap/DiscC", "SystemRoot/SystemMap/PlanetC",
 			"SystemRoot/SystemMap/LinkBC",
 			"SystemRoot/SystemMap/Road",
-			"SystemRoot/SystemMap/Road/MainlineForward",
-			"SystemRoot/SystemMap/Road/MainlineReverse",
-			"SystemRoot/SystemMap/Road/RampOnAForward",
-			"SystemRoot/SystemMap/Road/RampOffBForward",
-			"SystemRoot/SystemMap/Road/RampOnBReverse",
+			"SystemRoot/SystemMap/Road/A377BMainlineForward",
+			"SystemRoot/SystemMap/Road/A377BMainlineReverse",
+			"SystemRoot/SystemMap/Road/A377BRampOnAForward",
+			"SystemRoot/SystemMap/Road/A377BRampOffBForward",
+			"SystemRoot/SystemMap/Road/A377BRampOnBReverse",
 			"SystemRoot/Ship", "ChaseCamera", "DebugHud"]:
 		_expect(scene.get_node_or_null(path) != null,
 			"exploration builds " + path, "missing")
 
 	var map := scene.map()
 	var field := map.field()
-	_expect(map.systems().size() == 3 and map.links().size() == 2,
-		"the map is three systems in a line: A, the local leg, B, the trunk, C",
+	# FIVE SYSTEMS ON TWO CROSSING HIGHWAYS. A-377B runs A, B, C; K-112 runs D, B, E
+	# across it. B is on both, which is what makes it an interchange rather than a
+	# place two roads happen to pass (ADR 0085).
+	_expect(map.systems().size() == 5 and map.links().size() == 4,
+		"the map is five systems on two crossing highways, and a corridor per leg",
 		"%d systems, %d links" % [map.systems().size(), map.links().size()])
+	# EVERY LEG A DIFFERENT LENGTH, on purpose. Legs that are all the same make a
+	# grid, and a grid makes system-to-system transport a distance rather than a
+	# decision — the human's reading of the first build's short A-B and long B-C.
+	var seen_lengths := {}
+	for key: String in SystemMap.LEG_KEYS:
+		seen_lengths[Tuning.num(key)] = true
+	_expect(seen_lengths.size() == SystemMap.LEG_KEYS.size(),
+		"…and no two legs are the same length, so the map is not a grid",
+		"%d distinct lengths across %d legs" % [seen_lengths.size(),
+			SystemMap.LEG_KEYS.size()])
 	_expect(map.marker_count() > 0,
 		"the whole map is filled with reference markers, corridor included",
 		"%d markers" % map.marker_count())
@@ -3228,9 +3245,16 @@ func _test_exploration_builds() -> void:
 		"each END system opens its rim exactly once — a line, not a ring",
 		"%d and %d apertures" % [discs[0].aperture_count(),
 			discs[discs.size() - 1].aperture_count()])
-	_expect(discs[1].aperture_count() == 2,
-		"…and the one in the middle opens twice, because the road passes through it",
+	# B is on BOTH highways, so it opens four times: a mouth each way along each road
+	# through it. That is what makes it an interchange rather than a place two roads
+	# happen to pass (ADR 0085).
+	_expect(discs[1].aperture_count() == 4,
+		"…and the one both roads pass through opens four times, twice per road",
 		"%d apertures" % discs[1].aperture_count())
+	_expect(discs[2].aperture_count() == 1 and discs[3].aperture_count() == 1,
+		"…while a system on one road opens once at each end of it",
+		"%d and %d apertures" % [discs[2].aperture_count(),
+			discs[3].aperture_count()])
 	var link := map.links()[0]
 	_expect(link.region().from().distance_to(discs[0].aperture_mouth(0)) < 1.0
 			and link.region().to().distance_to(discs[1].aperture_mouth(0)) < 1.0,
@@ -3337,7 +3361,7 @@ func _test_exploration_builds() -> void:
 	for deck in road.decks():
 		if deck.is_ramp:
 			ramps.append(deck)
-		elif deck.name.begins_with("Mainline"):
+		elif deck.route_name == SystemMap.ROUTE_NAMES[0]:
 			mainlines.append(deck)
 	_expect(mainlines.size() == 2,
 		"there is one mainline per direction, spanning the whole map",
@@ -3389,7 +3413,7 @@ func _test_exploration_builds() -> void:
 	# side of it, its own building. It carries no portals and simply ends.
 	var crossing: Array[RoadDeck] = []
 	for deck in road.decks():
-		if deck.name.begins_with("Crossing"):
+		if deck.route_name == SystemMap.ROUTE_NAMES[1] and not deck.is_ramp:
 			crossing.append(deck)
 	_expect(crossing.size() == 2,
 		"a second highway crosses the first, one carriageway per direction",
@@ -3457,7 +3481,9 @@ func _test_exploration_builds() -> void:
 	var runs_through := true
 	var own_side := Tuning.num("exploration/deck_separation") * 0.5
 	var worst_drift := 0.0
-	for i in map.systems().size():
+	# Only the systems ON this road. With two highways crossing, the others are
+	# kilometres off to one side and mean nothing to this carriageway.
+	for i: int in SystemMap.ROUTE_SYSTEMS[0]:
 		var lane := mainlines[0].sample(map.system_center(i))
 		worst_drift = maxf(worst_drift, absf(absf(lane.lateral) - own_side))
 		if lane.metres_travelled <= 0.0 or lane.metres_remaining <= 0.0:
@@ -3497,7 +3523,12 @@ func _test_exploration_builds() -> void:
 			steepest_name, steepest, allowance])
 	# …and it is not zero, or success criterion 1 has nothing to be judged on: "a
 	# generous clamp on a straight road still feels like nothing".
-	var trunk := map.links()[map.links().size() - 1]
+	# THE TRUNK, by name. It used to be "the last link", and with a second highway on
+	# the map the last link is a leg of the other road on a different bearing.
+	var trunk: SystemLink = map.links()[1]
+	for one: SystemLink in map.links():
+		if one.from_name == SystemMap.NAMES[1] and one.to_name == SystemMap.NAMES[2]:
+			trunk = one
 	var trunk_line := trunk.region().path
 	_expect(trunk_line.max_turn_deg_per_metre() > 0.0,
 		"the trunk leg CURVES — a straight road cannot answer success criterion 1",
@@ -3634,7 +3665,7 @@ func _test_exploration_builds() -> void:
 	# the ramp hands over because it has ended, the union hands straight back because
 	# the ramp is still the nearest thing, and the two alternate every frame until the
 	# ship falls off the road. That is the stutter at an exit ramp (ADR 0076).
-	var an_on_ramp := road.get_node_or_null("RampOnBForward") as RoadDeck
+	var an_on_ramp := road.get_node_or_null("A377BRampOnBForward") as RoadDeck
 	if an_on_ramp != null:
 		var at_the_top: Vector3 = an_on_ramp.path().finish()
 		var after := road.governing(at_the_top,
@@ -3685,7 +3716,7 @@ func _test_exploration_builds() -> void:
 
 	# A ramp has to MEET the mainline tangentially, or joining it is a corner the
 	# steering cone cannot turn.
-	var on_ramp := road.get_node_or_null("RampOnBForward") as RoadDeck
+	var on_ramp := road.get_node_or_null("A377BRampOnBForward") as RoadDeck
 	_expect(on_ramp != null, "system B has an on-ramp on the forward deck", "missing")
 	if on_ramp != null:
 		var merge := on_ramp.path().tangent_at(on_ramp.length())
@@ -3730,11 +3761,11 @@ func _test_exploration_builds() -> void:
 	# old swept ArrayMesh could never be.
 	var pair_built: RoadStructure = null
 	for one: RoadStructure in built:
-		if one.structure_name == "StructureMainline":
+		if one.structure_name == "A377BStructure":
 			pair_built = one
 	_expect(pair_built != null,
 		"…and the main road's building is findable by name, so the gate can ask it things",
-		"StructureMainline is missing")
+		"the A-377B structure is missing")
 	var layered := true
 	var instances := 0
 	for layer_name: String in ["Ribs", "Bays", "Plates", "Panes"]:
@@ -3771,9 +3802,20 @@ func _test_exploration_builds() -> void:
 	# Every ramp goes through the mainline's building somewhere, and the building has
 	# to be open where it does. The opening is MEASURED off the ramp's own curve, so
 	# this is also the check that the measurement found every one of them.
-	_expect(pair_built.apertures().size() == ramps.size(),
+	# ONE ROAD'S BUILDING, one road's ramps. With two highways crossing, `ramps` is
+	# every ramp on the map and most of them go through the other one's walls.
+	var route_ramps: Array[RoadDeck] = []
+	var route_signs: Array[ExitSign] = []
+	for ramp: RoadDeck in ramps:
+		if ramp.route_name == SystemMap.ROUTE_NAMES[0]:
+			route_ramps.append(ramp)
+	for sign: ExitSign in road.signs():
+		if sign.ramp != null and sign.ramp.route_name == SystemMap.ROUTE_NAMES[0]:
+			route_signs.append(sign)
+	_expect(pair_built.apertures().size() == route_ramps.size(),
 		"the building opens once for every ramp that goes through it",
-		"%d openings for %d ramps" % [pair_built.apertures().size(), ramps.size()])
+		"%d openings for %d ramps" % [pair_built.apertures().size(),
+			route_ramps.size()])
 	# THE EXIT-FACE RULE, asked of each ramp's own curve rather than of the opening it
 	# was given. An exit leaves through a wall or the roof and NEVER through the floor
 	# — the floor is the roadway, and an exit competing with it for the meaning of
@@ -3790,9 +3832,17 @@ func _test_exploration_builds() -> void:
 	var entries_not_from_below := ""
 	# Every ramp, planet and interchange alike: an interchange ramp leaves the main
 	# road through a wall exactly as a planet off-ramp does, and the rule is the rule.
+	#
+	# AGAINST ITS OWN ROAD'S BUILDING. Measured against the other road's walls, a ramp
+	# that comes up perfectly through its own floor reads as going through a wall —
+	# which is exactly what this reported when the map grew a second highway, and it
+	# was the test that was wrong rather than the road.
 	for ramp: RoadDeck in ramps:
 		var leaving := not ramp.has_start_portal
-		var found := RoadNetwork.crossing(pair_built, ramp.path(), leaving)
+		var owner := road.building_for(ramp.route_name)
+		if owner == null:
+			continue
+		var found := RoadNetwork.crossing(owner, ramp.path(), leaving)
 		if found.is_empty():
 			continue
 		var face: int = found[1]
@@ -3827,10 +3877,12 @@ func _test_exploration_builds() -> void:
 		"%.0f m ring in a %.0f m section" % [ring,
 			Tuning.num("exploration/lane_height")])
 	var hoops := pair_built.get_node_or_null("Rings") as MultiMeshInstance3D
-	_expect(hoops != null and hoops.multimesh.instance_count == ramps.size(),
+	_expect(hoops != null
+			and hoops.multimesh.instance_count == route_ramps.size(),
 		"…and every opening actually carries one",
 		"%d rings for %d openings" % [
-			0 if hoops == null else hoops.multimesh.instance_count, ramps.size()])
+			0 if hoops == null else hoops.multimesh.instance_count,
+			route_ramps.size()])
 
 	# THE BUILDING CONTAINS THE LANES. The pair's interior spans both carriageways and
 	# the gap between them, so the outermost lane edge is exactly its inside face. If
@@ -4058,13 +4110,21 @@ func _test_exploration_builds() -> void:
 	# one for every exit, that it hangs far enough back to be read in time, and that
 	# clicking it changes which RAIL the berth is on rather than planning a route.
 	var signs := road.signs()
-	_expect(signs.size() == planet_ramps.size() / 2,
+	# A sign for every way OFF a road: the planet off-ramps and the interchange ramps
+	# onto the road that crosses it. An on-ramp needs none — you are not on the road
+	# yet, and there is nothing to choose.
+	var exits := 0
+	for deck in road.decks():
+		if deck.is_ramp and deck.start_portal() == null:
+			exits += 1
+	_expect(signs.size() == exits,
 		"there is a sign for every exit, and only for exits",
-		"%d signs for %d off-ramps" % [signs.size(), planet_ramps.size() / 2])
+		"%d signs for %d exits" % [signs.size(), exits])
 	var lead_ok := true
 	var worst_lead := 0.0
-	for sign: ExitSign in signs:
-		var opening := RoadNetwork.crossing(pair_built, sign.ramp.path(), true)
+	for sign: ExitSign in route_signs:
+		var opening := RoadNetwork.crossing(
+			road.building_for(sign.ramp.route_name), sign.ramp.path(), true)
 		if opening.is_empty():
 			continue
 		var sign_at: float = pair_built.path().closest(sign.position)[0]
@@ -4097,7 +4157,7 @@ func _test_exploration_builds() -> void:
 	# TAKEN, and the swap happens WHEN THE RAMP ARRIVES rather than when the sign is
 	# clicked. The ramp starts ahead, and a rail that pulled the ship back onto its
 	# start would be a route rather than a rebind.
-	var exit_ramp := road.get_node_or_null("RampOffCForward") as RoadDeck
+	var exit_ramp := road.get_node_or_null("A377BRampOffCForward") as RoadDeck
 	if exit_ramp != null:
 		var main_line := mainlines[0].path()
 		var diverge: float = main_line.closest(exit_ramp.path().start())[0]
@@ -4139,7 +4199,7 @@ func _test_exploration_builds() -> void:
 	scene.ship().position = floor_point
 	_step_exploration(scene, 1.0 / 60.0)
 	berth.engage(scene.ship(), map.riding())
-	var some_exit := road.get_node_or_null("RampOffCForward") as RoadDeck
+	var some_exit := road.get_node_or_null("A377BRampOffCForward") as RoadDeck
 	berth.take_exit(some_exit)
 	_step_exploration(scene, 1.0 / 60.0)
 	var glowing := 0
@@ -4187,7 +4247,7 @@ func _test_exploration_builds() -> void:
 	# never fails, because a hull with no cruise drive is never on the road at all —
 	# so it is closed directly here. What standing will need is the refusal and the
 	# two places that honour it, and those are what is under test.
-	var shut := road.get_node_or_null("RampOffCForward") as RoadDeck
+	var shut := road.get_node_or_null("A377BRampOffCForward") as RoadDeck
 	if shut != null:
 		berth.engage(scene.ship(), map.riding())
 		shut.passable = false
@@ -4215,7 +4275,7 @@ func _test_exploration_builds() -> void:
 		berth.release(scene.ship())
 
 	# Getting off, through an off-ramp's portal beside a planet.
-	var off_ramp := road.get_node_or_null("RampOffCForward") as RoadDeck
+	var off_ramp := road.get_node_or_null("A377BRampOffCForward") as RoadDeck
 	_expect(off_ramp != null, "system C has an off-ramp on the forward deck", "missing")
 	var exit_gate := off_ramp.end_portal()
 	var exit_travel := off_ramp.path().tangent_at(off_ramp.length())
