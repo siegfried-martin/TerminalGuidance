@@ -1,6 +1,558 @@
 # STATUS
 
-*Updated 2026-08-27.*
+*Updated 2026-08-30.*
+
+---
+
+## START HERE
+
+**The combat POC is done and the project is on the exploration bet.** Read
+`docs/EXPLORATION_DESIGN.md` (locked decisions) then
+`docs/EXPLORATION_POC_IMPLEMENTATION.md` (the build order, with ✅ marks on what is
+built). Those two documents **supersede prior decisions where they conflict**, at
+the human's explicit direction.
+
+| | |
+|---|---|
+| Branch | `feat/exploration-tuning-and-hud`, PR #14 |
+| Gate | `make check` — 1091 checks, 0 failed |
+| Run it | `make fly` |
+| Built | Exploration POC steps 1–6 and **step 8** (ADRs 0062–0075) |
+| **Do next** | **POC step 7** — cruise fuel and the debug teleport. It is the only step left before traffic. |
+| **Waiting on you** | **The fourth checkpoint, and the important one**: success criterion 1, on a trunk road that now weaves and undulates. Ten minutes on it. `cruise_turn_clamp_deg` is tuned WITH `road_curve_deg` and `road_curve_period`, never against them. The third checkpoint is still open too — is a 38-second hop worth the portal, against 203 s by hand? |
+
+### What landed on 2026-08-30 — the road curves, and the space outside it is furnished
+
+From play-session feedback. Five things, one branch:
+
+- **The trunk and local legs weave and undulate** (`RoadPath.weave`), which is step
+  8's remaining half and what success criterion 1 turns on. Curvature is expressed as
+  an ANGLE with a period, not an amplitude in metres, and both weaves taper to zero
+  value *and* zero slope at each mouth — so the legs curve and nothing else moved.
+- **The on-ramp was too steep, and it was measurable.** The old quadratic bent at
+  23.7 deg/s at cruise against the ship's 22 deg/s turn rate and arrived at its mouth
+  88 deg across the mainline in a 30 deg dive. Ramps are cubics tangential at *both*
+  ends now and peak at 15.7 deg/s, and **the gate checks every road on the map**
+  (ADR 0070).
+- **The space past the boundary is furnished** — near dust, mid-distance bodies, a
+  starfield — because a bounded volume with nothing outside it cannot be moved
+  through. Every boundary surface also carries a ruled grid. Background layer only,
+  nothing queryable (ADR 0069).
+- **The lane is measured against the hull, not the ship's centre** (ADR 0068). A
+  capital is 76 x 42 m and was flying two thirds outside a lane that never noticed.
+  The lane and the portal aperture grew to fit the roster, and the gate now asserts
+  that every hull clears every part of the road.
+- **The stutter at the lane's rail is fixed, and it was not the lane.** The ship's
+  speed was written as `throttle x ceiling` with nothing pacing a ceiling that
+  changed, so crossing the rail at cruise took eighty metres a second off in one
+  frame; the push shoved the ship back in, the penalty released, it all came back,
+  and it repeated at a couple of hertz. **A ship may not lose speed faster than its
+  own brakes can take it off** (ADR 0071) — measured, the trace is now monotonic and
+  the worst single-frame drop is 1.2 m/s. The push is eased in as well, but that was
+  a contributor rather than the cause, and `lane_edge_softness` was deliberately left
+  at the tuned 10 rather than widened, because widening it is a feel call and the bug
+  no longer asks for one.
+
+**Decks are stacked FLUSH** (`deck_separation` = `lane_height` = 150), on request, to
+see how it reads with no air between them. One slider back up and the gap returns.
+
+### And later the same day — the second play session's list
+
+- **The violent shake at an interchange, found.** Drifting wide of a mainline handed
+  the ship to a ramp thirty degrees off its heading, and the nose is *put* inside a
+  cone around the road every frame — so thirty degrees arrived in one of them, with a
+  14 m/s velocity step. The ship now follows a road axis at a bounded rate rather than
+  adopting the lane's, and a handover can only offer a lane inside the steering cone
+  (ADR 0072). Measured: taking an off-ramp is a 0.33 deg/frame merge; drifting wide no
+  longer hands over at all.
+- **Docking was unreachable, and it was arithmetic.** `approach_envelope_radius` 420
+  against `planet_center_depth` 450 put the envelope's roof **thirty metres below the
+  combat plane**: fly level at a planet and you close to exactly 450 m and stop.
+  Radius is 560 now, the gate asserts the envelope reaches the combat plane, and it
+  asserts no road ever enters one. Measured: level approach locks at 541 m and docks.
+- **The "moon going through phases" was the camera's far plane.** Godot's 4 km default
+  is shorter than the deep field is deep, and the far plane is measured along the view
+  axis — so a body six kilometres out sits inside it at the edge of the screen and
+  gets sliced away as you turn toward it. `camera/far_plane` is a tuned value now.
+- **The road rides high.** `road_height` = 320: the stack sits between +245 and +395
+  instead of straddling the combat plane. `system_ceiling_height` went 400 → 650 to
+  keep it clear of the warning band, and the gate checks the head room and the
+  envelope clearance both.
+- **The blue barrier is gone.** `bounds_face_alpha` = 0 — the solid faces are off at
+  rest and the deep field carries the volume's size instead. They still light red the
+  moment you near an edge; the telegraph is untouched. A faint ruled grid is what is
+  left, on its own alpha.
+- **The lane you are in is the only one drawing ribs**, in its own brighter colour and
+  with twice the rails. Four decks meet at an interchange and every one of them used
+  to draw a full rib every 120 m. The marker lattice went from 3310 to 339.
+- Ramp mouths are 70 m higher, the ramps are longer to suit, and the decks stay flush.
+
+### And the third session — the road got faster and became a surface
+
+- **Cruise is 250 m/s** (the human flew 400 and liked it; 250 is where it rests for
+  now) and **the fighter is 80**. `cruise_turn_rate_deg_per_sec` went 22 → 34 to keep
+  every road inside the turn-rate ceiling at the new speed — measured, the worst bend
+  on the map is 40% of the allowance.
+- **The fighter is now faster than a missile, deliberately** (ADR 0073). The old
+  global 0.95 cap would have silently made 80 into 52, which is the exact failure the
+  tuning file warns about. What the hierarchy protects is that a missile can reach the
+  classes it is *for* — the taxi and the capital — and the gate holds those. **This is
+  a combat change and wants an arena session**: a fighter can now leave a missile
+  behind in a straight line rather than having to turn.
+- **The lane is a translucent solid** (ADR 0074), with rails and widely spaced rings.
+  The wireframe road did not read as a place and made interchanges unreadable. Two
+  things learned building it: you are *inside* the surface, so its colour tints the
+  whole view — the skin is muted and a twentieth of an alpha for that reason — and the
+  geometry is built once and toggled, never rebuilt on activation, or merging hitches.
+- **The wireframe around systems and planets is off**: `bounds_grid_alpha` = 0 and
+  `approach_alpha_far` = 0. The red boundary telegraph is untouched. Flagged: with the
+  envelope invisible at range it stops being *a visible place before it is a
+  commitment*, which is the clause ADR 0012's pressure argument leans on. One number
+  back either way.
+- **The deep field is thinned hard** — 16 bodies and 420 dust across the whole map.
+  The highway carries "am I moving" wherever there is a highway, and between systems
+  there was simply too much of it.
+
+### Fourth session — the tunnel reads
+
+- **The ramps' "rendering fault" was one lane lit.** Taking a ramp handed the shell
+  over to it, so the mainline's tube stopped being drawn straight ahead: the road
+  vanished for a few seconds and then the ramp swung into view beside you. Every deck
+  draws its shell now, the ridden one brighter (ADR 0075, superseding 0074's clause).
+  This also answers *"the translucent blue should show from the outside"*.
+- **A lane has a divider.** Flat colour was why the tube did not read as a tunnel —
+  every part of the sheen identical means no left, right, above or below. The shell is
+  vertex-coloured across its section, running from each deck's outer face to the face
+  the two decks share; because they are stacked flush, that seam is one colour from
+  both sides. **A red stripe down the middle of the stack**, which reads as a lane
+  divider from outside and as which-deck-and-which-way-is-up from inside. The ridden
+  deck also draws **sixteen longitudinal lines** rather than four: converging
+  longitudinals are the cue a real tunnel actually gives.
+  *This one is an experiment the human asked to try.* `lane_shell_divider_color` and
+  `lane_shell_divider_bias` are the dials, and setting the two colours equal puts the
+  flat tube back.
+- **Open feel question**: the lane is 240 x 150 m and the ship is 44 m across, so the
+  walls are ~100 m away. That is the remaining reason it may not feel like a tunnel,
+  and `lane_width` / `lane_height` are the lever — but shrinking them is bounded by
+  the capital fitting (ADR 0068) and the gate will say so.
+
+Everything under §Where the build is and below is the **combat POC's history**,
+kept for its reasoning. It is not a to-do list, and its §Next is superseded by the
+line above.
+
+---
+
+## The project has moved to the exploration bet
+
+The human called the combat POC a success and handed over two new documents —
+`docs/EXPLORATION_DESIGN.md` (locked decisions for the travel layer) and
+`docs/EXPLORATION_POC_IMPLEMENTATION.md` (the three-system test map). **Both
+supersede prior decisions where they conflict**, at the human's explicit direction.
+Four ADRs landed with that:
+
+- **0057** the highway is a place, not a travel mode — supersedes 0009
+- **0058** NPCs are worse than an engaged player at *every* station — supersedes the
+  gunner half of 0007
+- **0059** every ship number is keyed by hull class, with a shared default
+- **0060** a portal opens for a cruise drive, and its colour says so
+
+ADR 0013 is **reframed, not superseded**. Every station is a person who keeps doing
+their job — worse — while the player is elsewhere, and the heading hold already *is*
+a pilot doing that job. A better hired pilot is a better number, never more
+authority, so 0013's bounds hold unchanged and hold harder.
+
+**Only the pilot matters in this POC.** The exploration scene carries the helm and
+the missile tube; no turret, no gunner station. This is not a combat POC.
+
+### The speed ladder landed, and it changes combat
+
+Everything derives from `missile/base_speed`, the one number the combat POC
+validated. The player's gunboat is now **taxi class at 15.5 m/s, down from 34** —
+a deliberate re-opening the human asked for ("I had thought the taxi type ships
+might be too fast so we will test with the new numbers"), not a side effect.
+
+Two absolutes became fractions, because both inverted at the corrected speed and
+neither would have errored:
+
+| | Was | Now | What the absolute would have done |
+|---|---|---|---|
+| `ship/arc_speed` | 13.8 m/s | `arc_speed_fraction` 0.45 | 0.89 of manual top speed — flying yourself becomes decoration |
+| `enemy/drift_speed` | 20 m/s | `drift_speed_fraction` 0.45 | an enemy of the player's own class could simply leave |
+
+`H` cycles hull class live in the combat arena, and the HUD carries a `class` row.
+That is the exploration POC's step-3 roster arriving in step 1 on purpose: *"is
+15.5 m/s the right taxi speed"* anchors every number downstream and is answerable
+in the scene that already exists. **This is the first feel question waiting on the
+human.**
+
+### Exploration step 3 is built — the hull roster
+
+`H` cycles **taxi → fighter → capital**, instantly, in both scenes. The classes are
+three ships rather than three top speeds: turn rate, throttle travel, thruster
+authority and silhouette are all per class, because a fighter that is just a fast
+taxi teaches nothing about what a fighter is.
+
+**The taxi has no rows of its own on purpose.** It *is* the shared fallback, so it
+is exactly the ship the combat POC was validated on and the roster cannot disturb
+it. A test asserts that.
+
+| | Top | Turn | To full / stop | Crosses the disc |
+|---|---|---|---|---|
+| Taxi | 15.5 m/s | 26 °/s | 3.2 s / 2.4 s | 3.8 min |
+| Fighter | 38.7 m/s | 62 °/s | 1.4 s / 1.0 s | **1.5 min** |
+| Capital | 11.0 m/s | 11 °/s | 7.0 s / 6.0 s | 5.3 min |
+
+The fighter's 1.5 minutes is the number `EXPLORATION_DESIGN.md` §Two-Tier Network
+predicted for "system diameter, fighter alone" — so the ladder and the disc size
+agree without either having been fitted to the other.
+
+### Exploration step 4 is built — arriving somewhere
+
+`ApproachEnvelope` is reusable and mounted on the planet; the same node goes on the
+portals' ramp stations in step 6, which is where the fuel and market content
+actually lives. Fly into it, watch a countdown, arrive. Touch anything and it hands
+the ship straight back with the throttle you had.
+
+**How ADR 0012's two rules were reconciled.** It says *"no auto-steer, ever, for any
+reason, in any system"* and then *"any sequence that moves the ship must abort on any
+player input"*, which reads as a contradiction. It is the same distinction the system
+boundary already makes: **magnitude, never direction.** The sequence walks the ship's
+speed ceiling down to zero so it comes to rest along the vector the player was already
+flying, reusing `Mothership.speed_ceiling_scale` — so there is no code path in the
+approach that can produce a heading. The mechanism makes the guarantee; a comment
+would only have promised it.
+
+Both the boundary and the approach constrain that same ceiling, so the scene composes
+them and assigns the tightest. Two systems each writing the field would have fought,
+with the winner being whichever happened to run second.
+
+**The envelope is drawn as three rings, not a shell.** The first build used a
+translucent sphere and a rendered frame killed it: from just outside, an 840 m sphere
+fills the whole view and the planet, the disc and the markers are all seen through a
+colour filter. That is a tint, not a signpost. Rings mark the same boundary and leave
+the view alone.
+
+The docking screen has one service — `Depart`. Refuel is step 7's, the magazine needs
+missiles this scene does not carry, and dead placeholder buttons teach the player that
+the screen lies. It is built as a service list, so step 7 adds a row.
+
+### ✅ Taxi speed is confirmed at 15.5 m/s — 2026-08-29
+
+> "yes the taxi speed is correct based on the updated doc. It felt too fast in
+> combat and it's OK if a giant ship feels slow as it's descending to the planet."
+
+Cause named, and it is the useful half: the old 34 m/s **read too fast in combat**,
+and a large ship feeling slow on a descent is *correct* rather than a cost being
+paid. The whole ladder derives from this, so everything below it — cruise, leg
+times, system size — is now anchored rather than provisional.
+
+### ✅ The system border is built — ADR 0062
+
+Decided with the human and built the same day, 2026-08-29. `BoundaryField` replaces
+`DiscBounds`; `SystemDisc` grew a rim and a funnel. What was agreed, and what it
+became:
+
+**The rim became a boundary**, which supersedes ADR 0011's *"do not put a wall,
+threshold, or prompt at the rim"*. That clause existed because lateral exit **was**
+departure; once roads exist, departure is through the corridor and an open rim leads
+somewhere nothing is rendered. That is the highway design's own renderability
+argument, so ADR 0057 is untouched and it is 0011 that gives. **ADR 0062.**
+
+**Apertures are funnels.** The rim opens where a road attaches — wider at the rim,
+narrowing into the corridor, so the player is guided in rather than threading a
+1750 m hole. The single-system scene declares a **placeholder aperture** on
+`aperture_bearing_deg` (90°, due east), so the rim is testable before step 6 rather
+than being closed now and reopened later. Step 5 replaces the bearing with the local
+leg's own and attaches the road at `SystemDisc.aperture_mouth(0)`.
+
+Two things about it that are not obvious from the numbers, and both surprised me:
+
+- **The mouth is measured across the throat, not along the rim.** 2200 m of mouth in
+  a 3500 m disc sounds like two thirds of the boundary gone; it is about 78° of arc,
+  a fifth. The rim is still overwhelmingly a rim.
+- **The throat opens out vertically.** Past the rim plane the disc's 400/750 faces
+  stop applying and the funnel wall — 1100 m at the mouth — is the only constraint.
+  Leaving a flat system for a round tube should feel like a ceiling lifting, and it
+  does. There is a step at the rim plane for anything hugging the ceiling right at
+  the mouth; that is real geometry, not a bug, and the aperture sits on the combat
+  plane where nothing approaches it from up there.
+
+**The clamp becomes heading-proportional, and reaches zero.** The old version was a
+boolean — any outbound velocity component at all triggered the full clamp on the
+whole speed, so a legal lateral departure near the ceiling was strangled by a few
+degrees of climb. The human's model, which is better:
+
+    outbound = (1 + cos θ) / 2              ; = cos²(θ/2), θ from the outward normal
+    depth    = clamp(metres past the edge / bounds_stop_distance, 0, 1)
+    scale    = 1 − depth × outbound
+
+`cos²(θ/2)` is 1 straight out, **0.5 tangential**, 0 straight back in. So tangential
+is still slowed, the way home is never taxed at any depth, and a ship that keeps
+pushing outward arrives at zero and must turn. **The boundary stops you by making
+outward cost everything, never by taking the stick** — magnitude, never direction,
+exactly as before.
+
+("The faces slow the player, they never stop them" used to appear in `tuning.cfg`.
+That was mine, not ADR 0011's, and it was wrong. Gone.)
+
+**Two distances, previously conflated.** `bounds_warning_band` is metres *inside*
+the edge where the faces redden: pure telegraph, no mechanical effect. A new
+`bounds_stop_distance` is metres *outside* the edge over which the cap ramps to
+zero. The red zone is genuinely outside the good zone and can be entered.
+
+**Boundaries became a list of constraints**, each contributing a distance and an
+outward normal, rather than ceiling/floor/rim being three special cases. `outward` is
+their normals summed weighted by depth, so every corner falls out of the arithmetic —
+at a ceiling∩rim corner the combined normal is the diagonal, down-and-inward is
+cheapest and up-and-out is stopped, with no case written for it. A disc is one
+constraint set; the whole-map boundary the human expects to want later is a different
+set, not different code.
+
+Verified by rendering it: `tools/shots/aperture_shot.tscn` sits obliquely inside the
+disc looking at the mouth, because a funnel photographed down its own centre-line is
+invisible by construction — every wall is edge-on and the frame shows a black circle
+with no way to tell a funnel from a hole. From the side the taper reads, the hole in
+the rim reads, and the rim itself reads as a translucent wall with markers visible
+through it rather than as a lid.
+
+That frame also caught the HUD calling the middle of the disc "IN THE THROAT" — being
+*lined up* with an opening a kilometre away is not being in it, and `throat_at` is now
+a separate question from `aperture_at`.
+
+**One thing the plan did not anticipate: the volume is a UNION, not one flat list.**
+The playable space is the disc *plus* a funnel out of each aperture. Written as a
+single list it goes wrong in two visible ways — a red glow while flying up the middle
+of the opening (the rim is still "right there" even though it has a hole in it), and
+a ship drifting wide in the corridor being told to fly *backward into the disc*
+rather than sideways toward the axis. So constraints intersect within a region
+(deepest wins) and unite between regions (shallowest wins), and the throat is
+continuous with the disc instead of having a seam. Both cases are now tests.
+
+### ✅ Exploration step 5 is built — two systems and the local leg
+
+`make fly`. System A, 4 km of corridor, system B. **No road, no portals, no
+cruise drive** — the crossing is flown by hand, which is
+the whole point: it is the control condition success criterion 2 is measured against,
+and it has to be flown before the highway exists rather than remembered afterwards.
+
+**The number this step exists to produce: 258 s — 4.3 minutes — each way in a taxi,
+against 41 s at cruise.** The HUD's `leg` row states it before the trip as well as
+during, because a figure the human predicted and then lived through is a stronger
+verdict than one they only lived through. That ~6x ratio is what step 6 is really
+asking about.
+
+Legs are **mouth to mouth**, so centre to centre is the leg plus one system radius at
+each end — 7.5 km here. Widening a system pushes its neighbours apart rather than
+eating into the road, and a test asserts both readings so they cannot be conflated.
+
+`aperture_bearing_deg` stopped being a placeholder and became **the map's own
+bearing**. The apertures and the legs are now the same number, so they cannot
+disagree; step 8's trunk leg will want a second one, because a straight road cannot
+test success criterion 1.
+
+**The boundary became a union of regions — ADR 0063.** That is ADR 0062's *"the
+whole-map boundary later is a different constraint set, not different code"*, arriving
+one step later than predicted. Three things it cost, all of which look like polish
+bugs and none of which a code review would catch:
+
+- **No end caps on a corridor.** A cap is a wall reported where the corridor merely
+  becomes a system, and it paints the far end of a legal 4 km route red as you
+  approach it. Regions declare themselves *inapplicable* instead.
+- **A hole is a hole in a wall, not a tunnel through space.** The first cut dropped
+  the rim wherever a point lined up with an aperture, at any distance, so a system
+  claimed an unbounded tube along its own bearing and a ship a kilometre outside
+  still read as being in it. The opening is angular and it is in the wall.
+- **The opening is measured where the bearing cuts the wall**, not by the query
+  point's own distance from the axis — that widens the hole with distance.
+
+Rendered both states: `tools/shots/aperture_shot.tscn` (the mouth and the corridor's
+flare from inside A) and the new `tools/shots/corridor_shot.tscn` (mid-leg, looking
+at B). The corridor carries its own marker lattice — 1172 across the map — because
+4 km of empty tube renders as a still image at 15.5 m/s no matter how fast the ship
+is going, and the leg being *long* is the thing under test.
+
+**Flagged, not resolved:** flying the leg costs 4.3 minutes each way, so testing it
+twice is a nine-minute round trip. `debug_teleport_enabled` is already tuned and the
+POC doc puts the teleport in step 7. Say so if it should move earlier.
+
+### ✅ Exploration step 6 is built — the road
+
+`make fly`. Two stacked one-way decks down the corridor, a portal at each end of
+each, and a cruise drive that engages on contact.
+
+**Both ways of making the crossing exist at once, which is the point.** The road did
+not replace the corridor — it was laid *inside* it. The HUD's `leg` row reads 41 s
+while you are on the road and 258 s while you are not, out of the same row, so the
+comparison the third checkpoint is about is on screen in both places rather than
+being a thing to remember.
+
+**What is checkable about ADR 0057, and now checked:** entry is on contact with
+`portal_entry_seconds` at zero and a test asserting it; the lane is drawn as ribs and
+rails (`PRIMITIVE_LINES`, asserted) so the system outside stays visible from inside;
+the throttle and the stick are live every frame; no scene loads and nothing fades.
+
+**The camera locks to the road, not the nose.** With the camera on the nose,
+steering left and the road curving left look identical and lane position is
+unreadable. The ship yaws inside the frame within `cruise_turn_clamp_deg`.
+
+**ADR 0064 — the lane pushes you back, the world only slows you down.** These look
+inconsistent and are not: leaving the world is a *decision* and the honest answer is
+to make it cost more until it costs everything without ever touching the heading;
+drifting out of a lane is a lane-keeping error on a road, both sides of the lane are
+rendered and legal, and a road correcting you is what a road is for. The push is a
+closed form (`sqrt(2 a s)`) rather than integrated drift, so it cannot survive
+leaving the road and the F2 panel changes it on the frame it is saved.
+
+**The deck convention is enforced rather than described.** Headings clockwise from
+NW through N and E to SE ride the upper deck; the leg's return is asserted onto the
+other one. Its whole value is as a mistake-catcher — *"I am heading east, why am I on
+the lower deck?"* — so one exception makes it worse than no rule.
+
+Two things the rendered frames caught that no test would have: both portals at a site
+said "SYSTEM B" (they both connect to B — one is the way there and one is the way
+back), now "TO SYSTEM B" and "FROM SYSTEM B"; and the road row read `inf s at this
+speed` while stopped, which is a division rather than a reading.
+
+`tools/shots/road_shot.tscn` is new — inside the lane, off the centre-line, cruising.
+
+### ✅ Retuned and reshaped after the first play session — 2026-08-30
+
+The human flew step 6 and came back with six things. All six are in.
+
+**The speed ladder moved: taxi 30, fighter 50, capital 25, cruise 140**, and the
+capital's turn rate up by half to 16.5 deg/s.
+
+**The per-class ceiling fractions had to move with them, and that is the part worth
+remembering.** `HullClass.max_speed` takes the *lower* of the class's speed and
+`missile/base_speed × its ceiling fraction`. At the old fractions a taxi asked for 30
+would have flown at 23.2 and a fighter asked for 50 at 43.5 — silently, with nothing
+reporting it, which is the exact failure mode that comment warns about. They are now
+0.55 / 0.90 / 0.48. **The fighter's margin is thin**: 50 m/s is 86% of a missile, and
+the fighter is the class the hierarchy has least room for. It holds; there is not much
+left to spend.
+
+**The drive spools in and out (ADR 0066).** Crossing a portal used to go from 30 m/s
+to 140 in one frame, and arriving used to do the reverse. The blend is on the ceiling
+rather than the velocity, so the throttle keeps meaning what it meant. It is *not*
+entry ceremony and the distinction is checkable: through the whole wind-up the player
+is past the aperture, steering, holding their own throttle, free to turn round. The
+moment they are waiting rather than flying, it has become the thing ADR 0057 forbids.
+
+**The ramps moved off the rim and inside the systems (ADR 0065).** The highway runs
+all the way through; a system the road passes through has two ramp sites either side
+of its centre, and the stretch between them is where you are off the road and beside
+the planet. Rim ramps put every arrival a three-minute taxi from the only thing worth
+arriving for — the road would be fast and getting anywhere would still be slow. Side
+effect worth having: the on-ramp is now 822 m from spawn instead of 2537.
+
+**The third system and the trunk leg landed early**, because the case that matters for
+ramps is a system the road passes *through*, and two systems cannot show it. That is
+step 8's first half; **curvature and the elevation change are still open**, and they
+are what success criterion 1 turns on.
+
+**Undocking leaves already flying**, on the reflection of the arrival — same bearing,
+vertical flipped, throttle set to match. Handing the ship back at rest pointing at the
+surface it just left starts every visit with the same climb out of the same hole.
+
+**The ship has a steering reticle now**, the same instrument the missile uses. ADR
+0035 applies to both — the nose does not go instantly where the stick says — and on a
+road inside a steering cone that lag is the difference between holding a line and
+guessing at one. `FlightOverlay` grew a `reticle_provider`; the tube gauge is off in
+the exploration scene, because a reload bar for a weapon that cannot fire is
+decoration that lies.
+
+Three bugs, all caught by looking rather than by tests: the leg row quoted its ETA
+against the *spooling* ceiling, which is a number true of no journey; the portal row
+read "to TO SYSTEM B"; and the road's length was still reporting the corridor's — the
+road is ramp to ramp and longer, 6700 m against 4000.
+
+### ✅ The interchange — 2026-08-30, second pass
+
+The first pass got ADR 0065 wrong in the code while getting it right in the ADR: the
+road ran **ramp to ramp** and stopped at each system, when what was asked for — and
+what 0065 says — is a highway that runs **entirely through** with ramps branching off
+it beside the planet. Rebuilt.
+
+**A road is now a path, not a line** (`RoadPath`). That is what lets a ramp curve away
+tangentially, and it is also what step 8's curved trunk leg will need — the curvature
+work is now a matter of putting more points in a polyline rather than a new shape.
+
+**The network is two mainlines spanning the whole map, plus a pair of ramps at each
+system.** A ramp leaves the mainline tangentially, curves down and out, and ends at a
+portal *beside* the planet — beside rather than above, because directly above is
+inside the approach envelope and taking a ramp would arm a landing sequence nobody
+asked for. A ramp that serves nobody is not built, so the end systems get two each and
+the middle one gets four.
+
+**ADR 0067 — getting on and off is a union of lanes, not a junction.** Every deck
+going the player's way is asked how far outside it they are and the nearest governs,
+exactly as `BoundaryField` resolves regions. Merging and diverging fall straight out:
+steering toward a ramp makes the ramp the nearer answer. Written as a state machine
+the same interchange needs a trigger volume, a commitment rule, a change-of-mind path
+and a sideways-arrival recovery — every one of them a place for the road to grab the
+player, which is the conveyor this design rejects.
+
+**Numbers**: cruise 160, local leg 2600, trunk 18000. **Flagged**: the trunk was cut
+from 40 km because seven minutes of straight road outran the human's patience for a
+test — but success criterion 1 wants *"ten continuous minutes on a trunk highway"*,
+and at 18 km this leg is under two. Judging that criterion needs the number back up or
+several legs run together; it is about endurance and a short road cannot answer it
+however good it feels.
+
+Two things the frames caught: the camera parked above the ceiling and above the rim,
+so the first two interchange shots photographed the boundary treatment working rather
+than the interchange; and every portal at system B read "TO SYSTEM B" — a sign has to
+name the neighbour it serves, not the system it is standing in.
+
+### 🔵 THE FIRST FEEL QUESTION IS OPEN
+
+Step 4's checkpoint: **does approach feel like arriving somewhere, or like a menu
+with a runway?** `make fly`.
+
+Worth knowing while reading it: the camera boom scales with hull size, so the ship
+stays the same size on screen and the *world* changes scale instead — a small ship
+makes the system feel large. That is `camera/boom_hull_scale_influence`; drop it to
+0 to read hull size off the screen directly instead.
+
+### Open, and flagged rather than resolved
+
+- **The envelope now measures itself.** `EnvelopeMeter` keeps a session high-water
+  mark and the arena HUD carries an `envelope` row. Two figures, because the chain
+  wants them for different things: **span** (largest distance between any two
+  participants) sizes the diameter, and **vertical** (up-axis spread alone) is what
+  disc height is actually 5–10x of — the clause is *"so the ceiling never enters a
+  fight"*, and a ceiling is only entered vertically. An earlier note here said the
+  numbers chain was "resolved from the wrong end"; that conflated the fight's
+  horizontal sprawl with its vertical one and was wrong. **One session now produces
+  the number.**
+- For scale while reading it: the fight is held at 203 m standoff, missile reach is
+  348 m, the target patrols a 600 m box — while the rock field the human has been
+  flying in is already **3,134 m across and 440 m thick**. The scenery is roughly
+  3–4x the fight in both dimensions. Whether that comes down is a feel call.
+### Exploration step 2 is built — the first system disc
+
+`make fly`. A 3500 m disc, 1150 m tall (400 up, 750 down), a planet 450 m below
+the combat plane, and manual flight. No missiles,
+no turret, no roster — only the pilot exists here.
+
+**ADR 0011 was built for the first time.** The combat arena has always been an
+unbounded marker lattice; there was no "existing boundary treatment" for the POC doc
+to reuse. The disc got hard flat faces, a red volume, a telegraphed grace period,
+ramping damage and the outbound speed clamp. *(The open rim and the clamp shape were
+both superseded the same day by ADR 0062 — see above.)*
+
+The clamp is **on the speed limit, not on the velocity vector**, which is what makes
+ADR 0011's *"magnitude only, never direction"* structural: `BoundaryField` returns a
+scale and never sees a heading it could return, so no code path exists that can turn
+the player's ship. It shows on the HUD — the speed row's "of N" comes down.
+
+Verified by rendering both states. `tools/shots/bounds_shot.tscn` parks the ship past
+the ceiling, because *"the volume is visibly red"* is the one thing in that ADR no
+test can check. It reads as a translucent membrane — markers and the planet are
+visible through it — rather than as a wall.
+- **Per-ship / per-faction tuning data** is not on `ROADMAP.md`. ADR 0059 landed the
+  mechanism; the rows are the work.
+
 
 ## Where the build is
 
@@ -174,7 +726,13 @@ forward, because adding one early destroys the reading on the one before it:
 - **Step 9** — target death and respawn, the PiP camera toggle, and the 30-minute
   verdict session against all three criteria. This is all that is left of the POC.
 
-## Next
+## Next — SUPERSEDED 2026-08-29, kept for its reasoning
+
+> Both items below are **done**. The envelope measures itself now (`EnvelopeMeter`,
+> with an `envelope` row on the combat HUD). Step 9 was overtaken: the human called
+> the combat POC a success and moved the project to the exploration bet, so the
+> target's death and the PiP toggle were never built and are **not** on the current
+> path. See §START HERE for what to do instead.
 
 **Step 9, and make the envelope measure itself.** Combat has been played and reads
 right (above). Two things are left before the combat bet is closed, and they are
@@ -254,7 +812,10 @@ Still open from the first feel session, and worth judging while playing step 6:
    If it is, the fix is a second sparse non-colliding layer (ADR 0038), not moving
    these back out.
 
-## Where to start — the dependency chain
+## Where to start — the dependency chain (as of the combat POC)
+
+> Stages 1 and 2 are done; the project is on stage 3, the exploration prototype.
+> `docs/ROADMAP.md` carries the same supersede note.
 
 *Full version, with what each stage is blocked on: `docs/ROADMAP.md`.
 The current build's detailed spec: `docs/TURRET_MODE_IMPLEMENTATION.md`.*
@@ -731,7 +1292,15 @@ back to the file without disturbing a single comment; *Revert* throws it away.
 Editing the file in a text editor still hot-reloads, and disk wins over unsaved
 panel edits.
 
-### Engagement envelope — STILL UNMEASURED, and now it is the blocker
+### Engagement envelope — SUPERSEDED 2026-08-29
+
+> No longer unmeasured and no longer the blocker. `EnvelopeMeter` records it and the
+> combat HUD's `envelope` row reports span and vertical spread separately. It also
+> stopped gating anything: `system_diameter` was handed down at 3500 m rather than
+> derived through the chain below, so the exploration POC did not wait for it. The
+> reasoning is kept because the chain still explains *why* disc height is a multiple
+> of the vertical figure — "so the ceiling never enters a fight".
+
 
 `docs/COMBAT_POC_IMPLEMENTATION.md` asks for `ship.max_engagement_envelope` — the
 largest distance a fight sprawls across — to be observed rather than guessed,

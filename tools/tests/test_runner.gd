@@ -27,12 +27,12 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"missile/boost_multiplier", "missile/boost_seconds", "missile/boost_regen_per_sec",
 	"missile/dodge_distance", "missile/dodge_seconds", "missile/dodge_cooldown_seconds",
 	"missile/brake_speed_multiplier", "missile/brake_turn_multiplier",
-	"ship/arc_speed", "ship/standoff_distance", "ship/muzzle_offset", "ship/hull_scale",
+	"ship/arc_speed_fraction", "ship/standoff_distance", "ship/muzzle_offset", "ship/hull_scale",
 	"ship/range_hold_seconds", "ship/range_hold_max_speed",
 	"ship/hull_tint", "ship/metallic", "ship/roughness",
 	"ship/start_role", "ship/arc_depth",
 	"ship/manual_accel_seconds", "ship/manual_brake_seconds",
-	"ship/manual_max_speed", "ship/manual_speed_ceiling_fraction",
+	"ship/manual_max_speed", "ship/manual_speed_ceiling_fraction", "ship/hull_class",
 	"ship/manual_turn_rate_deg_per_sec", "ship/manual_reticle_max_angle_deg",
 	"ship/autopilot_turn_rate_deg_per_sec",
 	"ship/manual_strafe_speed", "ship/missile_cooldown_seconds",
@@ -66,7 +66,8 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"turret/impact_flash_start_radius", "turret/impact_flash_end_radius",
 	"turret/impact_flash_seconds", "turret/impact_flash_color",
 	"turret/impact_flash_color_dud",
-	"enemy/radius", "enemy/drift_speed", "enemy/spin_deg_per_sec",
+	"enemy/radius", "enemy/drift_speed_fraction", "enemy/hull_class",
+	"enemy/spin_deg_per_sec",
 	"enemy/patrol_half_extent", "enemy/hull_color", "enemy/hull_emission",
 	"enemy/hull_length", "enemy/hull_width", "enemy/hull_height", "enemy/nose_length",
 	"enemy/wing_span", "enemy/wing_chord", "enemy/wing_thickness", "enemy/fin_height",
@@ -81,7 +82,7 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"enemy/component_radius", "enemy/component_length", "enemy/component_mount_radius",
 	"enemy/component_hit_radius", "enemy/component_damaged_darken",
 	"enemy/component_respawn_seconds", "enemy/component_color", "enemy/component_emission",
-	"camera/fov_base", "camera/return_delay_sec", "camera/missile_view_mode",
+	"camera/fov_base", "camera/boom_hull_scale_influence", "camera/return_delay_sec", "camera/missile_view_mode",
 	"camera/ship_follow_distance", "camera/ship_follow_height", "camera/ship_follow_lag",
 	"camera/ship_look_ahead",
 	"camera/missile_follow_distance", "camera/missile_follow_height",
@@ -121,6 +122,81 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"arena/rock_elongation",
 	"probe/scale", "probe/spin_deg_per_sec", "probe/bob_amplitude", "probe/bob_period_sec",
 	"probe/hull_tint", "probe/metallic", "probe/roughness",
+	# The travel layer (docs/EXPLORATION_POC_IMPLEMENTATION.md). The speed ladder,
+	# the lane, the portal, fuel, traffic and the test map.
+	"exploration/taxi_max_speed", "exploration/fighter_max_speed",
+	"exploration/capital_max_speed", "exploration/cruise_speed",
+	"exploration/taxi_speed_ceiling_fraction", "exploration/fighter_speed_ceiling_fraction",
+	"exploration/capital_speed_ceiling_fraction", "exploration/start_hull_class",
+	"exploration/fighter_turn_rate_deg_per_sec", "exploration/fighter_accel_seconds",
+	"exploration/fighter_brake_seconds", "exploration/fighter_strafe_speed",
+	"exploration/fighter_reticle_max_angle_deg", "exploration/fighter_hull_scale",
+	"exploration/capital_turn_rate_deg_per_sec", "exploration/capital_accel_seconds",
+	"exploration/capital_brake_seconds", "exploration/capital_strafe_speed",
+	"exploration/capital_reticle_max_angle_deg", "exploration/capital_hull_scale",
+	"exploration/taxi_has_cruise_drive", "exploration/fighter_has_cruise_drive",
+	"exploration/capital_has_cruise_drive",
+	"exploration/cruise_turn_clamp_deg", "exploration/cruise_turn_rate_deg_per_sec",
+	"exploration/lane_width", "exploration/lane_height", "exploration/lane_edge_softness",
+	"exploration/lane_edge_speed_penalty", "exploration/lane_edge_push_accel",
+	"exploration/deck_separation",
+	"exploration/portal_width", "exploration/portal_height",
+	"exploration/portal_flare_length", "exploration/portal_entry_seconds",
+	"exploration/portal_sheen_color", "exploration/portal_denied_color",
+	"exploration/portal_emission", "exploration/portal_sheen_scroll_hz",
+	"exploration/cruise_fuel_capacity", "exploration/cruise_fuel_per_km",
+	"exploration/cruise_fuel_start_fraction",
+	"exploration/road_traffic_per_km", "exploration/road_traffic_speed_spread",
+	"exploration/open_traffic_per_100km3", "exploration/traffic_despawn_distance",
+	"exploration/system_diameter", "exploration/system_ceiling_height",
+	"exploration/system_floor_depth",
+	"exploration/bounds_warning_band", "exploration/bounds_grace_seconds",
+	"exploration/bounds_damage_ramp_seconds", "exploration/bounds_damage_per_second",
+	"exploration/bounds_stop_distance", "exploration/bounds_face_color",
+	"exploration/bounds_color", "exploration/bounds_face_alpha",
+	"exploration/bounds_alarm_alpha", "exploration/bounds_face_thickness",
+	"exploration/bounds_rim_alpha_scale",
+	"exploration/aperture_mouth_diameter", "exploration/aperture_funnel_length",
+	"exploration/aperture_bearing_deg",
+	"exploration/lane_corner_roundness", "exploration/lane_rib_spacing",
+	"exploration/lane_hull_clearance_cap", "exploration/ramp_curve_tightness",
+	"exploration/road_curve_deg", "exploration/road_curve_period",
+	"exploration/road_rise_deg", "exploration/road_rise_period",
+	"exploration/bounds_grid_spacing", "exploration/bounds_grid_alpha_scale",
+	"exploration/bounds_grid_alpha", "exploration/road_height",
+	"exploration/lane_active_color", "exploration/lane_active_alpha",
+	"exploration/lane_shell_alpha",
+	"exploration/lane_shell_outer_color", "exploration/lane_shell_divider_color",
+	"exploration/lane_shell_divider_bias",
+	"exploration/lane_shell_idle_alpha",
+	"camera/near_plane", "camera/far_plane",
+	"exploration/deep_seed",
+	"exploration/starfield_count", "exploration/starfield_distance",
+	"exploration/starfield_size", "exploration/starfield_color",
+	"exploration/deep_bodies_count", "exploration/deep_bodies_near",
+	"exploration/deep_bodies_far", "exploration/deep_bodies_min_radius",
+	"exploration/deep_bodies_max_radius", "exploration/deep_bodies_color",
+	"exploration/deep_bodies_tint_spread",
+	"exploration/deep_dust_count", "exploration/deep_dust_near",
+	"exploration/deep_dust_far", "exploration/deep_dust_min_size",
+	"exploration/deep_dust_max_size", "exploration/deep_dust_color",
+	"exploration/lane_color", "exploration/lane_line_alpha",
+	"exploration/portal_label_metres", "exploration/portal_site_offset",
+	"exploration/ramp_run_length", "exploration/ramp_side_offset",
+	"exploration/ramp_depth",
+	"exploration/cruise_spool_seconds", "exploration/cruise_spool_down_seconds",
+	"exploration/depart_speed_fraction",
+	"exploration/planet_radius", "exploration/planet_center_depth",
+	"exploration/planet_color", "exploration/planet_emission",
+	"exploration/marker_spacing", "exploration/marker_size", "exploration/marker_color",
+	"exploration/approach_envelope_radius", "exploration/approach_seconds",
+	"exploration/approach_relock_seconds", "exploration/approach_abort_mouse_speed",
+	"exploration/approach_color", "exploration/approach_ring_thickness",
+	"exploration/approach_alpha_far",
+	"exploration/approach_alpha_near",
+	"exploration/dock_title_font_size", "exploration/dock_title_color",
+	"exploration/corridor_diameter", "exploration/local_leg_length",
+	"exploration/trunk_leg_length", "exploration/debug_teleport_enabled",
 ]
 
 const REQUIRED_ACTIONS: Array[String] = [
@@ -132,7 +208,7 @@ const REQUIRED_ACTIONS: Array[String] = [
 	"cam_forward", "cam_back", "cam_left", "cam_right", "cam_up", "cam_down",
 	"cam_boost", "cam_look",
 	"debug_toggle_hud", "debug_toggle_panel", "debug_reload_tuning",
-	"debug_reverse_arc", "quit",
+	"debug_reverse_arc", "debug_cycle_hull", "quit",
 ]
 
 var _failures: PackedStringArray = []
@@ -153,6 +229,14 @@ func _ready() -> void:
 	_test_reference_field()
 	_test_dodge_and_brake()
 	_test_manual_flight()
+	_test_hull_classes()
+	_test_lane_geometry()
+	_test_deep_field()
+	_test_envelope_meter()
+	_test_disc_bounds()
+	_test_the_road()
+	_test_hull_roster()
+	_test_approach_envelope()
 	_test_target_components()
 	_test_turret_station()
 	_test_turret_weapons()
@@ -167,6 +251,7 @@ func _ready() -> void:
 	_test_autopilot_holds_standoff()
 	await _test_sandbox_builds()
 	await _test_arena_builds()
+	await _test_exploration_builds()
 
 	print("── %d checks, %d failed ──" % [_checks, _failures.size()])
 	for f in _failures:
@@ -541,7 +626,7 @@ func _test_autopilot_holds_standoff() -> void:
 		"%.1f m below, tuned %.1f" % [ship.depth_below_target(), depth])
 
 	var step := 1.0 / 60.0
-	var drift := Tuning.num("enemy/drift_speed")
+	var drift := TargetShip.tuned_drift_speed()
 	var worst := 0.0
 	var worst_depth := 0.0
 	for i in 1800:   # 30 simulated seconds
@@ -704,7 +789,10 @@ func _test_manual_flight() -> void:
 		"a manually flown ship cannot reach missile speed",
 		"ship %.1f m/s vs missile %.1f m/s" % [ship.manual_max_speed(), missile_speed])
 
-	Tuning.set_value("ship/manual_max_speed", missile_speed * 10.0)
+	# Raised on the CLASS key, which is what the ship actually reads now — raising
+	# the shared `ship/manual_max_speed` fallback would prove nothing, because a
+	# class with an entry of its own never consults it.
+	Tuning.set_value("exploration/taxi_max_speed", missile_speed * 10.0)
 	_expect(ship.manual_max_speed() < missile_speed,
 		"…even when the ship's own tuning is raised past it",
 		"clamp let %.1f m/s through" % ship.manual_max_speed())
@@ -2258,3 +2346,1645 @@ func _expect(condition: bool, what: String, detail: String) -> void:
 
 func _fail(msg: String) -> void:
 	_failures.append(msg)
+
+## The hull-class table (EXPLORATION_DESIGN.md invariants 2 and 5). The mechanism
+## is what is expensive to retrofit, so it is tested before the table has more than
+## three rows in it.
+func _test_hull_classes() -> void:
+	for kind in HullClass.all():
+		var text := HullClass.name_of(kind)
+		_expect(HullClass.from_name(text) == kind,
+			"hull class '%s' survives a round trip through its name" % text,
+			"got %s" % HullClass.name_of(HullClass.from_name(text)))
+		_expect(HullClass.from_name(text.to_upper()) == kind,
+			"…and is read case-insensitively", text)
+
+	# A name rather than an index, so a typo reads as something. It must land on the
+	# default rather than on whichever class happens to be enum member 0 by accident.
+	_expect(HullClass.from_name("frigate") == HullClass.DEFAULT,
+		"an unknown hull class falls back to the default rather than erroring",
+		"got %s" % HullClass.name_of(HullClass.from_name("frigate")))
+
+	# THE speed ladder. These orderings are the whole of EXPLORATION_DESIGN.md's
+	# §Speed Ladder, and every consequence in it — missiles are anti-capital, turrets
+	# are the anti-fighter answer, capitals cannot outrun anything — falls out of
+	# them rather than being imposed by a rule anywhere.
+	var missile_speed := Tuning.num("missile/base_speed")
+	var taxi := HullClass.max_speed(HullClass.Kind.TAXI)
+	var fighter := HullClass.max_speed(HullClass.Kind.FIGHTER)
+	var capital := HullClass.max_speed(HullClass.Kind.CAPITAL)
+	_expect(capital < taxi and taxi < fighter,
+		"the speed ladder is ordered: capital < taxi < fighter",
+		"capital %.1f, taxi %.1f, fighter %.1f" % [capital, taxi, fighter])
+	# THE CLAUSE IS "a missile outruns its INTENDED targets" (ADR 0059), and the
+	# fighter is not one of them (ADR 0073). What has to hold is that the classes a
+	# missile is FOR — the taxi and the capital — stay under it, and that the fighter
+	# stays the fastest thing in the roster.
+	_expect(taxi < missile_speed and capital < missile_speed,
+		"a missile outruns the classes it is meant to kill: the taxi and the capital",
+		"taxi %.1f, capital %.1f against a missile at %.1f" % [
+			taxi, capital, missile_speed])
+	_expect(fighter > taxi,
+		"…and the fighter is the fastest hull there is, whichever side of a missile",
+		"fighter %.1f, taxi %.1f" % [fighter, taxi])
+
+	# The ceiling is a clamp, not a suggestion, for every class a missile is meant to
+	# kill — a tuning session must not be able to produce one that matches a missile
+	# by accident. The fighter declares its own and is checked against that instead.
+	for kind in HullClass.all():
+		var key := "exploration/%s_max_speed" % HullClass.name_of(kind)
+		Tuning.set_value(key, missile_speed * 10.0)
+		if not HullClass.outrun_by_missile(kind):
+			_expect(HullClass.max_speed(kind) <= missile_speed
+					* HullClass.MAX_CEILING_FRACTION,
+				"%s is still clamped by its class's own declared ceiling" % key,
+				"clamp let %.1f m/s through" % HullClass.max_speed(kind))
+			continue
+		_expect(HullClass.max_speed(kind) < missile_speed,
+			"%s speed is clamped below a missile however high it is tuned" % key,
+			"clamp let %.1f m/s through" % HullClass.max_speed(kind))
+		Tuning.revert()
+
+	# A fighter has no cruise drive, and that ONE property is why no portal opens
+	# for it. If this ever becomes a separate rule about portals, this is the test
+	# that should have stopped it.
+	_expect(HullClass.has_cruise_drive(HullClass.Kind.TAXI),
+		"a taxi carries the cruise drive", "it does not")
+	_expect(not HullClass.has_cruise_drive(HullClass.Kind.FIGHTER),
+		"a fighter does not, which is the whole of why it cannot use a portal",
+		"it does")
+
+	# The fallback path: a class with no entry of its own resolves to the shared key,
+	# and a class with one ignores it. This is the half of `num()` that lets the
+	# table grow a row at a time without an edit at any call site.
+	_expect(is_equal_approx(
+			HullClass.num(HullClass.Kind.TAXI, "not_a_real_property",
+				"ship/manual_turn_rate_deg_per_sec"),
+			Tuning.num("ship/manual_turn_rate_deg_per_sec")),
+		"a property no class overrides resolves to the shared fallback",
+		"it did not")
+	_expect(is_equal_approx(
+			HullClass.num(HullClass.Kind.FIGHTER, "max_speed", "ship/manual_max_speed"),
+			Tuning.num("exploration/fighter_max_speed")),
+		"…and a property the class DOES override ignores the fallback",
+		"it did not")
+
+	# Invariants 3 and 4: the autopilot and the enemy move as fractions of their own
+	# hull's maximum, never as absolutes. The failure these catch is silent — an
+	# absolute that was fine at 34 m/s inverts at 15.5 and nothing errors.
+	var ship := Mothership.new()
+	add_child(ship)
+	var arc := ship.manual_max_speed() \
+		* clampf(Tuning.num("ship/arc_speed_fraction"), 0.0, 0.95)
+	_expect(arc < ship.manual_max_speed(),
+		"the autopilot arc is slower than flying the ship yourself (Pillar 1)",
+		"arc %.1f vs manual %.1f" % [arc, ship.manual_max_speed()])
+	_expect(arc > ship.manual_max_speed() * 0.25,
+		"…but not so much slower that delegating is a punishment",
+		"arc is %.2f of manual" % (arc / ship.manual_max_speed()))
+	ship.free()
+
+	_expect(TargetShip.tuned_drift_speed() < HullClass.max_speed(HullClass.Kind.TAXI),
+		"an enemy of the player's class cannot simply outrun the ship sent at it",
+		"enemy drifts at %.1f, player tops out at %.1f" % [
+			TargetShip.tuned_drift_speed(), HullClass.max_speed(HullClass.Kind.TAXI)])
+
+
+## Lane, deck and portal geometry. These are the relationships that have to hold
+## whatever the numbers are tuned to; the numbers themselves are the human's.
+func _test_lane_geometry() -> void:
+	var lane_width := Tuning.num("exploration/lane_width")
+	var lane_height := Tuning.num("exploration/lane_height")
+	_expect(lane_height < lane_width,
+		"the lane is wider than it is tall — monitor aspect, and roll is locked",
+		"%.0f wide x %.0f tall" % [lane_width, lane_height])
+	_expect(Tuning.num("exploration/deck_separation") >= lane_height,
+		"the two decks are separated by more than one deck's height, so they do not intersect",
+		"separation %.0f vs height %.0f" % [
+			Tuning.num("exploration/deck_separation"), lane_height])
+	_expect(Tuning.num("exploration/lane_edge_softness") < lane_width * 0.5,
+		"the soft edge is a gradient, not the whole lane",
+		"softness %.0f against a half-width of %.0f" % [
+			Tuning.num("exploration/lane_edge_softness"), lane_width * 0.5])
+	_expect(Tuning.num("exploration/lane_edge_speed_penalty") > 0.0,
+		"outside the lane is SLOWER, never stopped — the boundary is soft (ADR 0014)",
+		"a zero penalty is a wall")
+
+	# The portal is the on-ramp mouth and is deliberately NARROWER than the road it
+	# feeds. What must hold is that it clears the hull: a ship that cannot fit
+	# through an "unmissable, drive in, no ceremony" opening is the failure here.
+	# EVERY hull in the roster, not just the shared scale. The capital is drawn at
+	# 1.75 and is 76 m across; checking the aperture against the 1.0 hull passed
+	# happily while the ship the human was actually flying cleared it by 12 m and had
+	# nowhere to be in the lane behind it. A roster the road cannot carry is a bug in
+	# the road, and it has to be one number that says so.
+	var hull := load("res://assets/models/carrier.obj") as Mesh
+	var portal_width := Tuning.num("exploration/portal_width")
+	var portal_height := Tuning.num("exploration/portal_height")
+	var widest := Vector2.ZERO
+	for kind: HullClass.Kind in HullClass.all():
+		var box := hull.get_aabb().size \
+			* HullClass.num(kind, "hull_scale", "ship/hull_scale")
+		widest = Vector2(maxf(widest.x, box.x), maxf(widest.y, box.y))
+		_expect(portal_width > box.x * 1.5 and portal_height > box.y * 1.5,
+			"a %s clears the portal aperture with margin, across and up"
+				% HullClass.name_of(kind),
+			"%.0f x %.0f opening against a %.1f x %.1f hull" % [
+				portal_width, portal_height, box.x, box.y])
+	# …and once through it, the lane it feeds has to leave that hull somewhere to be.
+	# The lane is measured against the hull, so a ship whose half-section fills the
+	# lane's is outside it wherever it sits.
+	var cap := Tuning.num("exploration/lane_hull_clearance_cap")
+	_expect(widest.x * 0.5 < lane_width * 0.5 * cap
+			and widest.y * 0.5 < lane_height * 0.5 * cap,
+		"…and the widest hull leaves itself room in the lane rather than filling it",
+		"%.1f x %.1f hull in a %.0f x %.0f lane at a %.2f cap" % [
+			widest.x, widest.y, lane_width, lane_height, cap])
+	_expect(portal_width <= lane_width,
+		"the portal is the ramp mouth, no wider than the road it feeds",
+		"portal %.0f vs lane %.0f" % [portal_width, lane_width])
+	_expect(is_zero_approx(Tuning.num("exploration/portal_entry_seconds")),
+		"portal entry is instant — a local leg is 41 s and cannot afford ceremony",
+		"%.1f s of entry sequence" % Tuning.num("exploration/portal_entry_seconds"))
+
+	# The corridor has to hold both decks with room around them, or "the lane is
+	# visually open" is not true and the tube has become a tunnel.
+	var stack := Tuning.num("exploration/deck_separation") + lane_height
+	_expect(Tuning.num("exploration/corridor_diameter") > stack * 1.5,
+		"the bounded corridor is bigger than the road stacked inside it",
+		"corridor %.0f against a %.0f m stack" % [
+			Tuning.num("exploration/corridor_diameter"), stack])
+	var disc_height := Tuning.num("exploration/system_ceiling_height") \
+		+ Tuning.num("exploration/system_floor_depth")
+	_expect(disc_height < Tuning.num("exploration/system_diameter"),
+		"a system is a DISC: floor and ceiling closer than the diameter (ADR 0011)",
+		"%.0f tall in a %.0f disc" % [disc_height,
+			Tuning.num("exploration/system_diameter")])
+
+	# The speed ladder's whole purpose is that the highway beats flying it yourself
+	# by a lot at range and by little up close. If cruise ever stops beating a
+	# fighter, the road has no reason to exist.
+	_expect(Tuning.num("exploration/cruise_speed")
+			> HullClass.max_speed(HullClass.Kind.FIGHTER) * 2.0,
+		"cruise is at least twice the fastest hull, or the road buys nothing",
+		"cruise %.1f vs fighter %.1f" % [Tuning.num("exploration/cruise_speed"),
+			HullClass.max_speed(HullClass.Kind.FIGHTER)])
+
+## The deep field: what is out there past the boundary, and why.
+##
+## The placement rule is the whole of it — everything is at least `near` metres
+## OUTSIDE playable space — because the failure it prevents is a rock appearing inside
+## a corridor the moment a leg length is nudged. `DeepField.scatter` is static so this
+## can be checked directly; the node itself deliberately has no accessor that hands
+## out a position, and nothing may add one (CLAUDE.md, LOD / collision).
+func _test_deep_field() -> void:
+	var disc := DiscRegion.new()
+	disc.ceiling = 400.0
+	disc.floor_depth = 750.0
+	disc.radius = 1750.0
+	disc.name_of = "SYSTEM A"
+	var field := BoundaryField.new()
+	field.regions = [disc]
+	var spine := PackedVector3Array([Vector3(-1750.0, 0.0, 0.0),
+		Vector3.ZERO, Vector3(1750.0, 0.0, 0.0)])
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1
+
+	var near := 300.0
+	var places := DeepField.scatter(rng, spine, field, 400, near, 4000.0, 1750.0)
+	_expect(places.size() > 300,
+		"the deep field places what it is asked for, near enough",
+		"%d of 400 placed" % places.size())
+	var intruder := 0
+	for point: Vector3 in places:
+		if field.overshoot(point) < near or field.overshoot(point) > 4000.0:
+			intruder += 1
+	_expect(intruder == 0,
+		"…and every piece of it is OUTSIDE playable space, in its own layer's band",
+		"%d of %d landed inside the system" % [intruder, places.size()])
+	_expect(DeepField.scatter(rng, spine, field, 0, near, 4000.0, 1750.0).is_empty()
+			and DeepField.scatter(rng, PackedVector3Array(), field, 10, near,
+				4000.0, 1750.0).is_empty(),
+		"…and a field with no route or no count is empty rather than at the origin",
+		"something was placed anyway")
+
+	# The three layers are three distances on purpose: motion is only legible against
+	# things that are NOT all the same distance away. If the dust ever reaches out as
+	# far as the bodies, the field collapses to one layer and the speed cue with it.
+	_expect(Tuning.num("exploration/deep_dust_far")
+			< Tuning.num("exploration/deep_bodies_far"),
+		"the dust is nearer than the bodies — three layers, not one",
+		"dust to %.0f m, bodies to %.0f m" % [
+			Tuning.num("exploration/deep_dust_far"),
+			Tuning.num("exploration/deep_bodies_far")])
+	_expect(Tuning.num("exploration/starfield_distance")
+			> Tuning.num("exploration/deep_bodies_far") * 1.2,
+		"…and the stars are past the furthest of them, so they read as a sky",
+		"stars at %.0f m, bodies out to %.0f m" % [
+			Tuning.num("exploration/starfield_distance"),
+			Tuning.num("exploration/deep_bodies_far")])
+
+
+## The engagement-envelope meter. It is an instrument, so what is tested is that it
+## reports the truth and that nothing about it depends on where the origin happens
+## to be this frame (ADR 0020).
+func _test_envelope_meter() -> void:
+	var meter := EnvelopeMeter.new()
+
+	meter.observe([] as Array[Vector3])
+	_expect(is_zero_approx(meter.span) and meter.participants == 0,
+		"an empty fight has no envelope", "span %.1f" % meter.span)
+	meter.observe([Vector3.ZERO] as Array[Vector3])
+	_expect(is_zero_approx(meter.span) and meter.participants == 1,
+		"…and neither does one participant on its own — a span needs two",
+		"span %.1f" % meter.span)
+
+	# The span is the largest distance between ANY two participants, which on a
+	# diagonal is not an axis extent. A bounding box would be cheaper and wrong.
+	meter.observe([Vector3(-100.0, 0.0, 0.0), Vector3(100.0, 0.0, 0.0),
+		Vector3(0.0, 40.0, 300.0)] as Array[Vector3])
+	var diagonal := Vector3(-100.0, 0.0, 0.0).distance_to(Vector3(0.0, 40.0, 300.0))
+	_expect(is_equal_approx(meter.current_span, diagonal),
+		"the span is the longest pair, not the widest axis",
+		"got %.1f, longest pair is %.1f" % [meter.current_span, diagonal])
+	_expect(is_equal_approx(meter.current_vertical, 40.0),
+		"…and the vertical figure is the up-axis spread alone, reported separately",
+		"got %.1f" % meter.current_vertical)
+
+	# A high-water mark: a fight that closes back up does not un-measure how far it
+	# sprawled, because the disc has to hold the largest moment, not the last one.
+	var widest := meter.span
+	meter.observe([Vector3.ZERO, Vector3(1.0, 0.0, 0.0)] as Array[Vector3])
+	_expect(is_equal_approx(meter.span, widest),
+		"the record survives the fight closing back up",
+		"record fell from %.1f to %.1f" % [widest, meter.span])
+	_expect(meter.current_span < meter.span,
+		"…while the live figure follows the fight down",
+		"live %.1f, record %.1f" % [meter.current_span, meter.span])
+
+	# Floating origin: the reading is of distances BETWEEN participants, so shifting
+	# every participant by the same amount must change nothing. If this ever fails,
+	# the envelope number has been silently measuring distance-from-origin.
+	var shifted := EnvelopeMeter.new()
+	var shift := Vector3(9000.0, -4000.0, 12000.0)
+	var points: Array[Vector3] = [Vector3(-100.0, 0.0, 0.0), Vector3(100.0, 0.0, 0.0),
+		Vector3(0.0, 40.0, 300.0)]
+	var moved: Array[Vector3] = []
+	for point in points:
+		moved.append(point + shift)
+	shifted.observe(moved)
+	_expect(is_equal_approx(shifted.span, meter.span)
+			and is_equal_approx(shifted.vertical, meter.vertical),
+		"a floating-origin recentre does not move the envelope reading",
+		"%.1f/%.1f against %.1f/%.1f" % [shifted.span, shifted.vertical,
+			meter.span, meter.vertical])
+
+	meter.reset()
+	_expect(is_zero_approx(meter.span) and is_zero_approx(meter.vertical),
+		"reset forgets the record", "span %.1f" % meter.span)
+
+## The system boundary (ADR 0011, as amended by ADR 0062). The rules under test are
+## the ones that make it a telegraph rather than a wall, the heading model that lets
+## it stop the player without ever taking the stick, and the union that makes a
+## corridor continuous with the systems at its ends.
+func _test_disc_bounds() -> void:
+	var disc := DiscRegion.new()
+	disc.ceiling = 400.0
+	disc.floor_depth = 750.0
+	disc.radius = 1750.0
+	disc.aperture_radius = 1100.0
+	disc.apertures = [Vector3.RIGHT]
+	disc.name_of = "SYSTEM A"
+
+	var tube := TubeRegion.new()
+	tube.span_between(Vector3(1750.0, 0.0, 0.0), Vector3(5750.0, 0.0, 0.0))
+	tube.mouth_radius = 1100.0
+	tube.radius = 875.0
+	tube.flare_length = 800.0
+	tube.name_of = "corridor"
+
+	var field := BoundaryField.new()
+	field.regions = [disc, tube]
+	field.warning_band = 120.0
+	field.stop_distance = 260.0
+
+	# --- where the edges are ---
+	_expect(is_zero_approx(field.overshoot(Vector3.ZERO)),
+		"the centre of the combat plane is inside the disc", "it is not")
+	_expect(is_equal_approx(field.overshoot(Vector3(0.0, 460.0, 0.0)), 60.0),
+		"overshoot past the ceiling is measured from the face",
+		"%.1f" % field.overshoot(Vector3(0.0, 460.0, 0.0)))
+	_expect(is_equal_approx(field.overshoot(Vector3(0.0, -800.0, 0.0)), 50.0),
+		"…and past the floor, which sits deeper because the planet is under it",
+		"%.1f" % field.overshoot(Vector3(0.0, -800.0, 0.0)))
+
+	# ADR 0062: the rim IS a boundary now. ADR 0011 left it open because lateral exit
+	# WAS departure; roads made that untrue, and an open rim leads to unrendered space.
+	_expect(is_equal_approx(field.overshoot(Vector3(0.0, 0.0, 1850.0)), 100.0),
+		"the RIM is a boundary too — flying laterally out is no longer free",
+		"%.1f m past" % field.overshoot(Vector3(0.0, 0.0, 1850.0)))
+	_expect(is_zero_approx(field.overshoot(Vector3(0.0, 0.0, 1700.0))),
+		"…and just inside it is still clear", "already outside")
+	_expect(field.label(Vector3.ZERO) == "SYSTEM A",
+		"…and the field can say which piece of the map you are in",
+		field.label(Vector3.ZERO))
+
+	# --- the aperture, and the corridor that is the same shape ---
+	_expect(disc.aperture_at(Vector3(1740.0, 0.0, 0.0)) == 0,
+		"the rim OPENS on the aperture's bearing", "the opening was not found")
+	_expect(disc.aperture_at(Vector3(-1740.0, 0.0, 0.0)) < 0
+			and field.overshoot(Vector3(-1850.0, 0.0, 0.0)) > 0.0,
+		"…and the OPPOSITE bearing is closed — one opening, not a symmetric pair",
+		"the far side is open too")
+	# The hole is a hole in the WALL, not a tunnel through space. Past the rim there
+	# is no hole to be in, and what is out there belongs to the corridor. Without
+	# this the disc reports itself unbounded along its own bearing, and a kilometre
+	# past the rim still reads as "in SYSTEM A".
+	_expect(disc.aperture_at(Vector3(3000.0, 0.0, 0.0)) < 0,
+		"…and past the rim there is no opening to be in — a hole is not a tunnel",
+		"the disc claimed space a kilometre outside itself")
+	# The opening is ANGULAR, measured where the bearing cuts the wall. Using the
+	# point's own distance from the axis instead widens the hole for anything deep
+	# inside the disc, which is where it matters least and is wrong most.
+	var off_bearing := Vector3(600.0, 0.0, 1500.0)
+	_expect(disc.aperture_at(off_bearing) < 0,
+		"…and the opening is angular: 68 deg off the bearing is wall, not hole",
+		"a point 68 deg round the rim read as the opening")
+	_expect(tube.profile(0.0) > tube.profile(tube.flare_length),
+		"the corridor FLARES at its mouth: wide at the rim, corridor-sized after",
+		"%.0f m at the mouth, %.0f m along" % [
+			tube.profile(0.0), tube.profile(tube.flare_length)])
+	_expect(is_equal_approx(tube.profile(tube.length() * 0.5), tube.radius),
+		"…and is the corridor down the middle", "%.1f" % tube.profile(
+			tube.length() * 0.5))
+	_expect(is_equal_approx(tube.profile(tube.length()), tube.mouth_radius),
+		"…and flares again at the far end, so arriving opens out too",
+		"%.1f" % tube.profile(tube.length()))
+	# Past the rim the disc's faces stop applying: a ceiling 400 m up has nothing to
+	# say about a corridor 1750 m across, and leaving a flat system for a round tube
+	# should open out rather than pinch.
+	_expect(is_zero_approx(field.overshoot(Vector3(2000.0, 600.0, 0.0))),
+		"inside the corridor the disc's ceiling no longer applies — the tube is taller",
+		"%.1f m past" % field.overshoot(Vector3(2000.0, 600.0, 0.0)))
+	_expect(field.label(Vector3(3500.0, 0.0, 0.0)) == "corridor",
+		"…and the corridor is what governs out there",
+		field.label(Vector3(3500.0, 0.0, 0.0)))
+
+	# --- the union, which is where the seams would be ---
+	# Playable space is the disc PLUS the corridor, so flying out through the mouth
+	# must be continuous: no step at the rim plane, and above all no red glow while
+	# passing through the middle of the opening.
+	_expect(is_zero_approx(field.warning(Vector3(1700.0, 0.0, 0.0))),
+		"no red while flying up the middle of the aperture — the rim is not there",
+		"%.2f warning 50 m short of the rim plane" % field.warning(
+			Vector3(1700.0, 0.0, 0.0)))
+	_expect(field.warning(Vector3(0.0, 0.0, 1700.0)) > 0.0,
+		"…while the same distance from the CLOSED rim does warn",
+		"%.2f" % field.warning(Vector3(0.0, 0.0, 1700.0)))
+	# A tube has NO END CAPS. A cap is a wall reported where two regions merely meet,
+	# and it would paint the far end of a legal four-kilometre route red.
+	_expect(is_zero_approx(field.warning(Vector3(5600.0, 0.0, 0.0))),
+		"…and no red at the far mouth either — regions meet, they do not wall",
+		"%.2f 150 m short of the far rim" % field.warning(Vector3(5600.0, 0.0, 0.0)))
+	_expect(not tube.applies_to(Vector3(1000.0, 0.0, 0.0)),
+		"the tube declares itself INAPPLICABLE behind its own mouth, rather than capped",
+		"it answered for a point inside the disc")
+	# Drifting wide in the corridor is caught by the tube wall, and the way back is
+	# toward the axis — not backward into the disc, which is the answer a rim-only
+	# model gives and it points the player the wrong way.
+	var wide := Vector3(3500.0, 0.0, 915.0)
+	_expect(field.overshoot(wide) > 0.0 and field.overshoot(wide) < 100.0,
+		"drifting wide in the corridor is outside — by the TUBE's margin, not the rim's",
+		"%.1f m past" % field.overshoot(wide))
+	_expect(absf(field.outward(wide).z) > 0.9,
+		"…and the way back in is sideways toward the axis, not back down the corridor",
+		"outward (%.2f, %.2f, %.2f)" % [field.outward(wide).x,
+			field.outward(wide).y, field.outward(wide).z])
+
+	# --- the telegraph ---
+	# It reaches full BEFORE anything happens to the player. That ordering is the
+	# whole of the Bannerlord treatment, and it is why this is not a punishment.
+	_expect(is_zero_approx(field.warning(Vector3.ZERO)),
+		"no warning in the middle of the disc", "%.2f" % field.warning(Vector3.ZERO))
+	_expect(field.warning(Vector3(0.0, disc.ceiling - 60.0, 0.0)) > 0.4,
+		"the red is well up before the ceiling is reached",
+		"%.2f" % field.warning(Vector3(0.0, disc.ceiling - 60.0, 0.0)))
+	_expect(is_equal_approx(field.warning(Vector3(0.0, disc.ceiling, 0.0)), 1.0),
+		"…and is full AT the face, while nothing has been taken yet",
+		"%.2f" % field.warning(Vector3(0.0, disc.ceiling, 0.0)))
+	_expect(is_equal_approx(field.warning(Vector3(0.0, 9999.0, 0.0)), 1.0),
+		"…and does not exceed full past it",
+		"%.2f" % field.warning(Vector3(0.0, 9999.0, 0.0)))
+	# The warning band is metres INSIDE the edge and does nothing but paint. The two
+	# distances used to be one, and conflating them is the easy mistake here.
+	_expect(is_equal_approx(field.speed_ceiling_scale(
+			Vector3(0.0, disc.ceiling - 10.0, 0.0), Vector3.UP), 1.0),
+		"the warning band is TELEGRAPH ONLY — nothing is clamped inside the edge",
+		"clamped while still inside")
+
+	# --- the clamp: magnitude, never direction, and heading-proportional ---
+	# THE invariant, and it is structural: the function returns a scale and never
+	# sees a heading it could return.
+	var above := Vector3(0.0, disc.ceiling + field.stop_distance * 0.5, 0.0)
+	_expect(field.speed_ceiling_scale(above, Vector3.UP) < 1.0,
+		"pushing further out past a face scales the speed LIMIT down",
+		"no strain applied")
+	_expect(is_equal_approx(field.speed_ceiling_scale(above, Vector3.DOWN), 1.0),
+		"…and flying BACK IN is never taxed, at any depth — the way home stays free",
+		"the way home was clamped")
+	# cos²(t/2): 1 straight out, 0.5 tangential, 0 straight back in. Tangential is
+	# SLOWED but not stopped — this is the correction to the first model, which made
+	# anything not-straight-out free.
+	_expect(is_equal_approx(BoundaryField.outbound_fraction(
+			Vector3.UP, Vector3.UP), 1.0)
+			and is_equal_approx(BoundaryField.outbound_fraction(
+				Vector3.RIGHT, Vector3.UP), 0.5)
+			and is_zero_approx(BoundaryField.outbound_fraction(
+				Vector3.DOWN, Vector3.UP)),
+		"the heading term is cos²(t/2): 1 out, 0.5 ALONG the edge, 0 back in",
+		"out %.2f, along %.2f, back %.2f" % [
+			BoundaryField.outbound_fraction(Vector3.UP, Vector3.UP),
+			BoundaryField.outbound_fraction(Vector3.RIGHT, Vector3.UP),
+			BoundaryField.outbound_fraction(Vector3.DOWN, Vector3.UP)])
+	var sideways := field.speed_ceiling_scale(above, Vector3.BACK)
+	_expect(sideways < 1.0 and sideways > field.speed_ceiling_scale(above, Vector3.UP),
+		"…so flying ALONG the edge is slowed, but less than flying out of it",
+		"%.2f along vs %.2f out" % [
+			sideways, field.speed_ceiling_scale(above, Vector3.UP)])
+	# And it reaches zero. A ship that keeps pushing outward is brought to a halt and
+	# has to turn; the boundary stops it by making outward cost everything.
+	var far_out := Vector3(0.0, disc.ceiling + field.stop_distance, 0.0)
+	_expect(is_zero_approx(field.speed_ceiling_scale(far_out, Vector3.UP)),
+		"a full stop_distance out, straight outbound is STOPPED — not merely slowed",
+		"%.2f" % field.speed_ceiling_scale(far_out, Vector3.UP))
+	_expect(is_equal_approx(field.speed_ceiling_scale(far_out, Vector3.DOWN), 1.0),
+		"…and at that same point, turning round restores full speed immediately",
+		"%.2f" % field.speed_ceiling_scale(far_out, Vector3.DOWN))
+	_expect(is_equal_approx(field.speed_ceiling_scale(
+			Vector3(0.0, 8000.0, 0.0), Vector3.UP), 0.0),
+		"…and no further than that: the clamp bottoms out rather than going negative",
+		"%.2f" % field.speed_ceiling_scale(Vector3(0.0, 8000.0, 0.0), Vector3.UP))
+
+	# --- the corner, which is arithmetic rather than a case ---
+	# Past both the ceiling and the rim, the combined outward normal is the diagonal,
+	# so down-and-inward is free and up-and-out is stopped. Nothing is written for it.
+	var corner := Vector3(0.0, disc.ceiling + 80.0, disc.radius + 80.0)
+	var out_dir := field.outward(corner)
+	_expect(out_dir.y > 0.3 and out_dir.z > 0.3,
+		"at a ceiling-and-rim corner the outward normal is the DIAGONAL",
+		"(%.2f, %.2f, %.2f)" % [out_dir.x, out_dir.y, out_dir.z])
+	_expect(field.speed_ceiling_scale(corner, -out_dir) > \
+			field.speed_ceiling_scale(corner, Vector3.UP),
+		"…so the way back in from a corner is the cheapest heading there",
+		"straight up was no worse than the diagonal")
+	_expect(field.constraints(corner).size() == 3,
+		"…and it is three constraints, not a corner case", "%d constraints" %
+			field.constraints(corner).size())
+
+	# --- regions carry their own placement ---
+	# The map is a list of regions, not a hierarchy, so a system a kilometre away has
+	# to answer about its own space and no one else's.
+	var far_disc := DiscRegion.new()
+	far_disc.center = Vector3(5750.0 + 1750.0, 0.0, 0.0)
+	far_disc.ceiling = 400.0
+	far_disc.floor_depth = 750.0
+	far_disc.radius = 1750.0
+	far_disc.name_of = "SYSTEM B"
+	field.regions = [disc, tube, far_disc]
+	_expect(field.label(far_disc.center) == "SYSTEM B",
+		"a second system placed down the corridor answers for its own space",
+		field.label(far_disc.center))
+	_expect(is_zero_approx(field.overshoot(far_disc.center))
+			and is_zero_approx(field.overshoot(Vector3.ZERO)),
+		"…and both systems are in bounds at once — the map is a UNION, not a mode",
+		"one of them reported outside")
+	_expect(is_zero_approx(field.overshoot(Vector3(4000.0, 0.0, 0.0))),
+		"…with the corridor between them in bounds all the way across",
+		"%.1f m past, mid-corridor" % field.overshoot(Vector3(4000.0, 0.0, 0.0)))
+	field.regions = [disc, tube]
+
+	# Damage is the LAST stage and starts only after the grace the player watched
+	# run down. A brief tactical dip has to cost nothing (ADR 0011).
+	_expect(is_zero_approx(BoundaryField.damage_per_second(3.9, 4.0, 6.0, 12.0)),
+		"a dip shorter than the grace costs nothing",
+		"%.2f hp/s" % BoundaryField.damage_per_second(3.9, 4.0, 6.0, 12.0))
+	_expect(BoundaryField.damage_per_second(7.0, 4.0, 6.0, 12.0) > 0.0
+			and BoundaryField.damage_per_second(7.0, 4.0, 6.0, 12.0) < 12.0,
+		"…then damage begins and RAMPS rather than arriving at full rate",
+		"%.2f hp/s" % BoundaryField.damage_per_second(7.0, 4.0, 6.0, 12.0))
+	_expect(is_equal_approx(BoundaryField.damage_per_second(99.0, 4.0, 6.0, 12.0), 12.0),
+		"…reaching the full rate, so camping out there does not work",
+		"%.2f hp/s" % BoundaryField.damage_per_second(99.0, 4.0, 6.0, 12.0))
+
+	# The corridor only funnels if its mouth is wider than what it feeds. Tuned
+	# values, not the fixture's — the two keys are independent and inverting them
+	# silently turns the guide into a pinch.
+	_expect(Tuning.num("exploration/aperture_mouth_diameter")
+			> Tuning.num("exploration/corridor_diameter"),
+		"the tuned aperture mouth is WIDER than the corridor it feeds",
+		"%.0f m mouth vs %.0f m corridor" % [
+			Tuning.num("exploration/aperture_mouth_diameter"),
+			Tuning.num("exploration/corridor_diameter")])
+	_expect(Tuning.num("exploration/aperture_mouth_diameter")
+			< Tuning.num("exploration/system_diameter"),
+		"…and narrower than the disc, so there is a rim left to be a boundary",
+		"%.0f m mouth in a %.0f m disc" % [
+			Tuning.num("exploration/aperture_mouth_diameter"),
+			Tuning.num("exploration/system_diameter")])
+	# Two flares have to fit in the shortest leg, or the corridor is all mouth and
+	# never reaches its own width.
+	_expect(Tuning.num("exploration/aperture_funnel_length") * 2.0
+			< Tuning.num("exploration/local_leg_length"),
+		"…and the two flares fit inside the shortest leg with corridor left between",
+		"%.0f m of flare in a %.0f m leg" % [
+			Tuning.num("exploration/aperture_funnel_length") * 2.0,
+			Tuning.num("exploration/local_leg_length")])
+
+	# ADR 0061: the floor goes UNDER the planet, never between the player and it.
+	var surface := Tuning.num("exploration/planet_radius") \
+		- Tuning.num("exploration/planet_center_depth")
+	var planet_bottom := -Tuning.num("exploration/planet_center_depth") \
+		- Tuning.num("exploration/planet_radius")
+	_expect(planet_bottom > -Tuning.num("exploration/system_floor_depth"),
+		"the disc's hard floor sits below the whole planet",
+		"planet reaches %.0f, floor is at %.0f" % [planet_bottom,
+			-Tuning.num("exploration/system_floor_depth")])
+	_expect(surface < 0.0,
+		"…and the planet's surface is below the combat plane, not in it (ADR 0061)",
+		"surface at %+.0f" % surface)
+
+
+## The road (POC step 6): the lane, the portals, and the deck convention. What is
+## under test is that the highway is a PLACE rather than a travel mode — every
+## property ADR 0057 asks a review to check is checkable here.
+func _test_the_road() -> void:
+	# --- the deck convention ---
+	# Headings in the arc clockwise from northwest through north and east to
+	# southeast ride the upper deck. Its value is entirely as a mistake-catcher —
+	# "I am heading east, why am I on the lower deck?" — so one exception makes it
+	# worse than no rule, and the boundary cases are the whole test.
+	_expect(RoadDeck.rides_upper(0.0) and RoadDeck.rides_upper(90.0)
+			and RoadDeck.rides_upper(135.0) and RoadDeck.rides_upper(315.0)
+			and RoadDeck.rides_upper(350.0),
+		"north, east and the arc between them ride the UPPER deck",
+		"the arc is wrong")
+	_expect(not RoadDeck.rides_upper(180.0) and not RoadDeck.rides_upper(270.0)
+			and not RoadDeck.rides_upper(136.0) and not RoadDeck.rides_upper(314.0),
+		"…and south, west and the arc between them ride the lower",
+		"the other half is wrong")
+	_expect(RoadDeck.rides_upper(90.0) != RoadDeck.rides_upper(270.0),
+		"…so a leg and its return are never on the same deck",
+		"both directions landed on one deck")
+	_expect(RoadDeck.rides_upper(-90.0) == RoadDeck.rides_upper(270.0),
+		"…and a bearing outside 0-360 wraps rather than falling off the arc",
+		"a negative bearing was not normalised")
+
+	# --- the lane's cross-section ---
+	var lane := CruiseLane.new()
+	lane.axis = Vector3.RIGHT
+	lane.right = Vector3.BACK
+	lane.up = Vector3.UP
+	lane.half_width = 75.0
+	lane.half_height = 50.0
+	lane.roundness = 4.0
+	lane.edge_softness = 10.0
+	lane.base_speed = 96.7
+	lane.edge_speed_penalty = 0.45
+	lane.push_accel = 8.0
+
+	_expect(lane.edge_distance() < 0.0 and not lane.is_outside(),
+		"the centre of the lane is in the lane",
+		"%.1f m past" % lane.edge_distance())
+	lane.lateral = 74.0
+	_expect(not lane.is_outside(),
+		"…and so is just inside the near edge", "%.1f" % lane.edge_distance())
+	lane.lateral = 80.0
+	_expect(lane.is_outside() and is_equal_approx(lane.edge_distance(), 5.0),
+		"…and 5 m past it is 5 m past it", "%.2f" % lane.edge_distance())
+	# The cross-section is a rounded lozenge so no edge is dramatically nearer than
+	# another. At the corner a plain rectangle would still be inside and an ellipse
+	# would be well outside; the lozenge sits between them, and the DRAWN ribs use
+	# this same curve so the picture and the rule are one shape.
+	lane.lateral = 75.0 * 0.9
+	lane.vertical = 50.0 * 0.9
+	_expect(lane.is_outside(),
+		"the corner of the lane is outside it — the section is a lozenge, not a box",
+		"%.2f m past at 90%% of both extents" % lane.edge_distance())
+	lane.lateral = 75.0 * 0.7
+	lane.vertical = 50.0 * 0.7
+	_expect(not lane.is_outside(),
+		"…but not as far in as an ellipse would put it — nor a rounded diamond",
+		"%.2f m past at 70%% of both" % lane.edge_distance())
+
+	# --- the soft boundary: an incentive, never a wall (ADR 0064) ---
+	lane.vertical = 0.0
+	lane.lateral = 0.0
+	_expect(is_equal_approx(lane.top_speed(), lane.base_speed)
+			and lane.push() == Vector3.ZERO,
+		"in the lane there is no penalty and no push at all",
+		"%.1f m/s, push %.1f" % [lane.top_speed(), lane.push().length()])
+	lane.lateral = 90.0
+	_expect(lane.top_speed() < lane.base_speed
+			and lane.top_speed() > lane.base_speed * 0.4,
+		"out of the lane the cruise drive is slower — an incentive to hold a line",
+		"%.1f m/s of %.1f" % [lane.top_speed(), lane.base_speed])
+	# THE invariant of the lane: it must never be able to stop the player. If it can,
+	# it is a wall, and a wall on a road is the conveyor this design rejects.
+	lane.lateral = 100000.0
+	_expect(lane.top_speed() >= lane.base_speed * clampf(
+			Tuning.num("exploration/lane_edge_speed_penalty"), 0.05, 1.0) - 0.001,
+		"…and no slower than the penalty, however far out — the lane cannot STOP you",
+		"%.1f m/s" % lane.top_speed())
+	_expect(lane.top_speed() > Tuning.num("exploration/taxi_max_speed"),
+		"…in fact still faster than flying the leg by hand, which is why it is soft",
+		"%.1f m/s out of lane vs %.1f by hand" % [lane.top_speed(),
+			Tuning.num("exploration/taxi_max_speed")])
+	lane.lateral = 90.0
+	var nudge := lane.push()
+	_expect(nudge.length() > 0.0 and nudge.dot(Vector3.BACK) < 0.0,
+		"…and the push is back toward the centre-line, not along the road",
+		"(%.1f, %.1f, %.1f)" % [nudge.x, nudge.y, nudge.z])
+	_expect(is_zero_approx(nudge.dot(lane.axis)),
+		"…with nothing along the axis: the road corrects your LINE, never your speed",
+		"%.3f m/s along the road" % nudge.dot(lane.axis))
+	lane.lateral = 200.0
+	_expect(lane.push().length() > nudge.length(),
+		"…and it grows with depth, so it is felt as a slope rather than as a wall",
+		"%.1f then %.1f" % [nudge.length(), lane.push().length()])
+	# EASED IN, and this is the fix for a shudder rather than a nicety. `sqrt` has an
+	# infinite slope at zero, so the bare closed form arrived at full strength on the
+	# frame the edge was crossed, shoved the ship back inside, vanished — it is a
+	# function of position — and let it drift out again. A slope is what was promised;
+	# a limit cycle at the rail is what a big hull got.
+	lane.lateral = lane.half_width + 0.05
+	var toe := lane.push().length()
+	lane.lateral = lane.half_width + lane.edge_softness
+	_expect(toe < lane.push().length() * 0.05,
+		"…and it eases IN from nothing at the edge, rather than arriving at full",
+		"%.2f m/s a hair past the rail against %.2f m/s a softness past it" % [
+			toe, lane.push().length()])
+
+	# --- a ceiling that drops does not drop the ship with it (ADR 0071) ---
+	# This is the stutter the human flew into: cross the rail at cruise and the lane
+	# halves the drive's ceiling, and with nothing pacing the fall the ship lost eighty
+	# metres a second in ONE FRAME, got pushed back in, got it all back, and drifted
+	# out again. A limit cycle at the rail, which reads as being skipped forward.
+	var frame_time := 1.0 / 60.0
+	var braked := Mothership.brake_limited(160.0, 72.0, 160.0, 2.4, frame_time)
+	_expect(braked > 158.0,
+		"a ceiling that halves in one frame takes the ship's own brakes to follow",
+		"%.1f m/s after one frame of a 160 to 72 drop" % braked)
+	var settle := 160.0
+	var frames := 0
+	while settle > 72.5 and frames < 600:
+		settle = Mothership.brake_limited(settle, 72.0, 160.0, 2.4, frame_time)
+		frames += 1
+	_expect(frames > 30 and frames < 240,
+		"…and gets there in about the seconds its brakes are tuned for, not instantly",
+		"%.2f s to fall from 160 to 72" % (float(frames) * frame_time))
+	# Going UP is not limited. Acceleration is already paced by the throttle lever's
+	# own travel, and pacing it twice would make the lever slower than it is tuned to
+	# be — which is a feel change smuggled in behind a bug fix.
+	_expect(is_equal_approx(
+			Mothership.brake_limited(10.0, 160.0, 160.0, 2.4, frame_time), 160.0),
+		"…while gaining speed is untouched: the throttle already paces that",
+		"acceleration was limited too")
+	# A throttle simply released already falls at exactly this rate, so the guard has
+	# nothing to say about it. If it did, every hull would brake slower than tuned.
+	var released := Mothership.brake_limited(160.0, 160.0 - 160.0 / 2.4 * frame_time,
+		160.0, 2.4, frame_time)
+	_expect(is_equal_approx(released, 160.0 - 160.0 / 2.4 * frame_time),
+		"…and a released throttle is a no-op for it, at exactly the tuned rate",
+		"%.3f m/s" % released)
+
+	# --- the lane is measured against the HULL, not against a point ---
+	# A capital is 76 m across. A lane that only notices the ship's centre lets most
+	# of it hang through the rails before anything reports it, which is what the human
+	# flew into. Clearance shrinks the band the CENTRE may occupy; the drawn lane is
+	# unchanged, exactly as a road's markings do not move for a wide lorry.
+	var wide := CruiseLane.new()
+	wide.right = Vector3.BACK
+	wide.up = Vector3.UP
+	wide.half_width = 120.0
+	wide.half_height = 75.0
+	wide.roundness = 4.0
+	wide.edge_softness = 10.0
+	wide.clearance_cap = 0.5
+	wide.lateral = 90.0
+	_expect(not wide.is_outside(),
+		"a point-sized ship 90 m off a 120 m half-lane is still in its lane",
+		"%.1f m past" % wide.edge_distance())
+	wide.clearance = Vector2(38.0, 21.0)
+	_expect(wide.is_outside(),
+		"…and a 76 m hull in the same place is not, because its side is through the rail",
+		"%.1f m past" % wide.edge_distance())
+	wide.lateral = 0.0
+	wide.vertical = 0.0
+	_expect(not wide.is_outside() and wide.push() == Vector3.ZERO,
+		"…while down the middle it is still in its lane and unpushed",
+		"%.1f m past" % wide.edge_distance())
+	# A hull that is too big for the road still has to be able to FLY it. Without the
+	# cap it would be handed a lane of zero width, be outside wherever it sat, and be
+	# pushed and slowed for existing.
+	wide.clearance = Vector2(1000.0, 1000.0)
+	_expect(wide.usable_extents().x > 0.0 and wide.usable_extents().y > 0.0
+			and not wide.is_outside(),
+		"…and an absurd hull is left a lane rather than being outside its own road",
+		"%.1f x %.1f of usable lane" % [wide.usable_extents().x,
+			wide.usable_extents().y])
+	_expect(is_equal_approx(wide.usable_extents().x, 120.0 * 0.5),
+		"…capped at the tuned share of the section, and no further",
+		"%.1f m of a 120 m half-lane left" % wide.usable_extents().x)
+	_expect(lane.push().length() < lane.base_speed,
+		"…but never overpowers the drive itself", "%.1f m/s of push against %.1f" % [
+			lane.push().length(), lane.base_speed])
+
+	# --- ADR 0057: entry is on contact and instant ---
+	_expect(is_zero_approx(Tuning.num("exploration/portal_entry_seconds")),
+		"portal entry has no sequence — at a 41 s leg, ceremony is a loading screen",
+		"%.2f s of entry" % Tuning.num("exploration/portal_entry_seconds"))
+	_expect(Tuning.num("exploration/portal_width")
+			< Tuning.num("exploration/lane_width")
+			and Tuning.num("exploration/portal_height")
+				< Tuning.num("exploration/lane_height"),
+		"the portal is NARROWER than the lane it feeds — an on-ramp, not a gate",
+		"%.0f x %.0f opening into a %.0f x %.0f lane" % [
+			Tuning.num("exploration/portal_width"),
+			Tuning.num("exploration/portal_height"),
+			Tuning.num("exploration/lane_width"),
+			Tuning.num("exploration/lane_height")])
+	# The road only pays if it beats flying the leg. This is the ratio the third
+	# checkpoint is about, and it is arithmetic rather than opinion.
+	_expect(Tuning.num("exploration/cruise_speed")
+			> Tuning.num("exploration/fighter_max_speed"),
+		"cruise outruns the fastest hull, so the road is worth the detour to it",
+		"%.1f m/s cruise vs %.1f fighter" % [Tuning.num("exploration/cruise_speed"),
+			Tuning.num("exploration/fighter_max_speed")])
+	# The decks are stacked and must not intersect, or the lanes stop being separate
+	# and "no oncoming traffic in your lane" quietly stops being structural.
+	_expect(Tuning.num("exploration/deck_separation")
+			>= Tuning.num("exploration/lane_height"),
+		"the two decks are stacked clear of each other — one-way lanes stay separate",
+		"%.0f m apart for %.0f m of lane" % [
+			Tuning.num("exploration/deck_separation"),
+			Tuning.num("exploration/lane_height")])
+
+
+## The exploration scene builds its nodes. Same gate the arena and sandbox get: a
+## scene that is constructed in code has no editor to catch a missing child.
+## One frame of the exploration scene, the way the engine runs it: the scene's
+## `_process` and then the ship's, in tree order.
+##
+## The tests step by hand rather than awaiting real frames, because a three-second
+## drive spool is 180 of them and awaiting those would make the gate wait three real
+## seconds for a number it can reach instantly. Stepping only the scene was a quiet
+## lie about what a frame is — anything living in `Mothership._process` never ran.
+func _step_exploration(scene: ExplorationScene, delta: float) -> void:
+	scene._process(delta)
+	scene.ship()._process(delta)
+
+
+func _test_exploration_builds() -> void:
+	var packed := load("res://scenes/exploration.tscn") as PackedScene
+	_expect(packed != null, "exploration.tscn loads", "scene failed to load")
+	if packed == null:
+		return
+	var scene := packed.instantiate() as ExplorationScene
+	add_child(scene)
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	for path in ["WorldEnvironment", "KeyLight", "FillLight", "SystemRoot",
+			"SystemRoot/SystemMap",
+			"SystemRoot/SystemMap/DiscA", "SystemRoot/SystemMap/DiscA/Ceiling",
+			"SystemRoot/SystemMap/DiscA/Floor", "SystemRoot/SystemMap/DiscA/Rim",
+			"SystemRoot/SystemMap/DiscA/SystemMarkers",
+			"SystemRoot/SystemMap/PlanetA", "SystemRoot/SystemMap/PlanetA/Body",
+			"SystemRoot/SystemMap/ApproachA",
+			"SystemRoot/SystemMap/DiscB", "SystemRoot/SystemMap/DiscB/Rim",
+			"SystemRoot/SystemMap/PlanetB", "SystemRoot/SystemMap/PlanetB/Body",
+			"SystemRoot/SystemMap/ApproachB",
+			"SystemRoot/SystemMap/LinkAB", "SystemRoot/SystemMap/LinkAB/Wall",
+			"SystemRoot/SystemMap/LinkAB/LinkMarkers",
+			"SystemRoot/SystemMap/DiscC", "SystemRoot/SystemMap/PlanetC",
+			"SystemRoot/SystemMap/LinkBC",
+			"SystemRoot/SystemMap/Road",
+			"SystemRoot/SystemMap/Road/MainlineUpper",
+			"SystemRoot/SystemMap/Road/MainlineLower",
+			"SystemRoot/SystemMap/Road/RampOnAUpper",
+			"SystemRoot/SystemMap/Road/RampOffBUpper",
+			"SystemRoot/SystemMap/Road/RampOnBLower",
+			"SystemRoot/Ship", "ChaseCamera", "DebugHud"]:
+		_expect(scene.get_node_or_null(path) != null,
+			"exploration builds " + path, "missing")
+
+	var map := scene.map()
+	var field := map.field()
+	_expect(map.systems().size() == 3 and map.links().size() == 2,
+		"the map is three systems in a line: A, the local leg, B, the trunk, C",
+		"%d systems, %d links" % [map.systems().size(), map.links().size()])
+	_expect(map.marker_count() > 0,
+		"the whole map is filled with reference markers, corridor included",
+		"%d markers" % map.marker_count())
+	_expect(map.links()[0].marker_count() > 0,
+		"…and the CORRIDOR has its own: 4 km of empty tube reads as a still image",
+		"%d in the corridor" % map.links()[0].marker_count())
+
+	# The drawn rim and the enforced rim have to be the same thing, or the player
+	# learns to distrust the picture. The hole is a hole in the mesh, not a decal.
+	var rim := scene.get_node_or_null(
+		"SystemRoot/SystemMap/DiscA/Rim") as MeshInstance3D
+	if rim != null and rim.mesh != null:
+		var rim_verts: PackedVector3Array = rim.mesh.surface_get_arrays(0)[
+			Mesh.ARRAY_VERTEX]
+		var drawn := rim_verts.size() / 6
+		_expect(drawn > 0 and drawn < SystemDisc.RIM_SEGMENTS,
+			"the rim is drawn with an actual HOLE in it where the aperture is",
+			"%d of %d segments drawn" % [drawn, SystemDisc.RIM_SEGMENTS])
+
+	# A LINE, not a ring: the end systems have one aperture each, and it is the one
+	# the leg actually attaches to. An aperture facing nowhere is a hole in the
+	# boundary with unrendered space behind it.
+	var discs := map.systems()
+	_expect(discs[0].aperture_count() == 1
+			and discs[discs.size() - 1].aperture_count() == 1,
+		"each END system opens its rim exactly once — a line, not a ring",
+		"%d and %d apertures" % [discs[0].aperture_count(),
+			discs[discs.size() - 1].aperture_count()])
+	_expect(discs[1].aperture_count() == 2,
+		"…and the one in the middle opens twice, because the road passes through it",
+		"%d apertures" % discs[1].aperture_count())
+	var link := map.links()[0]
+	_expect(link.region().from().distance_to(discs[0].aperture_mouth(0)) < 1.0
+			and link.region().to().distance_to(discs[1].aperture_mouth(0)) < 1.0,
+		"…and the corridor attaches to those two mouths, not near them",
+		"%.1f m and %.1f m off" % [
+			link.region().from().distance_to(discs[0].aperture_mouth(0)),
+			link.region().to().distance_to(discs[1].aperture_mouth(0))])
+	# Legs are measured PORTAL TO PORTAL (an amendment to the POC doc), so this is
+	# the number the highway has to beat and it must be the tuned one, not the
+	# centre-to-centre distance that would be easy to conflate it with.
+	#
+	# The tuned number is the STRAIGHT LINE between the mouths. A leg weaves now, so
+	# what you actually fly is a little longer than what you tuned — which is the
+	# honest reading and the reason both are checked here rather than one.
+	_expect(absf(link.region().from().distance_to(link.region().to())
+			- Tuning.num("exploration/local_leg_length")) < 1.0,
+		"the leg is the tuned length MOUTH TO MOUTH, not centre to centre",
+		"%.0f m of a tuned %.0f" % [link.length(),
+			Tuning.num("exploration/local_leg_length")])
+	_expect(link.length() > Tuning.num("exploration/local_leg_length")
+			and link.length() < Tuning.num("exploration/local_leg_length") * 1.2,
+		"…and flying it is a little further than that, because the leg curves",
+		"%.0f m of road across a %.0f m gap" % [link.length(),
+			Tuning.num("exploration/local_leg_length")])
+	_expect(absf(discs[0].position.distance_to(discs[1].position)
+			- (Tuning.num("exploration/local_leg_length")
+				+ Tuning.num("exploration/system_diameter"))) < 1.0,
+		"…so centre to centre is the leg plus one system radius at each end",
+		"%.0f m apart" % discs[0].position.distance_to(discs[1].position))
+	_expect(absf(map.links()[1].region().from().distance_to(
+				map.links()[1].region().to())
+			- Tuning.num("exploration/trunk_leg_length")) < 1.0,
+		"…and the trunk leg is its own tuned length, an order up from the local one",
+		"%.0f m of a tuned %.0f" % [map.links()[1].length(),
+			Tuning.num("exploration/trunk_leg_length")])
+
+	# You can fly from one to the other without leaving the map. This is the whole of
+	# step 5 as one assertion: if any point along the route is out of bounds, the
+	# control condition cannot be flown and success criterion 2 is untestable.
+	var route_ok := true
+	var worst := 0.0
+	for i in 81:
+		var t := float(i) / 80.0
+		var point := discs[0].position.lerp(discs[1].position, t)
+		worst = maxf(worst, field.overshoot(point))
+		if field.overshoot(point) > 0.0:
+			route_ok = false
+	_expect(route_ok,
+		"the whole route from A to B is in bounds — the leg can actually be flown",
+		"worst point is %.1f m outside" % worst)
+	# And the corridor is not a second way of saying "the disc". Halfway along, the
+	# governing region has to be the tube.
+	# ALONG the corridor rather than between its mouths: a leg weaves now, and the
+	# straight-line midpoint of a curved leg is not on it.
+	var midpoint := link.region().path.point_at(link.region().length() * 0.5)
+	_expect(map.place_of(midpoint) == link.region().name_of,
+		"…and halfway along it, the CORRIDOR is what governs, not either system",
+		map.place_of(midpoint))
+	_expect(map.place_of(discs[1].position) == SystemMap.NAMES[1],
+		"…while the far end is system B, which the HUD can therefore name",
+		map.place_of(discs[1].position))
+
+	# The ship has to start somewhere it can actually be. A closed rim plus a start
+	# position derived from the radius is exactly the pair that could silently put
+	# the player outside their own system.
+	_expect(is_zero_approx(field.overshoot(map.to_local(
+			scene.ship().global_position))),
+		"the ship starts INSIDE the bounded volume, not on the wrong side of the rim",
+		"%.1f m past" % field.overshoot(map.to_local(scene.ship().global_position)))
+	_expect(map.place_of(map.to_local(scene.ship().global_position))
+			== SystemMap.NAMES[0],
+		"…and it starts in system A, with the crossing still ahead of it",
+		map.place_of(map.to_local(scene.ship().global_position)))
+
+	# The player owns the helm and keeps it. There is no other station here, so the
+	# autopilot — which is what happens when nobody is flying — must never run.
+	_expect(not scene.ship().autopilot and scene.ship().piloted,
+		"the player is at the helm and stays there — no roster in this scene",
+		"autopilot %s, piloted %s" % [scene.ship().autopilot, scene.ship().piloted])
+	_expect(scene.ship().position.y < discs[0].ceiling_height()
+			and scene.ship().position.y > -discs[0].floor_depth(),
+		"…and starts inside the disc", "y %.1f" % scene.ship().position.y)
+	# Every system gets a planet, each below its OWN combat plane. A planet that
+	# derived its depth from the world rather than its system would sit correctly at
+	# A and be buried at B, which is a bug that only shows up after a four-minute flight.
+	for i in map.planets().size():
+		var planet := map.planets()[i]
+		_expect(is_equal_approx(planet.depth_below_system(),
+				Tuning.num("exploration/planet_center_depth")),
+			"%s's planet is below ITS OWN combat plane (ADR 0061)" % SystemMap.NAMES[i],
+			"%.1f m below a system centred at y %.1f" % [
+				planet.depth_below_system(), planet.base.y])
+
+	# --- the road (POC step 6, reshaped after the first play session) ---
+	# The highway runs entirely THROUGH each system and never stops (ADR 0065). What
+	# stops is the ramp: it leaves the mainline tangentially and curves down and out
+	# to a portal beside the planet.
+	var road := map.road()
+	var mainlines: Array[RoadDeck] = []
+	var ramps: Array[RoadDeck] = []
+	for deck in road.decks():
+		if deck.start_portal() == null and deck.end_portal() == null:
+			mainlines.append(deck)
+		else:
+			ramps.append(deck)
+	_expect(mainlines.size() == 2,
+		"there is one mainline per direction, spanning the whole map",
+		"%d mainlines" % mainlines.size())
+	_expect(mainlines[0].is_upper != mainlines[1].is_upper,
+		"…on opposite decks, so there is never oncoming traffic in the player's lane",
+		"both on the %s deck" % ("upper" if mainlines[0].is_upper else "lower"))
+	# Four ramps at a system the road passes through, two at each end of the line — a
+	# ramp that serves nobody is not built, because it would be an opening onto a road
+	# with no traffic and a sign with no name on it.
+	var through := map.systems().size() - 2
+	_expect(ramps.size() == through * 4 + 4,
+		"…and every system has the ramps it has traffic for, and no others",
+		"%d ramps for %d systems, %d of them through-systems" % [
+			ramps.size(), map.systems().size(), through])
+	# The sign has to name the NEIGHBOUR, not the system you are standing in. "TO
+	# SYSTEM B" on a portal inside system B is the kind of thing only a frame catches.
+	for ramp: RoadDeck in ramps:
+		var sign_at: Portal = ramp.start_portal() if ramp.start_portal() != null \
+			else ramp.end_portal()
+		var home := map.system_name(map.nearest_system(sign_at.position))
+		if sign_at.destination.ends_with(home):
+			_expect(false,
+				"a ramp's sign names the neighbour it serves, not the system it is in",
+				"%s reads \"%s\" while standing in %s" % [
+					ramp.name, sign_at.destination, home])
+			break
+	for ramp: RoadDeck in ramps:
+		var ends := 0
+		if ramp.start_portal() != null:
+			ends += 1
+		if ramp.end_portal() != null:
+			ends += 1
+		if ends != 1:
+			_expect(false, "a ramp carries exactly one portal, at its planet end",
+				"%s has %d" % [ramp.name, ends])
+			break
+
+	# THE thing the reshape was for: the mainline passes through every system's
+	# middle. A road that stopped at each one would put every arrival a
+	# system-crossing from the only thing worth arriving for.
+	var runs_through := true
+	var worst_offset := 0.0
+	for i in map.systems().size():
+		var lane := mainlines[0].sample(map.system_center(i))
+		worst_offset = maxf(worst_offset, absf(lane.lateral))
+		if lane.metres_travelled <= 0.0 or lane.metres_remaining <= 0.0:
+			runs_through = false
+	_expect(runs_through,
+		"the mainline runs THROUGH every system, ending at neither of them",
+		"it stops inside one")
+	_expect(worst_offset < 1.0,
+		"…straight down the middle of each, laterally", "%.1f m off" % worst_offset)
+	_expect(mainlines[0].length() > map.system_center(0).distance_to(
+			map.system_center(map.systems().size() - 1)),
+		"…and out past the far rim at each end, rather than stopping at a centre",
+		"%.0f m of road across a %.0f m map" % [mainlines[0].length(),
+			map.system_center(0).distance_to(
+				map.system_center(map.systems().size() - 1))])
+
+	# --- the road's SHAPE (POC step 8) ---
+	# THE steepness check, and the one that makes "too steep" a number rather than an
+	# opinion. The ship's nose is hard-clamped into a cone around the road's axis
+	# every frame, so a road that turns faster than the ship can be turned yanks the
+	# nose instead of being flown — which is what a diving ramp feels like. Measured
+	# on every road on the map, at full cruise, because the tightest bend is the one
+	# that decides it.
+	var cruise := Tuning.num("exploration/cruise_speed")
+	var allowance := Tuning.num("exploration/cruise_turn_rate_deg_per_sec")
+	var steepest := 0.0
+	var steepest_name := ""
+	for deck in road.decks():
+		var rate := deck.path().max_turn_deg_per_metre() * cruise
+		if rate > steepest:
+			steepest = rate
+			steepest_name = deck.name
+	_expect(steepest <= allowance,
+		"no road on the map turns faster than the ship can be turned at cruise",
+		"%s bends at %.1f deg/s against a %.1f deg/s turn rate" % [
+			steepest_name, steepest, allowance])
+	# …and it is not zero, or success criterion 1 has nothing to be judged on: "a
+	# generous clamp on a straight road still feels like nothing".
+	var trunk := map.links()[map.links().size() - 1]
+	var trunk_line := trunk.region().path
+	_expect(trunk_line.max_turn_deg_per_metre() > 0.0,
+		"the trunk leg CURVES — a straight road cannot answer success criterion 1",
+		"the trunk leg is straight")
+	var lowest := INF
+	var highest := -INF
+	for point: Vector3 in trunk_line.points:
+		lowest = minf(lowest, point.y)
+		highest = maxf(highest, point.y)
+	_expect(highest - lowest > Tuning.num("exploration/lane_height"),
+		"…and changes elevation by more than the lane is tall, so the rise is felt",
+		"%.0f m of rise and fall" % (highest - lowest))
+	# A weaving leg still has to leave and arrive ON the bearing, or the aperture and
+	# the corridor disagree about where the road goes and the mouths move.
+	var on_bearing := SystemDisc.bearing_to_direction(
+		Tuning.num("exploration/aperture_bearing_deg"))
+	_expect(trunk_line.tangent_at(0.0).dot(on_bearing) > 0.999
+			and trunk_line.tangent_at(trunk_line.length()).dot(on_bearing) > 0.999,
+		"…and leaves and arrives exactly on the bearing, so the mouths do not move",
+		"%.3f in, %.3f out" % [trunk_line.tangent_at(0.0).dot(on_bearing),
+			trunk_line.tangent_at(trunk_line.length()).dot(on_bearing)])
+	# The deck convention is DECLARED per segment, not derived from heading, and this
+	# map deliberately does not cross the northwest-southeast divider. A weave wide
+	# enough to cross it would put a stretch of the upper deck on a heading that says
+	# lower, and the convention's whole value is as a mistake-catcher.
+	var crosses := false
+	for point: Vector3 in trunk_line.points:
+		var heading := trunk_line.tangent_at(trunk_line.closest(point)[0])
+		if not RoadDeck.rides_upper(
+				rad_to_deg(atan2(heading.x, -heading.z))):
+			crosses = true
+	_expect(not crosses,
+		"…and never weaves across the deck divider, which this map must not cross",
+		"the trunk leg crosses from the upper arc into the lower")
+	# The corridor is the space AROUND the road, so it has to still contain it once
+	# both curve. The lane's far corner on the upper deck is the worst case.
+	var stacked := Tuning.num("exploration/deck_separation") * 0.5 \
+		+ Tuning.num("exploration/lane_height") * 0.5
+	var worst_escape := -INF
+	for i in 40:
+		var along := trunk_line.length() * float(i) / 39.0
+		worst_escape = maxf(worst_escape, trunk.region().depth(
+			trunk_line.point_at(along) + Vector3.UP * stacked))
+	_expect(worst_escape < 0.0,
+		"…and the corridor still contains the road stacked inside it, all the way",
+		"the lane's top corner is %.1f m outside the corridor" % worst_escape)
+
+	# --- where the road SITS (2026-08-30) ---
+	# High, not through the middle. Two things bound it and both are cheap to get
+	# wrong by nudging one slider: the ceiling above, and the planet's approach
+	# envelope below — which the road must never enter, or riding the highway arms a
+	# landing nobody asked for (ADR 0012).
+	var stack_top := Tuning.num("exploration/road_height") \
+		+ Tuning.num("exploration/deck_separation") * 0.5 \
+		+ Tuning.num("exploration/lane_height") * 0.5
+	var head_room := Tuning.num("exploration/system_ceiling_height") - stack_top
+	_expect(head_room > Tuning.num("exploration/bounds_warning_band"),
+		"the road clears the ceiling by more than the warning band, so riding it is not an alarm",
+		"%.0f m of head room against a %.0f m band" % [head_room,
+			Tuning.num("exploration/bounds_warning_band")])
+	_expect(Tuning.num("exploration/road_height")
+			> Tuning.num("exploration/lane_height"),
+		"…and rides ABOVE the combat plane rather than straddling it",
+		"stack centred at %.0f m" % Tuning.num("exploration/road_height"))
+	var envelope := Tuning.num("exploration/approach_envelope_radius")
+	var nearest_envelope := INF
+	for deck in road.decks():
+		var line := deck.path()
+		for i in 60:
+			var at: Vector3 = line.point_at(line.length() * float(i) / 59.0)
+			var system := map.nearest_system(at)
+			nearest_envelope = minf(nearest_envelope,
+				at.distance_to(map.planets()[system].position))
+	_expect(nearest_envelope > envelope,
+		"…and no road anywhere enters an approach envelope (ADR 0012)",
+		"a road passes %.0f m from a planet, envelope is %.0f" % [
+			nearest_envelope, envelope])
+
+	# --- one lane is lit, and it is the one being flown ---
+	# Four decks meet at an interchange. The player has to be able to see which of them
+	# is theirs, and the answer is the only one drawing ribs.
+	map.road().set_active(mainlines[0])
+	var ribbed := 0
+	var mismatched := ""
+	for deck in road.decks():
+		var ribs := deck.get_node_or_null("Ribs") as MeshInstance3D
+		if ribs == null or ribs.visible != deck.is_active():
+			mismatched = deck.name
+		if ribs != null and ribs.visible:
+			ribbed += 1
+	_expect(mismatched.is_empty() and ribbed == 1,
+		"exactly one deck draws its ribs, and it is the one being ridden",
+		"%d decks ribbed%s" % [ribbed,
+			"" if mismatched.is_empty() else ", %s disagrees" % mismatched])
+	_expect(mainlines[0].is_active() and not mainlines[1].is_active(),
+		"…and never both directions at once",
+		"upper %s, lower %s" % [mainlines[0].is_active(), mainlines[1].is_active()])
+	map.road().set_active(null)
+
+	# --- a handover cannot hand you a lane you could not steer onto (ADR 0072) ---
+	# This is what shook the ship: drifting wide of a mainline beside an interchange
+	# handed it to a ramp thirty degrees off its heading, and the nose is clamped into
+	# a cone around the road every frame, so thirty degrees arrived in one of them.
+	var probe := map.system_center(1) + Vector3.UP * Tuning.num("exploration/road_height")
+	var main_axis: Vector3 = mainlines[0].sample(probe).axis
+	var free_pick := road.governing(probe, mainlines[0].is_upper, null,
+		Vector2.ZERO, Vector3.ZERO)
+	var aligned_pick := road.governing(probe, mainlines[0].is_upper, null,
+		Vector2.ZERO, main_axis)
+	_expect(free_pick != null and aligned_pick != null,
+		"a deck governs the middle of an interchange either way", "nothing does")
+	if aligned_pick != null:
+		var picked: Vector3 = aligned_pick.sample(probe).axis
+		_expect(rad_to_deg(picked.angle_to(main_axis))
+				<= Tuning.num("exploration/cruise_turn_clamp_deg") + 0.01,
+			"…and asking along a heading only ever returns one inside the steering cone",
+			"%.1f deg off" % rad_to_deg(picked.angle_to(main_axis)))
+
+	# The ramp mouths sit BESIDE the planet, not above it. Directly above is inside
+	# the approach envelope, and a ship taking the ramp would arm a landing sequence
+	# it did not ask for (ADR 0012).
+	var closest_to_planet := INF
+	var deepest_mouth := 0.0
+	for mouth: Vector3 in map.ramp_sites():
+		var system := map.nearest_system(mouth)
+		closest_to_planet = minf(closest_to_planet,
+			mouth.distance_to(map.planets()[system].position))
+		deepest_mouth = maxf(deepest_mouth, field.overshoot(mouth))
+	_expect(closest_to_planet > Tuning.num("exploration/approach_envelope_radius"),
+		"every ramp mouth clears the approach envelope — taking a ramp is not landing",
+		"nearest is %.0f m from a planet, envelope is %.0f" % [closest_to_planet,
+			Tuning.num("exploration/approach_envelope_radius")])
+	_expect(is_zero_approx(deepest_mouth),
+		"…and every one is inside the bounded volume of its own system",
+		"%.1f m outside" % deepest_mouth)
+	# THE ENVELOPE HAS TO REACH THE COMBAT PLANE. The planet sits below it by decision
+	# (ADR 0061), and at 420 m against a 450 m depth the envelope's roof was thirty
+	# metres UNDER y = 0: a ship flying level at a planet closed to exactly 450 m,
+	# stopped, and never entered. Docking read as not existing, and was reported that
+	# way. Arriving is still a descent; the way in just has to start where the player is.
+	var envelope_top := Tuning.num("exploration/approach_envelope_radius") \
+		- Tuning.num("exploration/planet_center_depth")
+	_expect(envelope_top > Tuning.num("exploration/planet_radius") * 0.25,
+		"the approach envelope reaches the combat plane — docking is enterable by flying at it",
+		"its roof is %.0f m from y = 0" % envelope_top)
+	_expect(closest_to_planet < discs[0].radius(),
+		"…while still being BESIDE the planet rather than somewhere else entirely",
+		"%.0f m away in a %.0f m disc" % [closest_to_planet, discs[0].radius() * 2.0])
+
+	# A ramp has to MEET the mainline tangentially, or joining it is a corner the
+	# steering cone cannot turn.
+	var on_ramp := road.get_node_or_null("RampOnBUpper") as RoadDeck
+	_expect(on_ramp != null, "system B has an on-ramp on the upper deck", "missing")
+	if on_ramp != null:
+		var merge := on_ramp.path().tangent_at(on_ramp.length())
+		var main := mainlines[0].sample(on_ramp.path().finish()).axis
+		_expect(rad_to_deg(merge.angle_to(main))
+				< Tuning.num("exploration/cruise_turn_clamp_deg"),
+			"…and it merges inside the steering cone, so joining is a steer not a turn",
+			"%.1f deg off the mainline" % rad_to_deg(merge.angle_to(main)))
+
+	# ADR 0057: the lane is VISUALLY OPEN, and what that MEANS is that the surrounding
+	# space stays rendered — not that the lane is drawn as lines. It is a translucent
+	# shell now, because wireframe alone did not read as a road. So what is checked is
+	# the thing the ADR actually protects: you can see through it.
+	# Every deck carries one, so a road is visible before you are on it.
+	var shell_count := 0
+	for deck in road.decks():
+		var sk := deck.get_node_or_null("Shell") as MeshInstance3D
+		if sk != null and sk.mesh != null and sk.visible:
+			shell_count += 1
+	_expect(shell_count == road.decks().size(),
+		"every deck draws its shell, ridden or not — a road you cannot see is not a choice",
+		"%d shells for %d decks" % [shell_count, road.decks().size()])
+	_expect(Tuning.num("exploration/lane_shell_idle_alpha")
+			< Tuning.num("exploration/lane_shell_alpha"),
+		"…and the one you are on is the brighter of them",
+		"idle %.3f against active %.3f" % [
+			Tuning.num("exploration/lane_shell_idle_alpha"),
+			Tuning.num("exploration/lane_shell_alpha")])
+	# THE DIVIDER. The decks are stacked flush, so the upper deck's FLOOR and the lower
+	# deck's ROOF are the same surface, and the gradient has to arrive at the same
+	# colour from both sides or the stripe is only a stripe from one of them.
+	var outer := Tuning.color("exploration/lane_shell_outer_color")
+	var divider := Tuning.color("exploration/lane_shell_divider_color")
+	var bias := Tuning.num("exploration/lane_shell_divider_bias")
+	var upper_floor := RoadDeck.shade(1.0, true, outer, divider, bias)
+	var lower_roof := RoadDeck.shade(0.0, false, outer, divider, bias)
+	_expect(upper_floor.is_equal_approx(lower_roof),
+		"the two decks meet in one colour — the seam is a lane divider, not a join",
+		"upper floor %s against lower roof %s" % [upper_floor, lower_roof])
+	_expect(RoadDeck.shade(0.0, true, outer, divider, bias).is_equal_approx(
+			RoadDeck.shade(1.0, false, outer, divider, bias)),
+		"…and each deck's OUTER face is the other colour, so the gradient runs opposite ways",
+		"the two outer faces disagree")
+	_expect(upper_floor.a > RoadDeck.shade(0.0, true, outer, divider, bias).a,
+		"…with the divider carrying more of the alpha than the face away from it",
+		"divider %.2f against outer %.2f" % [upper_floor.a,
+			RoadDeck.shade(0.0, true, outer, divider, bias).a])
+	var skin := mainlines[0].get_node_or_null("Shell") as MeshInstance3D
+	var skin_mat := skin.material_override as StandardMaterial3D if skin != null else null
+	_expect(skin != null and skin.mesh != null and skin_mat != null
+			and skin_mat.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED,
+		"the lane is a TRANSLUCENT surface, never an opaque tunnel (ADR 0057)",
+		"the lane's shell is missing or opaque")
+	_expect(Tuning.num("exploration/lane_shell_alpha") <= 0.35,
+		"…and its alpha is low enough that the system beyond it is still there",
+		"alpha %.2f" % Tuning.num("exploration/lane_shell_alpha"))
+	var structure := mainlines[0].get_node_or_null("Rails") as MeshInstance3D
+	_expect(structure != null and structure.mesh != null
+			and structure.mesh.surface_get_primitive_type(0) == Mesh.PRIMITIVE_LINES,
+		"…and its rails are still lines running the length of it",
+		"the lane is a surface")
+	# The aperture has to clear the hull with room to fly through rather than to aim.
+	# Measured axis by axis, not against the bounding sphere: the sphere of a
+	# 44 x 24 x 48 m gunboat is 72 m across and would condemn an opening the ship
+	# flies through with 13 m to spare.
+	var hull := scene.ship().hull_extents()
+	_expect(Tuning.num("exploration/portal_width") > hull.x
+			and Tuning.num("exploration/portal_height") > hull.y,
+		"the aperture clears the hull on both axes, with room to fly rather than aim",
+		"%.0f x %.0f m opening for a %.1f x %.1f m hull" % [
+			Tuning.num("exploration/portal_width"),
+			Tuning.num("exploration/portal_height"), hull.x, hull.y])
+
+	# Getting on the road. Two frames either side of an on-ramp's portal, because the
+	# crossing test is swept — and driven through the real scene so the wiring from
+	# portal to cruise drive to speed ceiling is covered, not just the arithmetic.
+	var gate := on_ramp.start_portal()
+	var travel := on_ramp.path().tangent_at(0.0)
+	scene.ship().position = gate.position - travel * 20.0
+	_step_exploration(scene, 1.0 / 60.0)
+	_expect(scene.ship().cruise == null,
+		"short of the portal the cruise drive is off", "it engaged early")
+	scene.ship().position = gate.position + travel * 20.0
+	_step_exploration(scene, 1.0 / 60.0)
+	_expect(scene.ship().cruise != null and map.riding() == on_ramp,
+		"crossing the portal engages cruise ON CONTACT — no sequence (ADR 0057)",
+		"it did not engage")
+	# The drive SPOOLS rather than snapping. Entry is still instant — the ship is
+	# through, steering, holding its own throttle — but the engine takes time to wind
+	# up, which is the ship doing something rather than something done to the ship.
+	var at_entry := scene.ship().manual_max_speed()
+	_expect(at_entry < Tuning.num("exploration/cruise_speed") * 0.5,
+		"…and the ceiling does NOT snap to cruise speed on the entry frame",
+		"%.1f m/s of %.1f in one frame" % [at_entry,
+			Tuning.num("exploration/cruise_speed")])
+	for _i in int(Tuning.num("exploration/cruise_spool_seconds") * 60.0) + 6:
+		_step_exploration(scene, 1.0 / 60.0)
+	_expect(scene.ship().manual_max_speed()
+			> Tuning.num("exploration/taxi_max_speed") * 2.0
+			and scene.ship().cruise_spool() > 0.999,
+		"…but it winds up to the cruise drive's, which is what the road buys",
+		"%.1f m/s at %.0f%% spool" % [scene.ship().manual_max_speed(),
+			scene.ship().cruise_spool() * 100.0])
+	# The camera frames the ROAD while cruising, not the nose.
+	_expect((scene.get_node("ChaseCamera") as ChaseCamera)
+			.heading_override.length_squared() > 0.5,
+		"…and the camera locks to the road's direction, not the ship's nose",
+		"the camera stayed on the nose")
+
+	# Riding up the ramp and onto the mainline. No junction logic exists: whichever
+	# deck going this way the ship is least outside of governs, so a ramp hands over
+	# to the mainline because the geometry says so.
+	scene.ship().position = on_ramp.path().finish()
+	_step_exploration(scene, 1.0 / 60.0)
+	_expect(map.riding() == mainlines[0] or map.riding() == on_ramp,
+		"at the top of the ramp the ship is on the ramp or the mainline, not adrift",
+		"riding %s" % ("nothing" if map.riding() == null else map.riding().name))
+	scene.ship().position = mainlines[0].sample(
+		map.system_center(1)).axis * 0.0 + map.system_center(1) + Vector3.UP \
+		* Tuning.num("exploration/deck_separation") * 0.5
+	_step_exploration(scene, 1.0 / 60.0)
+	_expect(map.riding() == mainlines[0] and scene.ship().cruise != null,
+		"…and out on the mainline over a system's centre it is on the MAINLINE",
+		"riding %s" % ("nothing" if map.riding() == null else map.riding().name))
+
+	# Getting off, through an off-ramp's portal beside a planet.
+	var off_ramp := road.get_node_or_null("RampOffCUpper") as RoadDeck
+	_expect(off_ramp != null, "system C has an off-ramp on the upper deck", "missing")
+	var exit_gate := off_ramp.end_portal()
+	var exit_travel := off_ramp.path().tangent_at(off_ramp.length())
+	scene.ship().position = exit_gate.position - exit_travel * 20.0
+	_step_exploration(scene, 1.0 / 60.0)
+	scene.ship().position = exit_gate.position + exit_travel * 20.0
+	_step_exploration(scene, 1.0 / 60.0)
+	_expect(scene.ship().cruise == null and map.riding() == null,
+		"flying out an off-ramp's portal drops you back into normal flight",
+		"still cruising past the end of the ramp")
+	# And it winds DOWN rather than stopping dead.
+	_expect(scene.ship().cruise_spool() > 0.5,
+		"…still carrying most of its speed on the frame after, not stopped dead",
+		"%.0f%% spool" % (scene.ship().cruise_spool() * 100.0))
+	for _i in int(Tuning.num("exploration/cruise_spool_down_seconds") * 60.0) + 6:
+		_step_exploration(scene, 1.0 / 60.0)
+	_expect(is_zero_approx(scene.ship().cruise_spool())
+			and is_equal_approx(scene.ship().manual_max_speed(),
+				HullClass.max_speed(scene.ship().hull_class)),
+		"…and settles back to the hull's own speed once the drive has wound down",
+		"%.1f m/s at %.0f%% spool" % [scene.ship().manual_max_speed(),
+			scene.ship().cruise_spool() * 100.0])
+
+	# ADR 0060: a portal opens for a cruise drive, and its colour says so.
+	scene.ship().set_hull_class(HullClass.Kind.FIGHTER)
+	scene.ship().position = gate.position - travel * 20.0
+	_step_exploration(scene, 1.0 / 60.0)
+	_expect(not gate.permitted,
+		"a fighter has no cruise drive, so every portal reads REFUSED (ADR 0060)",
+		"the portal showed permitted")
+	scene.ship().position = gate.position + travel * 20.0
+	_step_exploration(scene, 1.0 / 60.0)
+	_expect(scene.ship().cruise == null,
+		"…and flying into one does nothing — the refusal was visible before contact",
+		"a fighter got onto the road")
+	scene.ship().set_hull_class(HullClass.Kind.TAXI)
+	_step_exploration(scene, 1.0 / 60.0)
+	_expect(gate.permitted,
+		"…while a taxi sees the same portal open, on the frame it switches",
+		"the portal did not recolour")
+
+	# The strain is applied to the ship by the map, each frame, and released when the
+	# ship turns round. Driven through the real nodes rather than the pure library so
+	# the wiring is covered too.
+	#
+	# Note the ship has to be PAST the ceiling, not merely near it: since ADR 0062
+	# the warning band inside the edge only paints, and the clamp lives entirely in
+	# `bounds_stop_distance` outside it. That split is the easy thing to get wrong.
+	scene.ship().position = discs[0].position \
+		+ Vector3(0.0, discs[0].ceiling_height() + 40.0, 0.0)
+	scene.ship()._velocity = Vector3(0.0, 10.0, 0.0)
+	_step_exploration(scene, 1.0 / 60.0)
+	_expect(scene.ship().speed_ceiling_scale < 1.0,
+		"pushing out past the ceiling strains the ship's speed limit",
+		"scale %.2f" % scene.ship().speed_ceiling_scale)
+	var strained := scene.ship().manual_max_speed()
+	# Same point, opposite heading. The way home is free at any depth (ADR 0062), so
+	# this releases without the ship having moved an inch.
+	scene.ship()._velocity = Vector3(0.0, -10.0, 0.0)
+	_step_exploration(scene, 1.0 / 60.0)
+	_expect(is_equal_approx(scene.ship().speed_ceiling_scale, 1.0)
+			and scene.ship().manual_max_speed() > strained,
+		"…and TURNING ROUND releases it on the spot, without moving back in",
+		"scale %.2f" % scene.ship().speed_ceiling_scale)
+	# Mid-corridor, four kilometres from either system, nothing is clamped. The
+	# boundary following the player across the map is the thing this checks.
+	scene.ship().position = link.region().path.point_at(
+		link.region().length() * 0.5)
+	scene.ship()._velocity = Vector3(0.0, 0.0, 10.0)
+	_step_exploration(scene, 1.0 / 60.0)
+	_expect(is_equal_approx(scene.ship().speed_ceiling_scale, 1.0),
+		"…and nothing is clamped in the middle of the corridor either",
+		"scale %.2f" % scene.ship().speed_ceiling_scale)
+
+	# --- leaving a planet (post-test feedback) ---
+	# Departing must not hand the ship back at rest pointing at the surface it just
+	# left: that starts every visit with the same climb out of the same hole. It
+	# leaves on the REFLECTION of its arrival — same bearing, vertical flipped.
+	scene.ship().set_hull_class(HullClass.Kind.TAXI)
+	scene.ship().position = map.planets()[0].position + Vector3(0.0, 300.0, 0.0)
+	scene.ship().look_at(map.planets()[0].global_position, Vector3.FORWARD)
+	var descending := -scene.ship().basis.z
+	scene.ship().launch_from_dock(Tuning.num("exploration/depart_speed_fraction"))
+	var climbing := -scene.ship().basis.z
+	_expect(descending.y < 0.0 and climbing.y > 0.0,
+		"taking off flips the arrival's vertical: a descent becomes a climb",
+		"came in at %.2f, left at %.2f" % [descending.y, climbing.y])
+	_expect(absf(climbing.x - descending.x) < 0.01
+			and absf(climbing.z - descending.z) < 0.01,
+		"…on the same bearing, so it is a reflection rather than a turn",
+		"(%.2f, %.2f) became (%.2f, %.2f)" % [descending.x, descending.z,
+			climbing.x, climbing.z])
+	_expect(scene.ship().speed() > 0.0
+			and is_equal_approx(scene.ship().throttle(),
+				Tuning.num("exploration/depart_speed_fraction")),
+		"…already moving, with the THROTTLE set to match so it is not a shove",
+		"%.1f m/s at %.0f%% throttle" % [scene.ship().speed(),
+			scene.ship().throttle() * 100.0])
+
+	scene.queue_free()
+	await get_tree().process_frame
+
+## The debug roster (POC step 3). What is under test is that the three classes are
+## actually three *ships* rather than three top speeds, and that switching between
+## them rebuilds everything that follows from the class.
+func _test_hull_roster() -> void:
+	var ship := Mothership.new()
+	add_child(ship)
+
+	# The taxi overrides nothing on purpose: it IS the shared fallback, which is
+	# what keeps the roster from disturbing the ship the combat POC was validated
+	# on. If this ever fails, adding a class has changed the existing one.
+	ship.set_hull_class(HullClass.Kind.TAXI)
+	_expect(is_equal_approx(ship.turn_rate_deg_per_sec(),
+			Tuning.num("ship/manual_turn_rate_deg_per_sec"))
+			and is_equal_approx(ship.accel_seconds(),
+				Tuning.num("ship/manual_accel_seconds"))
+			and is_equal_approx(ship.hull_scale(), Tuning.num("ship/hull_scale")),
+		"the taxi is the shared default and the roster cannot disturb it",
+		"turn %.1f, accel %.1f, scale %.2f" % [ship.turn_rate_deg_per_sec(),
+			ship.accel_seconds(), ship.hull_scale()])
+
+	var taxi_turn := ship.turn_rate_deg_per_sec()
+	var taxi_accel := ship.accel_seconds()
+	var taxi_scale := ship.hull_scale()
+	var taxi_top := ship.manual_max_speed()
+
+	# A class has to differ in more than one number, or it is a speed setting rather
+	# than a ship. These orderings are what makes each one legible in the hand.
+	ship.set_hull_class(HullClass.Kind.FIGHTER)
+	_expect(ship.manual_max_speed() > taxi_top
+			and ship.turn_rate_deg_per_sec() > taxi_turn
+			and ship.accel_seconds() < taxi_accel
+			and ship.strafe_speed() > Tuning.num("ship/manual_strafe_speed")
+			and ship.hull_scale() < taxi_scale,
+		"a fighter is faster, turns harder, spools quicker and is smaller",
+		"top %.1f turn %.0f accel %.1f scale %.2f" % [ship.manual_max_speed(),
+			ship.turn_rate_deg_per_sec(), ship.accel_seconds(), ship.hull_scale()])
+	_expect(not ship.has_cruise_drive(),
+		"…and has no cruise drive, which is the whole of why no portal opens for it",
+		"it has one")
+
+	ship.set_hull_class(HullClass.Kind.CAPITAL)
+	_expect(ship.manual_max_speed() < taxi_top
+			and ship.turn_rate_deg_per_sec() < taxi_turn
+			and ship.accel_seconds() > taxi_accel
+			and ship.hull_scale() > taxi_scale,
+		"a capital is slower, turns worse, spools longer and is bigger",
+		"top %.1f turn %.0f accel %.1f scale %.2f" % [ship.manual_max_speed(),
+			ship.turn_rate_deg_per_sec(), ship.accel_seconds(), ship.hull_scale()])
+	_expect(ship.has_cruise_drive(),
+		"…and does carry the cruise drive", "it does not")
+
+	# Drawn shape is hit shape (ADR 0043). A fighter drawn at a quarter size with a
+	# gunboat's hit sphere would be hit from four hull-widths away and nothing
+	# anywhere would report it.
+	var capital_radius := ship.hit_radius()
+	ship.set_hull_class(HullClass.Kind.FIGHTER)
+	_expect(ship.hit_radius() < capital_radius,
+		"the hit sphere follows the silhouette, not the shared hull scale",
+		"fighter %.1f m against capital %.1f m" % [ship.hit_radius(), capital_radius])
+
+	# Switching rebuilds what depends on the class. A bare assignment left the drawn
+	# hull at the previous size until something else triggered a hot reload.
+	var drawn := (ship.get_node("Hull") as MeshInstance3D).scale.x
+	_expect(is_equal_approx(drawn, ship.hull_scale()),
+		"switching class resizes the drawn hull immediately",
+		"drawn at %.2f, class wants %.2f" % [drawn, ship.hull_scale()])
+	ship.free()
+
+	# The roster wraps, so one key reaches every class without a menu.
+	var seen := {}
+	var kind := HullClass.DEFAULT
+	for _i in HullClass.all().size():
+		seen[kind] = true
+		kind = HullClass.next(kind)
+	_expect(seen.size() == HullClass.all().size() and kind == HullClass.DEFAULT,
+		"cycling reaches every class and wraps back round",
+		"saw %d of %d" % [seen.size(), HullClass.all().size()])
+
+	# The camera boom follows the hull, so what the player compares between classes
+	# is how the ship flies rather than how far away it looks.
+	var camera := ChaseCamera.new()
+	add_child(camera)
+	_expect(is_equal_approx(camera.boom_scale, 1.0),
+		"a chase camera defaults to an unscaled boom", "%.2f" % camera.boom_scale)
+	camera.free()
+
+## The approach envelope (ADR 0012). What is under test is the ADR's two hard rules:
+## the sequence never produces a heading, and any input hands the ship back.
+func _test_approach_envelope() -> void:
+	var host := Node3D.new()
+	add_child(host)
+	var envelope := ApproachEnvelope.new()
+	add_child(envelope)
+	envelope.host = host
+	var ship := Mothership.new()
+	add_child(ship)
+	ship.set_process(false)   # stepped by hand below
+	var step := 1.0 / 60.0
+
+	# "The envelope always resolves before the surface is reached" — at the FASTEST
+	# hull and with no deceleration at all, which is the conservative case. The
+	# sequence actually slows the ship, so the real margin is larger.
+	var clearance := Tuning.num("exploration/approach_envelope_radius") \
+		- Tuning.num("exploration/planet_radius")
+	var fastest := HullClass.max_speed(HullClass.Kind.FIGHTER)
+	_expect(clearance / fastest > Tuning.num("exploration/approach_seconds"),
+		"the countdown always resolves before the surface, even at fighter speed",
+		"%.1f s of clearance against a %.1f s countdown" % [clearance / fastest,
+			Tuning.num("exploration/approach_seconds")])
+	_expect(Tuning.num("exploration/approach_envelope_radius")
+			> Tuning.num("exploration/planet_radius"),
+		"…and the envelope is outside the planet rather than inside it",
+		"envelope %.0f, planet %.0f" % [
+			Tuning.num("exploration/approach_envelope_radius"),
+			Tuning.num("exploration/planet_radius")])
+
+	# Outside, nothing happens and nothing is constrained.
+	ship.position = Vector3(0.0, 0.0, envelope.radius() * 3.0)
+	envelope.observe(ship, step)
+	_expect(envelope.state() == ApproachEnvelope.State.CLEAR
+			and is_equal_approx(envelope.speed_scale(), 1.0),
+		"outside the envelope the ship is unconstrained",
+		"state %d, scale %.2f" % [envelope.state(), envelope.speed_scale()])
+
+	# Entering locks, and the ceiling walks DOWN rather than the ship being stopped.
+	ship.position = Vector3(0.0, 0.0, envelope.radius() * 0.5)
+	envelope.observe(ship, step)
+	_expect(envelope.state() == ApproachEnvelope.State.LOCKED,
+		"entering the envelope starts the sequence", "state %d" % envelope.state())
+	# Stepped until the state changes rather than for an exact frame count: at
+	# 1/60 s per frame the accumulated float lands a hair under the tuned seconds,
+	# and a count derived from it is one frame short.
+	var frames := int(Tuning.num("exploration/approach_seconds") / step) + 6
+	var previous := envelope.speed_scale()
+	var monotonic := true
+	for _i in frames:
+		envelope.observe(ship, step)
+		if envelope.state() != ApproachEnvelope.State.LOCKED:
+			break
+		if envelope.speed_scale() > previous + 0.0001:
+			monotonic = false
+		previous = envelope.speed_scale()
+	_expect(monotonic,
+		"the speed ceiling only ever walks down during an approach — magnitude, "
+			+ "never direction (ADR 0012)", "it went back up")
+	_expect(envelope.state() == ApproachEnvelope.State.DOCKED,
+		"…and the sequence resolves into docked", "state %d" % envelope.state())
+	_expect(is_zero_approx(envelope.speed_scale()),
+		"…with the ship at rest", "scale %.2f" % envelope.speed_scale())
+
+	# Departing relocks, so the envelope you are sitting in does not pull you back.
+	envelope.depart()
+	_expect(envelope.state() == ApproachEnvelope.State.RELOCKING,
+		"departing relocks rather than re-arming instantly",
+		"state %d" % envelope.state())
+	envelope.observe(ship, step)
+	_expect(envelope.state() == ApproachEnvelope.State.RELOCKING,
+		"…and staying inside does not re-arm it either",
+		"state %d" % envelope.state())
+	for _i in int(Tuning.num("exploration/approach_relock_seconds") / step) + 6:
+		envelope.observe(ship, step)
+	_expect(envelope.state() == ApproachEnvelope.State.RELOCKING,
+		"…it stays relocked until the player has actually left",
+		"re-armed while still inside")
+	ship.position = Vector3(0.0, 0.0, envelope.radius() * 3.0)
+	envelope.observe(ship, step)
+	_expect(envelope.state() == ApproachEnvelope.State.CLEAR,
+		"…and clears once outside", "state %d" % envelope.state())
+
+	# THE rule of ADR 0012: any input aborts, and the ship is handed straight back.
+	# Driven through real Input actions, which work headlessly.
+	ship.position = Vector3(0.0, 0.0, envelope.radius() * 0.5)
+	envelope.observe(ship, step)
+	envelope.observe(ship, step)
+	_expect(envelope.state() == ApproachEnvelope.State.LOCKED,
+		"the sequence is running again", "state %d" % envelope.state())
+	Input.action_press("throttle_up")
+	envelope.observe(ship, step)
+	Input.action_release("throttle_up")
+	_expect(envelope.state() == ApproachEnvelope.State.RELOCKING,
+		"any flight input aborts the approach (ADR 0012)",
+		"state %d" % envelope.state())
+	_expect(is_equal_approx(envelope.speed_scale(), 1.0),
+		"…and the ship is unconstrained the same frame — no drag on the way out",
+		"scale %.2f" % envelope.speed_scale())
+
+	# Flying out the far side is not an abort: nothing refused, the geometry just
+	# did not resolve. It must clear rather than relock, or passing through a system
+	# on your way somewhere else would leave the envelope disarmed behind you.
+	for _i in int(Tuning.num("exploration/approach_relock_seconds") / step) + 6:
+		ship.position = Vector3(0.0, 0.0, envelope.radius() * 3.0)
+		envelope.observe(ship, step)
+	ship.position = Vector3(0.0, 0.0, envelope.radius() * 0.5)
+	envelope.observe(ship, step)
+	_expect(envelope.state() == ApproachEnvelope.State.LOCKED,
+		"re-entering after the relock starts a fresh sequence",
+		"state %d" % envelope.state())
+	ship.position = Vector3(0.0, 0.0, envelope.radius() * 3.0)
+	envelope.observe(ship, step)
+	_expect(envelope.state() == ApproachEnvelope.State.CLEAR,
+		"flying out the far side clears rather than relocking — nothing was refused",
+		"state %d" % envelope.state())
+
+	ship.free()
+	envelope.free()
+	host.free()

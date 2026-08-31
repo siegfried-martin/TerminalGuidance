@@ -1,0 +1,9 @@
+[gd_scene load_steps=2 format=3]
+
+; Deliberately empty shell. All content is built in code by exploration_scene.gd.
+; See CLAUDE.md, code-first scene policy, and ADR 0027.
+
+[ext_resource type="Script" path="res://scripts/exploration/exploration_scene.gd" id="1"]
+
+[node name="ExplorationScene" type="Node3D"]
+script = ExtResource("1")

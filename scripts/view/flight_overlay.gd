@@ -16,6 +16,19 @@ extends Control
 var target: Node3D
 ## Returns the missile currently being flown, or null.
 var missile_provider: Callable = func() -> Missile: return null
+## Returns whatever vehicle's reticle should be drawn, or null. Anything with an
+## `aim_direction()` — the arena points this at the ridden missile, the exploration
+## scene at the ship.
+##
+## The ship needs it for the same reason the missile does and it took a test session
+## to notice: the nose does not go instantly where the stick says (ADR 0035 applies
+## to both), so without the reticle the player cannot see the turn they have asked
+## for and have not got yet. On a road with a steering cone that is the difference
+## between holding a line and guessing at one.
+var reticle_provider: Callable = func() -> Node3D: return null
+## The launch tube's reload gauge. Off where there is no tube — a gauge for a weapon
+## that cannot fire is not an instrument, it is decoration that lies.
+var show_tube: bool = true
 ## Returns the gun station while it is manned, or null.
 var turret_provider: Callable = func() -> Turret: return null
 ## The ship, for the launch tube's reload gauge and the impact flash.
@@ -131,12 +144,12 @@ func _clamp_to_bounds(origin: Vector2, direction: Vector2, bounds: Rect2) -> Vec
 # --- reticle -----------------------------------------------------------------
 
 func _draw_reticle(camera: Camera3D) -> void:
-	var missile: Missile = missile_provider.call()
-	if missile == null or not is_instance_valid(missile):
+	var flown: Node3D = reticle_provider.call()
+	if flown == null or not is_instance_valid(flown):
 		return
 
-	var aim_point := missile.global_position \
-		+ missile.aim_direction() * Tuning.num("hud/reticle_distance")
+	var aim_point := flown.global_position \
+		+ (flown.aim_direction() as Vector3) * Tuning.num("hud/reticle_distance")
 	if camera.is_position_behind(aim_point) or not _projectable(camera, aim_point):
 		return
 
@@ -150,7 +163,7 @@ func _draw_reticle(camera: Camera3D) -> void:
 		draw_line(point + direction * radius * 0.55, point + direction * radius * 1.5, color, width)
 
 	# A line from the nose to the reticle makes the lag visible rather than just felt.
-	var nose := missile.global_position + (-missile.global_transform.basis.z) * Tuning.num("hud/reticle_distance")
+	var nose := flown.global_position + (-flown.global_transform.basis.z) * Tuning.num("hud/reticle_distance")
 	if not camera.is_position_behind(nose) and _projectable(camera, nose):
 		draw_line(camera.unproject_position(nose), point,
 			Color(color, Tuning.num("hud/reticle_lag_line_alpha")), width)
@@ -211,7 +224,7 @@ func _draw_heat(turret: Turret, centre: Vector2) -> void:
 ## answerable at a glance from the turret, from the helm and from inside a missile,
 ## without the debug overlay switched on.
 func _draw_tube() -> void:
-	if ship == null or not is_instance_valid(ship):
+	if not show_tube or ship == null or not is_instance_valid(ship):
 		return
 	var charge := ship.missile_charge()
 	var bar_width := Tuning.num("hud/tube_bar_width")

@@ -1,5 +1,7 @@
 # ADR 0009 — No hyperspace or jump mode: one continuous space at three throttle scales
 
+*Status: superseded by ADR 0057*
+
 *Status: accepted · 2026-08-23 · recorded from `docs/PROJECT_OVERVIEW.md` v3 and `docs/COMBAT_POC_IMPLEMENTATION.md` v3; the decision predates this repo*
 
 ## Decision

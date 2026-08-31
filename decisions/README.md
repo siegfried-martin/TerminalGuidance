@@ -41,22 +41,26 @@ The reasoning, including what the alternative was and why it lost.
 | [0004](0004-splash-worse-than-direct.md) | Splash damage is steeply worse than a direct hit |
 | [0005](0005-velocity-inheritance-tunable.md) | Missile velocity inheritance is a tunable, defaulting to zero |
 | [0006](0006-cooldown-vs-ammo.md) | Cooldown governs rhythm; ammo governs endurance |
-| [0007](0007-npc-competence-ceiling.md) | Crew can gun; crew cannot ride missiles |
+| [0007](0007-npc-competence-ceiling.md) | ~~Crew can gun~~; crew cannot ride missiles — the gunner half is superseded by 0058 |
 | [0008](0008-sequential-pressure.md) | Pressure is sequential, never parallel |
 
 ### World and travel
 | # | Decision |
 |---|---|
-| [0009](0009-one-continuous-space.md) | No hyperspace or jump mode: one continuous space at three throttle scales |
+| [0009](0009-one-continuous-space.md) | ~~No jump mode: one continuous space at three throttle scales~~ — superseded by 0057 |
 | [0010](0010-speed-contested-by-mass.md) | Continuous engine speed contested by mass, not tiered drive tech |
 | [0011](0011-systems-are-discs.md) | Systems are discs: hard flat faces, open rim |
 | [0012](0012-approach-envelope-not-autosteer.md) | Planets use an abortable approach envelope, never auto-steer |
-| [0013](0013-autopilot-is-heading-hold.md) | Autopilot is a heading hold and nothing more |
+| [0013](0013-autopilot-is-heading-hold.md) | Autopilot is a heading hold and nothing more — a *hired crew pilot* is a different thing (0058) |
 | [0014](0014-no-interdiction.md) | No interdiction — and cruise does not drop on damage either |
 | [0015](0015-proximity-inhibition.md) | Proximity inhibition is admissible where interdiction is not |
 | [0016](0016-threat-sits-on-value.md) | Threat sits on value, not on coordinates |
 | [0017](0017-fuel-is-a-route-budget.md) | Fuel is a route budget traded against cargo; stranding is recoverable |
 | [0018](0018-difficulty-banded-by-faction.md) | Difficulty is banded by faction, not by coordinates |
+| [0057](0057-the-highway-is-a-place.md) | The highway is a place, not a travel mode — supersedes 0009 |
+| [0059](0059-hull-class-is-the-table.md) | Every ship number is keyed by hull class, with a shared default |
+| [0060](0060-a-portal-opens-for-a-cruise-drive.md) | A portal opens for a cruise drive, and its colour says so |
+| [0061](0061-planets-sit-below-the-combat-layer.md) | Planets sit below the combat layer, because down is already a direction |
 
 ### Framing corrections
 | # | Decision |
@@ -103,5 +107,20 @@ The reasoning, including what the alternative was and why it lost.
 | [0054](0054-turret-is-first-person.md) | The gun station is first person, with its own field of view |
 | [0055](0055-countermeasures-inherit-velocity.md) | Countermeasures inherit the launcher's velocity; aimed shots do not |
 | [0056](0056-pilot-or-gunner.md) | The player holds a job, not a mode; the autopilot follows from it |
+| [0058](0058-npcs-are-worse-than-a-player.md) | NPCs are worse than an engaged player at every station, gunners included |
+| [0062](0062-the-rim-is-a-boundary.md) | The rim is a boundary, its openings are funnels, and the outbound clamp reaches zero |
+| [0063](0063-space-is-a-union-of-regions.md) | Playable space is a union of regions; a region says where it does not apply |
+| [0064](0064-the-lane-pushes-the-world-does-not.md) | The lane pushes you back; the world only slows you down |
+| [0065](0065-the-highway-runs-through-a-system.md) | The highway runs through a system, and its ramps sit beside the planet |
+| [0066](0066-transitions-carry-momentum.md) | Transitions carry momentum: the drive spools, a departure leaves flying |
+| [0067](0067-lanes-unite-there-are-no-junctions.md) | Getting on and off the road is a union of lanes, not a junction |
+| [0068](0068-the-lane-is-measured-against-the-hull.md) | The lane is measured against the hull, not against the ship's centre |
+| [0069](0069-the-space-past-the-edge-is-furnished.md) | The space past the edge is furnished, in three layers |
+| [0070](0070-no-road-out-turns-the-ship.md) | No road out-turns the ship, and a ramp is tangential at both ends |
+| [0071](0071-a-ceiling-that-drops-does-not-drop-the-ship.md) | A ceiling that drops does not drop the ship with it |
+| [0072](0072-the-road-axis-is-followed-not-adopted.md) | The road's direction is followed at a bounded rate, and a handover cannot hand you a lane you could not steer onto |
+| [0073](0073-the-fighter-may-outrun-a-missile.md) | The fighter may outrun a missile; the classes a missile is *for* may not |
+| [0074](0074-the-lane-is-a-translucent-solid.md) | The lane is a translucent solid, and "visually open" means you can see through it — its "one lane lit" clause is superseded by 0075 |
+| [0075](0075-every-lane-is-drawn-and-a-lane-has-a-floor.md) | Every lane is drawn; the one you are on is brighter, and a lane has a floor |
 
-*Next number: 0057.*
+*Next number: 0076.*

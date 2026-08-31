@@ -35,7 +35,73 @@ var autopilot: bool = true
 var piloted: bool = true
 var target: Node3D
 
+## Which hull this is. Everything about how the ship flies resolves from here.
+##
+## Assign through `set_hull_class` rather than directly: the silhouette is a class
+## property too, and a bare assignment leaves the hull at the previous class's size
+## until something else happens to trigger a hot reload.
+var hull_class: HullClass.Kind = HullClass.DEFAULT
+## Scaled below 1 while the ship leans on a system boundary (ADR 0011, SystemDisc).
+##
+## The clamp is on the SPEED LIMIT, never on the velocity vector. That is what makes
+## "magnitude only, never direction" structural: there is no code path anywhere that
+## can turn the player's ship, because nothing on this side ever receives a heading.
+## The stick does exactly what was asked and the ship simply strains.
+##
+## It also shows: the HUD's speed row reads "of N", and N comes down.
+##
+## Several things constrain it — the disc's faces, the approach envelope — so the
+## scene composes them and assigns the tightest, rather than each writing this field
+## and the last one to run winning. Zero is reachable, and means docked: the
+## boundary never uses it, because ADR 0011's faces must never be a hard stop.
+var speed_ceiling_scale: float = 1.0
+
+## The road, sampled where the ship is, or null when the cruise drive is not
+## running. Set by the map each frame; the ship never looks the road up.
+##
+## Cruise is a PLACE the ship is in rather than a mode it switches to (ADR 0057):
+## the throttle is still the player's, the stick still steers, and the only
+## differences are a much higher ceiling and a cone around the road's axis. Nothing
+## here fades, loads, or plays.
+var cruise: CruiseLane = null
+
+## 0 to 1: how far the cruise drive has wound up. The ceiling is blended across it,
+## so joining the road accelerates and leaving it decelerates instead of the speed
+## snapping between hull and cruise in one frame.
+##
+## This is NOT entry ceremony and must not become it (ADR 0057). The player is
+## already through the aperture, already steering, already holding their own
+## throttle; what takes time is an engine winding up, which is the ship doing
+## something rather than something being done to the ship.
+var _cruise_spool: float = 0.0
+## The road's top speed, remembered across the spool-down so leaving the road has
+## something to decelerate FROM after `cruise` has already gone null.
+var _cruise_ceiling: float = 0.0
+## The road direction the nose is actually held against, which FOLLOWS the lane's
+## own axis at a bounded rate rather than being it.
+##
+## The cone clamp is instantaneous by construction — the nose is put inside a cone
+## around the road every frame — so anything that moves the road's axis moves the
+## nose by the same amount in the same frame. A bend does that gently. A handover
+## between decks did it violently: drifting wide of a mainline beside an interchange
+## handed the ship to a ramp whose axis was thirty degrees away, and thirty degrees
+## in one frame is eighteen hundred a second. The ship shook (ADR 0072).
+##
+## Slewing the reference instead means the ship is *steered onto* a new lane at the
+## rate it can be steered, and the camera — which frames the road, not the nose —
+## follows the same vector, so the two can never disagree about where the road is.
+var _road_axis: Vector3 = Vector3.ZERO
+
 var _velocity: Vector3 = Vector3.ZERO
+## Forward speed, carried between frames so it can be RATE-LIMITED on the way down.
+##
+## Throttle already travels over `accel_seconds` / `brake_seconds`, but the ceiling
+## it multiplies does not: a ceiling that drops in one frame used to drop the ship's
+## speed in one frame with it. The lane's edge is exactly that — cross the rail at
+## 160 m/s and the cruise drive's ceiling falls by half over ten metres, which is a
+## sixteenth of a second — and the result was a ship being yanked backwards and
+## forwards at the rail rather than slowed by it (ADR 0071).
+var _speed: float = 0.0
 var _orbit_sign: float = 1.0
 var _hull: MeshInstance3D
 var _last_standoff: float = -1.0
@@ -77,6 +143,7 @@ func _ready() -> void:
 	# only so a Mothership built on its own (the headless gate does that) starts
 	# somewhere defined rather than on whatever the member's default happened to be.
 	autopilot = Tuning.text("ship/start_role").strip_edges().to_lower() == "gunner"
+	adopt_tuned_hull_class()
 	_reticle.reset(basis)
 	_apply_tuning()
 	Tuning.reloaded.connect(_on_tuning_reloaded)
@@ -97,7 +164,7 @@ func _on_tuning_reloaded() -> void:
 
 
 func _apply_tuning() -> void:
-	_hull.scale = Vector3.ONE * Tuning.num("ship/hull_scale")
+	_hull.scale = Vector3.ONE * hull_scale()
 	var mat := _hull.material_override as StandardMaterial3D
 	mat.albedo_color = Tuning.color("ship/hull_tint")
 	mat.metallic = Tuning.num("ship/metallic")
@@ -112,8 +179,11 @@ func _process(delta: float) -> void:
 	# station the player happens to be standing at.
 	_missile_cooldown = maxf(_missile_cooldown - delta, 0.0)
 	_hit_flash = maxf(_hit_flash - delta, 0.0)
+	_spool(delta)
 	if autopilot:
 		_fly_autopilot(delta)
+	elif piloted and cruise != null:
+		_fly_cruise(delta)
 	elif piloted:
 		_fly_manual(delta)
 	else:
@@ -172,9 +242,17 @@ func _fly_autopilot(delta: float) -> void:
 	# way the player could not: without this, `range_hold_max_speed` of 45 against a
 	# manual ceiling of 34 means handing control back produces a lurch the player
 	# has no way to produce themselves (ADR 0043).
-	_velocity = (tangent * Tuning.num("ship/arc_speed")
+	# A fraction of this hull's own top speed, never an absolute: at the corrected
+	# taxi speed the old absolute 13.8 would put the autopilot at 89% of manual and
+	# make flying yourself decoration (EXPLORATION_DESIGN.md invariant 3).
+	var arc_speed := manual_max_speed() \
+		* clampf(Tuning.num("ship/arc_speed_fraction"), 0.0, 0.95)
+	_velocity = (tangent * arc_speed
 		+ radial * radial_speed
 		+ Vector3.UP * climb_speed).limit_length(manual_max_speed())
+	# Kept in step, so the frame the player takes the helm back does not start with a
+	# rate limit measured against a speed the ship has not had for minutes.
+	_speed = _velocity.length()
 	position += _velocity * delta
 
 	# The nose follows the direction of travel, not the target. Firing along the
@@ -196,22 +274,156 @@ func _fly_autopilot(delta: float) -> void:
 
 ## The top speed the ship may reach, whatever the ship's own numbers say.
 ##
-## This is the speed hierarchy made structural (CLAUDE.md): a ship that can match
-## a missile makes the missile pointless, and the failure would show up as "the
-## POC stopped being fun" rather than as a bug. Clamping here means a tuning
-## session cannot produce that state by accident, and the fraction is itself
-## tunable so the margin is a decision rather than a magic number.
+## This is the speed hierarchy made structural (CLAUDE.md), and it now resolves
+## through the hull class: a taxi at 0.27 of missile speed and a fighter at 0.67
+## cannot share one global fraction, so each class declares its own headroom and
+## `HullClass` applies the clamp. What the invariant protects widens from "missiles
+## outrun ships" to "a missile outruns its intended targets".
 func manual_max_speed() -> float:
-	var ceiling := Tuning.num("missile/base_speed") \
-		* clampf(Tuning.num("ship/manual_speed_ceiling_fraction"), 0.0, 0.95)
-	return minf(Tuning.num("ship/manual_max_speed"), ceiling)
+	# On the road the ceiling is the cruise drive's, not the hull's — that is the
+	# whole of what the road buys, and it is why there is no personal cruise drive
+	# for open space (ADR 0057). The lane's own penalty is already folded into
+	# `top_speed`, so drifting wide shows up here and on the HUD's "of N".
+	#
+	# Blended across the spool rather than switched, in BOTH directions: joining the
+	# road is an acceleration and leaving it is a deceleration, and the blend is on
+	# the ceiling rather than on the velocity so the throttle keeps meaning what it
+	# meant. A ship that arrives in a system still doing 140 has not left the road,
+	# it has been teleported off it.
+	var hull := HullClass.max_speed(hull_class)
+	var road := cruise.top_speed() if cruise != null else _cruise_ceiling
+	return lerpf(hull, maxf(road, hull), _cruise_spool) \
+		* clampf(speed_ceiling_scale, 0.0, 1.0)
 
 
+## The most speed a hull may lose in one frame: what its own brakes can take off it.
+##
+## Pure and static, so the rule lives in one named place and can be checked without
+## a scene. `wanted` is what throttle times the current ceiling asks for; going UP is
+## never limited, because acceleration is already paced by the throttle's own travel
+## and limiting it again would compound into a lever that is slower than it is tuned
+## to be.
+##
+## Going down is limited because nothing else paces it. A throttle released falls at
+## `brake_seconds` on its own and this is a no-op for it; a CEILING that drops — the
+## lane's edge, a boundary clamp, a hull swap — has no travel of its own at all, and
+## used to arrive in a single frame (ADR 0071).
+static func brake_limited(from: float, wanted: float, ceiling: float,
+		brake_seconds: float, delta: float) -> float:
+	if wanted >= from:
+		return wanted
+	var rate := maxf(from, ceiling) / maxf(brake_seconds, 0.01)
+	return maxf(wanted, from - rate * delta)
+
+
+## Wind the drive up or down. Runs every frame whatever is flying, because the
+## spool-down has to keep going after `cruise` is already null.
+func _spool(delta: float) -> void:
+	if cruise != null:
+		_cruise_ceiling = cruise.top_speed()
+		var up := maxf(Tuning.num("exploration/cruise_spool_seconds"), 0.001)
+		_cruise_spool = minf(_cruise_spool + delta / up, 1.0)
+		return
+	if _cruise_spool <= 0.0:
+		return
+	var down := maxf(Tuning.num("exploration/cruise_spool_down_seconds"), 0.001)
+	_cruise_spool = maxf(_cruise_spool - delta / down, 0.0)
+
+
+## How far the cruise drive has wound up, 0 to 1. For the HUD, which has to show the
+## wind-up as it happens or it reads as sluggishness rather than as an engine.
+func cruise_spool() -> float:
+	return _cruise_spool
+
+
+## Is the cruise drive running right now?
+func is_cruising() -> bool:
+	return cruise != null
+
+
+## The road direction the nose is held against, and the one the camera frames. Zero
+## off the road. See `_road_axis` for why it is not simply `cruise.axis`.
+func road_axis() -> Vector3:
+	return _road_axis
+
+
+## Called when the ship joins the road, so the first frame on it does not slew from
+## wherever the last road went.
+func adopt_road_axis(axis: Vector3) -> void:
+	_road_axis = axis.normalized()
+
+
+func leave_road() -> void:
+	_road_axis = Vector3.ZERO
+
+
+## Read the class back out of tuning. Called at build and on every hot reload, so
+## editing `ship/hull_class` changes the ship in place, and so the debug roster
+## (POC step 4) can put it back.
+func adopt_tuned_hull_class() -> void:
+	set_hull_class(HullClass.from_name(Tuning.text("ship/hull_class")))
+
+
+## Change class, and rebuild everything that follows from it. Instant by design —
+## the roster exists so the classes can be felt back to back, and a transition would
+## put the thing being compared behind an animation.
+func set_hull_class(kind: HullClass.Kind) -> void:
+	hull_class = kind
+	if _hull != null:
+		_apply_tuning()
+
+
+## Can this hull use a portal at all? The fighter cannot, and that is the single
+## property `<class>_has_cruise_drive` rather than a rule about portals.
+func has_cruise_drive() -> bool:
+	return HullClass.has_cruise_drive(hull_class)
+
+
+## How hard this hull turns. Read publicly because the roster's whole purpose is
+## comparing classes, and a difference the player has to infer from feel alone is
+## a difference they will mis-attribute.
+func turn_rate_deg_per_sec() -> float:
+	return HullClass.num(hull_class, "turn_rate_deg_per_sec",
+		"ship/manual_turn_rate_deg_per_sec")
+
+
+func strafe_speed() -> float:
+	return HullClass.num(hull_class, "strafe_speed", "ship/manual_strafe_speed")
+
+
+## Seconds of throttle travel, end to end. The pair is what "ponderous" actually
+## means for a capital — its top speed is only half the story.
+func accel_seconds() -> float:
+	return HullClass.num(hull_class, "accel_seconds", "ship/manual_accel_seconds")
+
+
+func brake_seconds() -> float:
+	return HullClass.num(hull_class, "brake_seconds", "ship/manual_brake_seconds")
+
+
+## The hull's size multiplier for this class. A roster whose three ships look
+## identical fails at the one thing it is for: you must be able to see which one
+## you are in without reading the HUD.
+func hull_scale() -> float:
+	return HullClass.num(hull_class, "hull_scale", "ship/hull_scale")
+
+
+## Every number here resolves through the hull class (ADR 0059), with the
+## `ship/manual_*` values as the shared fallback. A class that overrides nothing
+## flies exactly as this ship always has — which is why the taxi, the class the
+## combat arena uses, has no entries of its own and is untouched by the roster.
+##
+## Top speed alone does not make a class legible. A fighter that is a fast taxi
+## teaches nothing about what a fighter *is*, so turn rate, throttle travel and
+## thruster authority are all per class too. That is the difference between
+## "the number is different" and "it flies differently".
 func _fly_manual(delta: float) -> void:
 	# Throttle is a held state that climbs and falls, not a burst. The seconds are
 	# the whole travel of the lever, so "3 s to full" means what it says.
-	var accel_seconds := maxf(Tuning.num("ship/manual_accel_seconds"), 0.01)
-	var brake_seconds := maxf(Tuning.num("ship/manual_brake_seconds"), 0.01)
+	var accel_seconds := maxf(
+		HullClass.num(hull_class, "accel_seconds", "ship/manual_accel_seconds"), 0.01)
+	var brake_seconds := maxf(
+		HullClass.num(hull_class, "brake_seconds", "ship/manual_brake_seconds"), 0.01)
 	if Input.is_action_pressed("throttle_up"):
 		_throttle = minf(_throttle + delta / accel_seconds, 1.0)
 	if Input.is_action_pressed("throttle_down"):
@@ -225,22 +437,93 @@ func _fly_manual(delta: float) -> void:
 	basis = _reticle.update(basis, stick, delta,
 		Tuning.num("controls/stick_reticle_speed_deg_per_sec"),
 		Tuning.num("controls/mouse_sensitivity"),
-		Tuning.num("ship/manual_turn_rate_deg_per_sec"),
-		Tuning.num("ship/manual_reticle_max_angle_deg"))
+		turn_rate_deg_per_sec(),
+		HullClass.num(hull_class, "reticle_max_angle_deg",
+			"ship/manual_reticle_max_angle_deg"))
 
 	# Lateral thrusters are held here, unlike the missile's one-press dodge. ADR
 	# 0039 rejected a held slide for the *missile*, where it flattened every
 	# approach into a lane change; a ship is not flying a terminal approach and
 	# has no such geometry to flatten.
-	var strafe := Input.get_axis("strafe_left", "strafe_right") \
-		* Tuning.num("ship/manual_strafe_speed")
+	var strafe := Input.get_axis("strafe_left", "strafe_right") * strafe_speed()
 
 	# The clamp is on the WHOLE velocity, not on the throttle alone. Thrusting
 	# sideways at full throttle otherwise sums to more than the top speed — 34 m/s
 	# forward plus 12 m/s across is 36 — and the speed hierarchy would be broken by
 	# holding two keys rather than by editing a number.
-	_velocity = (-basis.z * (_throttle * manual_max_speed()) + basis.x * strafe) \
-		.limit_length(manual_max_speed())
+	var top := manual_max_speed()
+	_speed = brake_limited(_speed, _throttle * top, top, brake_seconds, delta)
+	_velocity = (-basis.z * _speed + basis.x * strafe) \
+		.limit_length(maxf(_speed, top))
+	position += _velocity * delta
+
+
+## Flying the road.
+##
+## The same three inputs as manual flight — throttle, stick, thrusters — with two
+## differences, and no third:
+##
+## - The ceiling is the cruise drive's, scaled by how far out of the lane you are.
+## - The nose is held inside a cone around the ROAD's axis rather than free. The
+##   reticle is clamped to the same cone, so it can never be parked somewhere the
+##   ship is not allowed to go — a control that lies is worse than a bounded one.
+##
+## Everything ADR 0057 forbids is absent by construction: nothing fades, nothing
+## loads, the stick and the throttle are live every frame, and the space outside the
+## lane stays rendered because the lane is drawn as ribs rather than as a tunnel.
+func _fly_cruise(delta: float) -> void:
+	var accel_seconds := maxf(
+		HullClass.num(hull_class, "accel_seconds", "ship/manual_accel_seconds"), 0.01)
+	var brake_seconds := maxf(
+		HullClass.num(hull_class, "brake_seconds", "ship/manual_brake_seconds"), 0.01)
+	if Input.is_action_pressed("throttle_up"):
+		_throttle = minf(_throttle + delta / accel_seconds, 1.0)
+	if Input.is_action_pressed("throttle_down"):
+		_throttle = maxf(_throttle - delta / brake_seconds, 0.0)
+
+	var stick := ReticleSteering.apply_deadzone(Vector2(
+		Input.get_axis("aim_left", "aim_right"),
+		Input.get_axis("aim_up", "aim_down"),
+	), Tuning.num("controls/deadzone"))
+
+	# The reticle's own cone is opened right out here, because the road's cone below
+	# replaces it. Two nested cones would compound into something neither value
+	# describes, and the tuning comment on `cruise_turn_clamp_deg` promises that this
+	# one number decides how much the player may steer.
+	var turned := _reticle.update(basis, stick, delta,
+		Tuning.num("controls/stick_reticle_speed_deg_per_sec"),
+		Tuning.num("controls/mouse_sensitivity"),
+		cruise.turn_rate_deg, 180.0)
+	# The road the nose is held against is the SLEWED axis, not the lane's raw one.
+	# See `_road_axis`: everything that can move a road's direction — a bend, a
+	# handover, a flare — moves it through this, at a rate the ship could have flown.
+	var axis := road_axis()
+	if _road_axis == Vector3.ZERO:
+		_road_axis = cruise.axis
+		axis = _road_axis
+	else:
+		_road_axis = FlightGeometry.turn_towards(_road_axis, cruise.axis,
+			deg_to_rad(cruise.turn_rate_deg) * delta)
+		axis = _road_axis
+	var cone := deg_to_rad(cruise.clamp_deg)
+	basis = FlightGeometry.basis_from_forward(
+		FlightGeometry.clamp_to_cone(-turned.z, axis, cone))
+	_reticle.aim_basis = FlightGeometry.basis_from_forward(
+		FlightGeometry.clamp_to_cone(-_reticle.aim_basis.z, axis, cone))
+
+	var strafe := Input.get_axis("strafe_left", "strafe_right") * strafe_speed()
+	var top := manual_max_speed()
+	# Rate-limited on the way down, and this is where it matters most: `top` here is
+	# the cruise drive's ceiling, and the lane's edge halves it over `edge_softness`
+	# metres. Without the limit, drifting a hull-width out of the lane cost eighty
+	# metres a second in one frame, the push shoved the ship back in, the penalty
+	# released, and the whole thing repeated — a stutter at the rail (ADR 0071).
+	_speed = brake_limited(_speed, _throttle * top, top, brake_seconds, delta)
+	# The lane's nudge is added to the velocity rather than limited with it: it is
+	# the road correcting a lane-keeping mistake, and clamping it away at full
+	# throttle would make the correction vanish exactly when it is needed.
+	_velocity = (-basis.z * _speed + basis.x * strafe) \
+		.limit_length(maxf(_speed, top)) + cruise.push()
 	position += _velocity * delta
 
 
@@ -300,11 +583,14 @@ func hit_flash() -> float:
 ## the direction of *being* hit. When ship damage arrives (step 9) this has to
 ## become the hull's own volumes, the way the target's did.
 func hit_radius() -> float:
+	# Against the CLASS's hull scale, not the shared one: a fighter drawn at a
+	# quarter size with a gunboat's hit sphere would be hit from four hull-widths
+	# away, and nothing would report it. Drawn shape is hit shape (ADR 0043).
 	var scale := maxf(Tuning.num("ship/hit_radius_scale"), 0.01)
 	if _hull == null or _hull.mesh == null:
-		return Tuning.num("ship/hull_scale") * scale
+		return hull_scale() * scale
 	var extents: Vector3 = _hull.mesh.get_aabb().size * 0.5
-	return extents.length() * Tuning.num("ship/hull_scale") * scale
+	return extents.length() * hull_scale() * scale
 
 
 # --- the launch tube ---------------------------------------------------------
@@ -361,6 +647,7 @@ func set_autopilot(on: bool) -> bool:
 		_reticle.reset(basis)
 		var ceiling := manual_max_speed()
 		_throttle = 0.0 if ceiling <= 0.0 else clampf(_velocity.length() / ceiling, 0.0, 1.0)
+		_speed = _velocity.length()
 	return autopilot
 
 
@@ -394,6 +681,59 @@ func snap_to_standoff() -> void:
 
 	# Face along the arc, so the first frame is not a snap from an arbitrary basis.
 	look_at(global_position + radial.cross(Vector3.UP) * _orbit_sign, Vector3.UP)
+	_reticle.reset(basis)
+
+
+## The hull's actual size in metres, at this class's scale.
+##
+## Distinct from `hit_radius`, which is a bounding SPHERE and is generous on purpose.
+## An aperture the ship has to fit through is an axis-by-axis question: the bounding
+## sphere of a 44 x 24 x 48 m gunboat is 72 m across, and checking a 50 m portal
+## against that would condemn an opening the ship flies through with 13 m to spare.
+## Half the hull's section across and up, for the lane to measure itself against.
+##
+## The lane is measured against the SHIP rather than against a point (`CruiseLane`):
+## a capital is 76 m across in a lane that is 240, and one that only noticed the
+## centre would let most of the hull hang through the rails before anything reported
+## it. Across and up only — the length does not decide whether you are in your lane.
+func lane_clearance() -> Vector2:
+	var size := hull_extents()
+	return Vector2(size.x, size.y) * 0.5
+
+
+func hull_extents() -> Vector3:
+	if _hull == null or _hull.mesh == null:
+		return Vector3.ONE * hull_scale()
+	return _hull.mesh.get_aabb().size * hull_scale()
+
+
+## Leave a dock, already moving.
+##
+## Departing must not put the ship back where it landed, at rest, pointing at the
+## surface it just left: that is a hole to climb out of on every single visit, and
+## the climb is not interesting the second time. It leaves on the REFLECTION of its
+## arrival — same bearing, vertical flipped — so a descent becomes a climb and the
+## planet is behind it on the first frame.
+##
+## The throttle is set to match the speed rather than left at zero, because a ship
+## given velocity and no throttle bleeds it off over the next second and the takeoff
+## reads as a shove instead of as flying away.
+func launch_from_dock(fraction: float) -> void:
+	var facing := -basis.z
+	var away := Vector3(facing.x, -facing.y, facing.z)
+	if away.length_squared() <= 0.000001:
+		away = Vector3.UP
+	basis = FlightGeometry.basis_from_forward(away.normalized())
+	_throttle = clampf(fraction, 0.0, 1.0)
+	_velocity = -basis.z * (_throttle * manual_max_speed())
+	_speed = _velocity.length()
+	_reticle.reset(basis)
+
+
+## Park the reticle on the nose. Called when the heading changes for a reason that
+## was not steering — here, entering or leaving the road, where the cone the reticle
+## lives in changes shape under it and a stale aim would read as a snap.
+func reset_reticle() -> void:
 	_reticle.reset(basis)
 
 

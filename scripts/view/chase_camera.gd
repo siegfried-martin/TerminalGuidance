@@ -22,6 +22,22 @@ var tuning_prefix: String = "camera/ship"
 ## like anyway. Empty means the boom is rigid, which is the behaviour every other
 ## view has always had; that is not a feel constant, it is the absence of this.
 var pitch_share_key: String = ""
+## Multiplies the boom's length, height and look-ahead. The camera is tuned against
+## one hull size; a roster that swaps a 48 m gunboat for a 13 m fighter at the same
+## boom puts the player a hull-length behind a speck. Scaling the boom with the hull
+## keeps the ship the same size on screen whatever class it is, so what the player
+## is comparing is how it flies rather than how far away it looks.
+var boom_scale: float = 1.0
+
+## A direction to frame the shot along instead of the subject's own nose. Zero means
+## the subject decides, which is every view except the road.
+##
+## On the highway the camera is fixed to the ROAD's direction and the ship yaws
+## inside the frame within `cruise_turn_clamp_deg` of it (ADR 0057). That is what
+## makes lane position legible: with the camera on the nose, steering left and the
+## road curving left look identical, and the player has nothing to hold a line
+## against.
+var heading_override: Vector3 = Vector3.ZERO
 
 ## Optional tuning key for this view's own field of view. Empty means the shared
 ## `camera/fov_base`. The turret uses it: a narrow FOV is a zoom, and it is the
@@ -45,6 +61,15 @@ func set_fov_key(key: String) -> void:
 
 func _apply_fov() -> void:
 	fov = Tuning.num(_fov_key if not _fov_key.is_empty() else "camera/fov_base")
+	# THE FAR PLANE IS A GAMEPLAY VALUE HERE, not a default to leave alone. Godot's
+	# 4 km default is shorter than the deep field is deep, and the failure it produces
+	# is not "distant things are missing" — it is a body being SLICED by the plane as
+	# the player turns toward it, because the far plane is measured along the view
+	# axis: a body 6 km away sits inside it at the edge of the screen and outside it in
+	# the middle. It looks exactly like a moon going through phases, and it was
+	# reported as one.
+	near = Tuning.num("camera/near_plane")
+	far = Tuning.num("camera/far_plane")
 
 
 ## Jump straight to the ideal pose. Called on a view change so the cut is a cut,
@@ -58,6 +83,9 @@ func _process(delta: float) -> void:
 		return
 
 	var subject_basis := subject.global_transform.basis
+	if heading_override.length_squared() > 0.000001:
+		subject_basis = FlightGeometry.basis_from_forward(
+			heading_override.normalized())
 	var back := subject_basis.z
 	var up := subject_basis.y
 	if not pitch_share_key.is_empty():
@@ -71,9 +99,13 @@ func _process(delta: float) -> void:
 			up = FlightGeometry.turn_towards(
 				Vector3.UP, up, Vector3.UP.angle_to(up) * share)
 
+	# Blended rather than applied outright, so "does hull size change the boom or the
+	# apparent size of the world" stays the human's dial (camera/boom_hull_scale_influence).
+	var boom := maxf(lerpf(1.0, boom_scale,
+		clampf(Tuning.num("camera/boom_hull_scale_influence"), 0.0, 1.0)), 0.05)
 	var ideal := subject.global_position \
-		+ back * Tuning.num(tuning_prefix + "_follow_distance") \
-		+ up * Tuning.num(tuning_prefix + "_follow_height")
+		+ back * Tuning.num(tuning_prefix + "_follow_distance") * boom \
+		+ up * Tuning.num(tuning_prefix + "_follow_height") * boom
 
 	if _initialised:
 		var lag := Tuning.num(tuning_prefix + "_follow_lag")
@@ -89,5 +121,5 @@ func _process(delta: float) -> void:
 	# a levelled up goes parallel to the view axis as the aim approaches vertical,
 	# and `look_at` has no answer for that.
 	var look_point := subject.global_position \
-		- subject_basis.z * Tuning.num(tuning_prefix + "_look_ahead")
+		- subject_basis.z * Tuning.num(tuning_prefix + "_look_ahead") * boom
 	look_at(look_point, subject_basis.y)
