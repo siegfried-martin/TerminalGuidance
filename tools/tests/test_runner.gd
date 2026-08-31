@@ -165,8 +165,9 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/bounds_grid_spacing", "exploration/bounds_grid_alpha_scale",
 	"exploration/bounds_grid_alpha", "exploration/road_height",
 	"exploration/lane_active_color", "exploration/lane_active_alpha",
-	"exploration/lane_shell_color", "exploration/lane_shell_alpha",
-	"exploration/lane_shell_floor_color", "exploration/lane_shell_floor_bias",
+	"exploration/lane_shell_alpha",
+	"exploration/lane_shell_outer_color", "exploration/lane_shell_divider_color",
+	"exploration/lane_shell_divider_bias",
 	"exploration/lane_shell_idle_alpha",
 	"camera/near_plane", "camera/far_plane",
 	"exploration/deep_seed",
@@ -3580,6 +3581,25 @@ func _test_exploration_builds() -> void:
 		"idle %.3f against active %.3f" % [
 			Tuning.num("exploration/lane_shell_idle_alpha"),
 			Tuning.num("exploration/lane_shell_alpha")])
+	# THE DIVIDER. The decks are stacked flush, so the upper deck's FLOOR and the lower
+	# deck's ROOF are the same surface, and the gradient has to arrive at the same
+	# colour from both sides or the stripe is only a stripe from one of them.
+	var outer := Tuning.color("exploration/lane_shell_outer_color")
+	var divider := Tuning.color("exploration/lane_shell_divider_color")
+	var bias := Tuning.num("exploration/lane_shell_divider_bias")
+	var upper_floor := RoadDeck.shade(1.0, true, outer, divider, bias)
+	var lower_roof := RoadDeck.shade(0.0, false, outer, divider, bias)
+	_expect(upper_floor.is_equal_approx(lower_roof),
+		"the two decks meet in one colour — the seam is a lane divider, not a join",
+		"upper floor %s against lower roof %s" % [upper_floor, lower_roof])
+	_expect(RoadDeck.shade(0.0, true, outer, divider, bias).is_equal_approx(
+			RoadDeck.shade(1.0, false, outer, divider, bias)),
+		"…and each deck's OUTER face is the other colour, so the gradient runs opposite ways",
+		"the two outer faces disagree")
+	_expect(upper_floor.a > RoadDeck.shade(0.0, true, outer, divider, bias).a,
+		"…with the divider carrying more of the alpha than the face away from it",
+		"divider %.2f against outer %.2f" % [upper_floor.a,
+			RoadDeck.shade(0.0, true, outer, divider, bias).a])
 	var skin := mainlines[0].get_node_or_null("Shell") as MeshInstance3D
 	var skin_mat := skin.material_override as StandardMaterial3D if skin != null else null
 	_expect(skin != null and skin.mesh != null and skin_mat != null

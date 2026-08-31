@@ -8,9 +8,19 @@
 draws the same shell at `lane_shell_alpha` and adds its rings and its sixteen
 longitudinal lines.
 
-**The shell is vertex-coloured around its section.** The floor has its own colour and
-carries more of the alpha than the roof (`lane_shell_floor_color`,
-`lane_shell_floor_bias`), so a lane has an up and a down from anywhere inside it.
+**The shell is vertex-coloured around its section**, so a lane has an up and a down
+from anywhere inside it.
+
+> *Amended the same day, and the decision is unchanged.* The scheme this first shipped
+> with was floor-versus-roof. It is now a **gradient toward the face the two decks
+> share** — `lane_shell_outer_color`, `lane_shell_divider_color`,
+> `lane_shell_divider_bias`, replacing the `lane_shell_floor_*` keys named here. The
+> decks are stacked flush, so that face is the upper deck's floor and the lower deck's
+> roof, and running the gradient toward it on both makes the seam one colour from
+> either side: a lane divider, visible from outside as a stripe down the middle of the
+> stack and from inside as which deck you are on. The mechanism below is untouched —
+> vertex colour rather than lighting, relative alpha multiplying into the material's —
+> and setting the two colours equal returns a flat tube.
 
 ADR 0074's *"Do not draw the shell on every deck"* is superseded. Everything else in
 0074 stands, including the alpha ceiling and the build-once rule.

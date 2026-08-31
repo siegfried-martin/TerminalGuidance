@@ -120,11 +120,17 @@ see how it reads with no air between them. One slider back up and the gap return
   vanished for a few seconds and then the ramp swung into view beside you. Every deck
   draws its shell now, the ridden one brighter (ADR 0075, superseding 0074's clause).
   This also answers *"the translucent blue should show from the outside"*.
-- **A lane has a floor.** Flat colour was why the tube did not read as a tunnel —
+- **A lane has a divider.** Flat colour was why the tube did not read as a tunnel —
   every part of the sheen identical means no left, right, above or below. The shell is
-  vertex-coloured around its section with the floor its own colour and carrying more
-  of the alpha, and the ridden deck draws **sixteen longitudinal lines** rather than
-  four: converging longitudinals are the cue a real tunnel actually gives.
+  vertex-coloured across its section, running from each deck's outer face to the face
+  the two decks share; because they are stacked flush, that seam is one colour from
+  both sides. **A red stripe down the middle of the stack**, which reads as a lane
+  divider from outside and as which-deck-and-which-way-is-up from inside. The ridden
+  deck also draws **sixteen longitudinal lines** rather than four: converging
+  longitudinals are the cue a real tunnel actually gives.
+  *This one is an experiment the human asked to try.* `lane_shell_divider_color` and
+  `lane_shell_divider_bias` are the dials, and setting the two colours equal puts the
+  flat tube back.
 - **Open feel question**: the lane is 240 x 150 m and the ship is 44 m across, so the
   walls are ~100 m away. That is the remaining reason it may not feel like a tunnel,
   and `lane_width` / `lane_height` are the lever — but shrinking them is bounded by

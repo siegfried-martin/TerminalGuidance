@@ -338,24 +338,44 @@ func _shell_along(span: float) -> ArrayMesh:
 	return mesh
 
 
-## The colour of each point around the section: the floor's colour at the bottom, the
-## wall's at the top, and a heavier alpha down low.
+## The colour of each point around the section: a GRADIENT from the deck's outer face
+## to the face it shares with the other deck.
 ##
-## The alpha carried here is RELATIVE — the material's own alpha is what decides how
-## translucent the lane is overall, and these multiply into it — so the one slider that
+## The two decks are stacked flush, so the shared face is the bottom of the upper deck
+## and the top of the lower one. Running the gradient toward it on both means the seam
+## between them is one colour from either side — a red stripe down the middle of the
+## stack, which is the lane divider a divided highway actually has. From outside it
+## marks where the two roads meet; from inside it tells you which deck you are on and
+## which way is up, because the gradient runs the opposite way on each.
+##
+## That is also the answer to why a flat tube did not read as a tunnel: with every part
+## of the sheen identical there is no left, right, above or below to be told apart.
+##
+## The alpha carried here is RELATIVE — the material's own alpha decides how
+## translucent the lane is overall and these multiply into it — so the one slider that
 ## could turn the road into a tunnel stays the one slider.
 func _section_shades() -> PackedColorArray:
-	var wall := Tuning.color("exploration/lane_shell_color")
-	var floor_color := Tuning.color("exploration/lane_shell_floor_color")
-	var bias := clampf(Tuning.num("exploration/lane_shell_floor_bias"), 0.0, 1.0)
+	var outer := Tuning.color("exploration/lane_shell_outer_color")
+	var divider := Tuning.color("exploration/lane_shell_divider_color")
+	var bias := clampf(Tuning.num("exploration/lane_shell_divider_bias"), 0.0, 1.0)
 	var shades := PackedColorArray()
 	for s in RIB_SEGMENTS:
 		# `_lozenge` measures from +right, so this is 1 at the floor and 0 at the roof.
 		var down := (1.0 - sin(TAU * float(s) / float(RIB_SEGMENTS))) * 0.5
-		var tint := wall.lerp(floor_color, down)
-		tint.a = lerpf(1.0 - bias, 1.0 + bias, down)
-		shades.append(tint)
+		shades.append(shade(down, is_upper, outer, divider, bias))
 	return shades
+
+
+## One point's colour, given how far DOWN the section it sits, 0 at the roof and 1 at
+## the floor. Pure and static, so the gate can check that the two decks actually meet
+## in the same colour rather than inferring it from a rendered frame.
+static func shade(down: float, upper: bool, outer: Color, divider: Color,
+		bias: float) -> Color:
+	# The shared face is BELOW the upper deck and ABOVE the lower one.
+	var toward := down if upper else 1.0 - down
+	var tint := outer.lerp(divider, toward)
+	tint.a = lerpf(1.0 - bias, 1.0 + bias, toward)
+	return tint
 
 
 ## One cross-section, as a closed ring of points.
