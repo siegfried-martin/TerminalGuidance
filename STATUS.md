@@ -1,6 +1,6 @@
 # STATUS
 
-*Updated 2026-08-30.*
+*Updated 2026-08-31.*
 
 ---
 
@@ -18,8 +18,33 @@ the human's explicit direction.
 | Gate | `make check` — 1091 checks, 0 failed |
 | Run it | `make fly` |
 | Built | Exploration POC steps 1–6 and **step 8** (ADRs 0062–0076) |
-| **Do next** | **POC step 7** — cruise fuel and the debug teleport. It is the only step left before traffic. |
+| **Do next** | **The highway rebuild, step A** — see `docs/HIGHWAY_STRUCTURE_PLAN.md`. Lanes go side by side with right-hand traffic, and the deck convention is retired. |
 | **Waiting on you** | **The fourth checkpoint, and the important one**: success criterion 1, on a trunk road that now weaves and undulates. Ten minutes on it. `cruise_turn_clamp_deg` is tuned WITH `road_curve_deg` and `road_curve_period`, never against them. The third checkpoint is still open too — is a 38-second hop worth the portal, against 203 s by hand? |
+
+### Planned on 2026-08-31 — the highway is rebuilt as a structure
+
+Four sessions of tuning the translucent road did not make it read as a place. The
+human generated concept art (`docs/reference/highway_concept.jpeg`) to find what was
+missing, and the answer is not colour or opacity: **the structure is modular and the
+current one is extruded.** Ribs, glazed bays and a solid floor, repeated along the
+path, so real art is a mesh swap rather than a rewrite.
+
+`docs/HIGHWAY_STRUCTURE_PLAN.md` is the plan of record — steps A–E, the four settled
+answers, the five conflicts with accepted ADRs and how each resolves, and ADRs 0077
+through 0081. Headlines:
+
+- **Lanes go side by side, right-hand traffic.** The upper/lower deck convention and
+  **Enforced Invariant 1** (the NW–SE divider and the physical twist) are *deleted*,
+  not replaced: right-hand traffic is self-orienting at any bearing. Ring roads become
+  legal.
+- **The road becomes a dock host**, at the human's framing — *"the ship is stationary
+  attached to a meaningful larger entity"*. Same verb as a planet, 75% of cruise, `C`
+  toggles, and input does **not** abort: a threshold aborts on any input, a berth is
+  left deliberately.
+- **Exit signs are clicked, not planned.** A sign is a physical object, so the player
+  decides and the dock rebinds to that rail. ADR 0070's tangential ramps are what make
+  the rebind smooth by construction.
+- **POC step 7** (cruise fuel) slips behind all of it.
 
 ### What landed on 2026-08-30 — the road curves, and the space outside it is furnished
 

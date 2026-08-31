@@ -13,6 +13,7 @@ session; the rules below are not suggestions.
 | What is being built first, and its scope boundary | `docs/COMBAT_POC_IMPLEMENTATION.md` |
 | What is being built *right now*, in detail | `docs/EXPLORATION_POC_IMPLEMENTATION.md` |
 | The travel layer's locked decisions — roads, portals, the speed ladder, crew | `docs/EXPLORATION_DESIGN.md` |
+| The highway's rebuild as a built structure — steps A–E | `docs/HIGHWAY_STRUCTURE_PLAN.md` |
 | The combat bet, now built | `docs/TURRET_MODE_IMPLEMENTATION.md` |
 | What comes after the combat bet, and in what order | `docs/ROADMAP.md` |
 | The full design of record | `docs/PROJECT_OVERVIEW.md` |
