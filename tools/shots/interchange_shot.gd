@@ -24,7 +24,7 @@ extends Node
 ## uselessly.
 const BACK_METRES := 1200.0
 const SIDE_METRES := 820.0
-const UP_METRES := 230.0
+const UP_METRES := 180.0
 
 var _scene: ExplorationScene
 
@@ -40,7 +40,10 @@ func _process(_delta: float) -> void:
 		return
 	# System B: the case the reshape is about, where the road passes straight through
 	# rather than terminating.
-	var centre := _scene.map().system_center(1)
+	# At the ROAD'S height, not the combat plane's: the highway rides near the ceiling
+	# now, and a camera aimed at the system's centre photographs the space under it.
+	var centre := _scene.map().system_center(1) \
+		+ Vector3.UP * Tuning.num("exploration/road_height")
 	var road := _scene.map().road().get_node_or_null("MainlineUpper") as RoadDeck
 	if road == null:
 		return

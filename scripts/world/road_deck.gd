@@ -25,6 +25,10 @@ extends Node3D
 
 ## How finely a rib is drawn. Infrastructure, not feel.
 const RIB_SEGMENTS := 28
+## Rails around the cross-section. The active deck draws all of them and an idle deck
+## draws every other one, so the lane being flown outlines a tube and the rest stay
+## four wires saying "a road goes that way". Must be even.
+const RAIL_COUNT := 8
 
 var deck_name: String = "deck"
 ## Upper or lower, per the deck convention. **Declared, not derived** — a road
@@ -39,17 +43,33 @@ var has_start_portal: bool = false
 var has_end_portal: bool = false
 
 var _path: RoadPath = RoadPath.new()
-var _structure: MeshInstance3D
+## Rails run the length of the deck and are always drawn: they are what says a road
+## goes that way, from anywhere.
+var _rails: MeshInstance3D
+## Ribs are the cross-sections, and they are drawn ONLY on the deck the player is
+## riding. Four decks meet at an interchange and every one of them was drawing a rib
+## every 120 m; the result was reported as small rounded squares everywhere, with no
+## way to tell which of them was the road being flown. One deck's worth of ribs is a
+## lane you are in. Four decks' worth is a thicket.
+var _ribs: MeshInstance3D
+## Whether this is the deck the ship is on. Set by the network from the map.
+var _active: bool = false
 var _start: Portal
 var _end: Portal
 
 
 func _ready() -> void:
-	_structure = MeshInstance3D.new()
-	_structure.name = "Structure"
-	_structure.material_override = _make_material()
-	_structure.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(_structure)
+	_rails = MeshInstance3D.new()
+	_rails.name = "Rails"
+	_rails.material_override = _make_material()
+	_rails.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(_rails)
+	_ribs = MeshInstance3D.new()
+	_ribs.name = "Ribs"
+	_ribs.material_override = _make_material()
+	_ribs.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_ribs.visible = false
+	add_child(_ribs)
 	rebuild()
 
 
@@ -72,7 +92,7 @@ static func rides_upper(bearing_deg: float) -> bool:
 ## Lay this deck along a path, in the map's frame.
 func follow(line: PackedVector3Array, leads_to: String, back_to: String) -> void:
 	_path.set_points(line)
-	if _structure == null:
+	if _rails == null:
 		return
 	_name_portals(leads_to, back_to)
 	rebuild()
@@ -97,7 +117,8 @@ func _name_portals(leads_to: String, back_to: String) -> void:
 
 func rebuild() -> void:
 	if _path.is_empty():
-		_structure.mesh = null
+		_rails.mesh = null
+		_ribs.mesh = null
 		return
 	if _start != null:
 		_start.place(_path.start(), _path.tangent_at(0.0))
@@ -180,13 +201,19 @@ func sample(point: Vector3, clearance: Vector2 = Vector2.ZERO) -> CruiseLane:
 ## lane has to be visually open — the system outside is the thing the road is not
 ## allowed to hide, and a rib you can see the war through is still unmistakably a
 ## road.
+##
+## Two meshes, not one, and that split is the whole of "which lane am I in": the rails
+## say a road goes this way and are always drawn, the ribs outline the lane you are in
+## and are drawn on one deck at a time. The active deck also gets DOUBLE the rails, so
+## its cross-section reads as a tube rather than as four wires.
 func _rebuild_structure() -> void:
 	var spacing := maxf(Tuning.num("exploration/lane_rib_spacing"), 1.0)
 	var span := length()
 	var count := maxi(int(span / spacing), 1)
-	var verts := PackedVector3Array()
-	var rails: Array[PackedVector3Array] = [PackedVector3Array(),
-		PackedVector3Array(), PackedVector3Array(), PackedVector3Array()]
+	var ribs := PackedVector3Array()
+	var rails: Array[PackedVector3Array] = []
+	for r in RAIL_COUNT:
+		rails.append(PackedVector3Array())
 	for i in count + 1:
 		var along := span * float(i) / float(count)
 		var centre := _path.point_at(along)
@@ -197,23 +224,50 @@ func _rebuild_structure() -> void:
 			ring.append(centre + _lozenge(frame, extents,
 				TAU * float(s) / float(RIB_SEGMENTS)))
 		for s in RIB_SEGMENTS:
-			verts.append(ring[s])
-			verts.append(ring[(s + 1) % RIB_SEGMENTS])
-		# The four extremes, followed along so the rails taper with the flare and
-		# lean with the curve.
-		for r in 4:
-			rails[r].append(centre + _lozenge(frame, extents, TAU * float(r) / 4.0))
-	for rail in rails:
-		for i in rail.size() - 1:
-			verts.append(rail[i])
-			verts.append(rail[i + 1])
+			ribs.append(ring[s])
+			ribs.append(ring[(s + 1) % RIB_SEGMENTS])
+		# Followed along, so the rails taper with the flare and lean with the curve.
+		for r in RAIL_COUNT:
+			rails[r].append(centre + _lozenge(frame, extents,
+				TAU * float(r) / float(RAIL_COUNT)))
 
+	var rail_verts := PackedVector3Array()
+	for r in RAIL_COUNT:
+		# The odd rails are the extra ones the active deck gets; an idle deck draws
+		# only the four extremes, which is what keeps an interchange readable.
+		if not _active and r % 2 == 1:
+			continue
+		for i in rails[r].size() - 1:
+			rail_verts.append(rails[r][i])
+			rail_verts.append(rails[r][i + 1])
+	_rails.mesh = _line_mesh(rail_verts)
+	_ribs.mesh = _line_mesh(ribs) if _active else null
+	_ribs.visible = _active
+
+
+func _line_mesh(verts: PackedVector3Array) -> ArrayMesh:
+	if verts.is_empty():
+		return null
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = verts
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_LINES, arrays)
-	_structure.mesh = mesh
+	return mesh
+
+
+## Is this the deck the ship is riding? Rebuilds only when the answer changes.
+func set_active(on: bool) -> void:
+	if on == _active:
+		return
+	_active = on
+	if not _path.is_empty():
+		_rebuild_structure()
+		repaint()
+
+
+func is_active() -> bool:
+	return _active
 
 
 ## A point on the lane's cross-section. The superellipse `CruiseLane.edge_distance`
@@ -227,9 +281,12 @@ func _lozenge(frame: Array[Vector3], extents: Vector2, angle: float) -> Vector3:
 
 
 func repaint() -> void:
-	var color := Tuning.color("exploration/lane_color")
-	color.a = Tuning.num("exploration/lane_line_alpha")
-	(_structure.material_override as StandardMaterial3D).albedo_color = color
+	var color := Tuning.color("exploration/lane_active_color" if _active
+		else "exploration/lane_color")
+	color.a = Tuning.num("exploration/lane_active_alpha" if _active
+		else "exploration/lane_line_alpha")
+	(_rails.material_override as StandardMaterial3D).albedo_color = color
+	(_ribs.material_override as StandardMaterial3D).albedo_color = color
 
 
 ## Blue or red on this deck's portals, decided against the hull the player is flying

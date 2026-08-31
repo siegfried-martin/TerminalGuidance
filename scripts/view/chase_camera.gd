@@ -61,6 +61,15 @@ func set_fov_key(key: String) -> void:
 
 func _apply_fov() -> void:
 	fov = Tuning.num(_fov_key if not _fov_key.is_empty() else "camera/fov_base")
+	# THE FAR PLANE IS A GAMEPLAY VALUE HERE, not a default to leave alone. Godot's
+	# 4 km default is shorter than the deep field is deep, and the failure it produces
+	# is not "distant things are missing" — it is a body being SLICED by the plane as
+	# the player turns toward it, because the far plane is measured along the view
+	# axis: a body 6 km away sits inside it at the edge of the screen and outside it in
+	# the middle. It looks exactly like a moon going through phases, and it was
+	# reported as one.
+	near = Tuning.num("camera/near_plane")
+	far = Tuning.num("camera/far_plane")
 
 
 ## Jump straight to the ideal pose. Called on a view change so the cut is a cut,

@@ -21,15 +21,15 @@ static func make_material() -> StandardMaterial3D:
 
 ## Colour a set of surfaces for how close the player is to leaving.
 ##
-## `alpha_scale` is for surfaces seen face-on rather than edge-on: a flat slab
-## stacks its own thickness and needs less alpha than a wall does to read at the
-## same strength.
-static func tint(nodes: Array, warning: float, alpha_scale: float) -> void:
+## `rest` and `alarm` are passed in rather than read here, because the wall and the
+## grid ruled on it no longer share them: the solid faces are tuned to nothing at rest
+## — the deep field is what gives the volume a size now, and a translucent sheet in
+## front of it was reported as an ugly blue barrier — while the grid stays faintly
+## drawn so the edge is still findable before it is a warning.
+static func tint(nodes: Array, warning: float, rest: float, alarm: float) -> void:
 	var color := Tuning.color("exploration/bounds_face_color").lerp(
 		Tuning.color("exploration/bounds_color"), warning)
-	color.a = clampf(lerpf(Tuning.num("exploration/bounds_face_alpha"),
-		Tuning.num("exploration/bounds_alarm_alpha"), warning) * alpha_scale,
-		0.0, 1.0)
+	color.a = clampf(lerpf(rest, alarm, warning), 0.0, 1.0)
 	for node: MeshInstance3D in nodes:
 		if node != null and node.material_override != null:
 			(node.material_override as StandardMaterial3D).albedo_color = color

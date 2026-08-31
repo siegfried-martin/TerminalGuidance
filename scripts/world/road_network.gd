@@ -49,7 +49,12 @@ func rebuild(spine: PackedVector3Array, centres: Array[Vector3],
 	if centres.size() < 2 or _spine.is_empty():
 		return
 
+	# The whole stack rides at `road_height` above the combat plane, not around it. A
+	# highway through the middle of a system is in the way of everything that happens
+	# there; up near the ceiling it is scenery you fly under, and an obstacle if a
+	# fight goes that way.
 	var height := Tuning.num("exploration/deck_separation") * 0.5
+	var deck_base := Vector3.UP * Tuning.num("exploration/road_height")
 
 	for upper in [true, false]:
 		# The lower deck runs the other way, is stacked under, and puts its ramps on
@@ -57,7 +62,7 @@ func rebuild(spine: PackedVector3Array, centres: Array[Vector3],
 		# rather than as one road drawn twice. `sense` is which way along the spine
 		# this deck's traffic moves, and every placement below is written in it.
 		var sense := 1.0 if upper == RoadDeck.rides_upper(bearing_deg) else -1.0
-		var lift := Vector3.UP * (height if upper else -height)
+		var lift := deck_base + Vector3.UP * (height if upper else -height)
 		var mainline := _make_deck("Mainline" + ("Upper" if upper else "Lower"),
 			upper, false, false)
 		mainline.deck_name = "%s bound mainline" % (
@@ -188,14 +193,27 @@ func spine() -> RoadPath:
 ## `clearance` is the asking ship's own half-section, and it has to be the same one
 ## the ship is flown with — comparing a hull-measured depth against a point-measured
 ## one would hand a big ship whichever deck happened to be asked with zero.
+## `along` is the direction the ship is currently being held against — the road it is
+## on. A deck whose own direction here is more than the steering cone away from that
+## is NOT a candidate, however near the ship happens to be to it. That is not junction
+## logic and it does not choose anything: it is the same "can I point at it" the cone
+## already applies to the player, applied to the lane. Without it, drifting wide of a
+## mainline beside an interchange handed the ship to a ramp thirty degrees off its
+## heading and swung the nose there in a single frame (ADR 0072). Pass a zero vector
+## to consider every deck, which is what joining the road from outside does.
 func governing(point: Vector3, upper: bool, exclude: RoadDeck = null,
-		clearance: Vector2 = Vector2.ZERO) -> RoadDeck:
+		clearance: Vector2 = Vector2.ZERO,
+		along: Vector3 = Vector3.ZERO) -> RoadDeck:
 	var best: RoadDeck = null
 	var best_depth := INF
+	var cone := cos(deg_to_rad(Tuning.num("exploration/cruise_turn_clamp_deg")))
 	for deck in _decks:
 		if deck.is_upper != upper or deck.length() <= 0.0 or deck == exclude:
 			continue
-		var depth := deck.sample(point, clearance).edge_distance()
+		var lane := deck.sample(point, clearance)
+		if along != Vector3.ZERO and lane.axis.dot(along) < cone:
+			continue
+		var depth := lane.edge_distance()
 		if depth < best_depth:
 			best_depth = depth
 			best = deck
@@ -217,6 +235,14 @@ func portals() -> Array[Portal]:
 func set_permitted(allowed: bool) -> void:
 	for deck in _decks:
 		deck.set_permitted(allowed)
+
+
+## Which deck the ship is riding, or null. Only that one draws its ribs, and it draws
+## them brighter — an interchange is four decks deep and the player has to be able to
+## see which of them is the road they are on.
+func set_active(riding: RoadDeck) -> void:
+	for deck in _decks:
+		deck.set_active(deck == riding)
 
 
 func repaint() -> void:

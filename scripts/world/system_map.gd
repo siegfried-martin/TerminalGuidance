@@ -240,6 +240,7 @@ func observe(ship: Mothership, delta: float) -> void:
 		_speed_scale = minf(_speed_scale, approach.speed_scale())
 
 	_ride_the_road(ship, here)
+	_road.set_active(_riding)
 	# The starfield rides with the player so it never gets nearer, the way a sky does.
 	# Everything else in the deep field stays where it was put, which is what makes it
 	# parallax against the ship instead of moving with it.
@@ -287,6 +288,7 @@ func _ride_the_road(ship: Mothership, here: Vector3) -> void:
 		if not allowed or _left_through_a_portal(here):
 			_riding = null
 			ship.cruise = null
+			ship.leave_road()
 			ship.reset_reticle()
 			return
 		# Merging and diverging, with no junction logic in it. Every deck going the
@@ -296,7 +298,10 @@ func _ride_the_road(ship: Mothership, here: Vector3) -> void:
 		# because the geometry says so, not because a rule fired (ADR 0063's rule,
 		# applied to lanes instead of regions).
 		var lane := _riding.sample(here, clearance)
-		var alternative := _road.governing(here, _riding.is_upper, _riding, clearance)
+		# Candidates are limited to decks the ship could actually be steered onto, so
+		# a handover is a merge rather than a snap (ADR 0072).
+		var alternative := _road.governing(here, _riding.is_upper, _riding, clearance,
+			ship.road_axis())
 		if lane.metres_remaining <= 0.001:
 			# Off the end of this deck. A ramp ends on the mainline and hands over; a
 			# mainline ends at the edge of the map, where there is nothing to hand to
@@ -304,6 +309,7 @@ func _ride_the_road(ship: Mothership, here: Vector3) -> void:
 			if alternative == null or alternative.sample(here, clearance).is_outside():
 				_riding = null
 				ship.cruise = null
+				ship.leave_road()
 				ship.reset_reticle()
 				return
 			_riding = alternative
@@ -321,6 +327,7 @@ func _ride_the_road(ship: Mothership, here: Vector3) -> void:
 				and deck.start_portal().crossed(_previous, here) > 0:
 			_riding = deck
 			ship.cruise = deck.sample(here, clearance)
+			ship.adopt_road_axis(ship.cruise.axis)
 			ship.reset_reticle()
 			return
 

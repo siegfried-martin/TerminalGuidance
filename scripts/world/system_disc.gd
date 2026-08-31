@@ -242,13 +242,18 @@ func _rebuild_markers() -> void:
 ## obvious from looking at it, and lighting only the near one makes the disc read as
 ## a plane rather than as a room.
 func paint(warning_level: float) -> void:
-	BoundaryPaint.tint([_ceiling, _floor], warning_level, 1.0)
+	var face := Tuning.num("exploration/bounds_face_alpha")
+	var alarm := Tuning.num("exploration/bounds_alarm_alpha")
+	var rim := Tuning.num("exploration/bounds_rim_alpha_scale")
+	BoundaryPaint.tint([_ceiling, _floor], warning_level, face, alarm)
 	# The rim is a single-thickness wall seen face-on, where the slabs are seen
 	# edge-on and stack their own depth. Same colour, more of it.
-	BoundaryPaint.tint([_rim], warning_level,
-		Tuning.num("exploration/bounds_rim_alpha_scale"))
+	BoundaryPaint.tint([_rim], warning_level, face * rim, alarm * rim)
+	# The grid has a resting alpha OF ITS OWN, so the edge stays findable when the
+	# solid faces are tuned away to nothing.
 	BoundaryPaint.tint([_grid], warning_level,
-		Tuning.num("exploration/bounds_grid_alpha_scale"))
+		Tuning.num("exploration/bounds_grid_alpha"),
+		alarm * Tuning.num("exploration/bounds_grid_alpha_scale"))
 
 
 func ceiling_height() -> float:

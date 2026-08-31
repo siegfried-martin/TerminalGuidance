@@ -163,6 +163,9 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/road_curve_deg", "exploration/road_curve_period",
 	"exploration/road_rise_deg", "exploration/road_rise_period",
 	"exploration/bounds_grid_spacing", "exploration/bounds_grid_alpha_scale",
+	"exploration/bounds_grid_alpha", "exploration/road_height",
+	"exploration/lane_active_color", "exploration/lane_active_alpha",
+	"camera/near_plane", "camera/far_plane",
 	"exploration/deep_seed",
 	"exploration/starfield_count", "exploration/starfield_distance",
 	"exploration/starfield_size", "exploration/starfield_color",
@@ -3429,6 +3432,77 @@ func _test_exploration_builds() -> void:
 		"…and the corridor still contains the road stacked inside it, all the way",
 		"the lane's top corner is %.1f m outside the corridor" % worst_escape)
 
+	# --- where the road SITS (2026-08-30) ---
+	# High, not through the middle. Two things bound it and both are cheap to get
+	# wrong by nudging one slider: the ceiling above, and the planet's approach
+	# envelope below — which the road must never enter, or riding the highway arms a
+	# landing nobody asked for (ADR 0012).
+	var stack_top := Tuning.num("exploration/road_height") \
+		+ Tuning.num("exploration/deck_separation") * 0.5 \
+		+ Tuning.num("exploration/lane_height") * 0.5
+	var head_room := Tuning.num("exploration/system_ceiling_height") - stack_top
+	_expect(head_room > Tuning.num("exploration/bounds_warning_band"),
+		"the road clears the ceiling by more than the warning band, so riding it is not an alarm",
+		"%.0f m of head room against a %.0f m band" % [head_room,
+			Tuning.num("exploration/bounds_warning_band")])
+	_expect(Tuning.num("exploration/road_height")
+			> Tuning.num("exploration/lane_height"),
+		"…and rides ABOVE the combat plane rather than straddling it",
+		"stack centred at %.0f m" % Tuning.num("exploration/road_height"))
+	var envelope := Tuning.num("exploration/approach_envelope_radius")
+	var nearest_envelope := INF
+	for deck in road.decks():
+		var line := deck.path()
+		for i in 60:
+			var at: Vector3 = line.point_at(line.length() * float(i) / 59.0)
+			var system := map.nearest_system(at)
+			nearest_envelope = minf(nearest_envelope,
+				at.distance_to(map.planets()[system].position))
+	_expect(nearest_envelope > envelope,
+		"…and no road anywhere enters an approach envelope (ADR 0012)",
+		"a road passes %.0f m from a planet, envelope is %.0f" % [
+			nearest_envelope, envelope])
+
+	# --- one lane is lit, and it is the one being flown ---
+	# Four decks meet at an interchange. The player has to be able to see which of them
+	# is theirs, and the answer is the only one drawing ribs.
+	map.road().set_active(mainlines[0])
+	var ribbed := 0
+	var mismatched := ""
+	for deck in road.decks():
+		var ribs := deck.get_node_or_null("Ribs") as MeshInstance3D
+		if ribs == null or ribs.visible != deck.is_active():
+			mismatched = deck.name
+		if ribs != null and ribs.visible:
+			ribbed += 1
+	_expect(mismatched.is_empty() and ribbed == 1,
+		"exactly one deck draws its ribs, and it is the one being ridden",
+		"%d decks ribbed%s" % [ribbed,
+			"" if mismatched.is_empty() else ", %s disagrees" % mismatched])
+	_expect(mainlines[0].is_active() and not mainlines[1].is_active(),
+		"…and never both directions at once",
+		"upper %s, lower %s" % [mainlines[0].is_active(), mainlines[1].is_active()])
+	map.road().set_active(null)
+
+	# --- a handover cannot hand you a lane you could not steer onto (ADR 0072) ---
+	# This is what shook the ship: drifting wide of a mainline beside an interchange
+	# handed it to a ramp thirty degrees off its heading, and the nose is clamped into
+	# a cone around the road every frame, so thirty degrees arrived in one of them.
+	var probe := map.system_center(1) + Vector3.UP * Tuning.num("exploration/road_height")
+	var main_axis: Vector3 = mainlines[0].sample(probe).axis
+	var free_pick := road.governing(probe, mainlines[0].is_upper, null,
+		Vector2.ZERO, Vector3.ZERO)
+	var aligned_pick := road.governing(probe, mainlines[0].is_upper, null,
+		Vector2.ZERO, main_axis)
+	_expect(free_pick != null and aligned_pick != null,
+		"a deck governs the middle of an interchange either way", "nothing does")
+	if aligned_pick != null:
+		var picked: Vector3 = aligned_pick.sample(probe).axis
+		_expect(rad_to_deg(picked.angle_to(main_axis))
+				<= Tuning.num("exploration/cruise_turn_clamp_deg") + 0.01,
+			"…and asking along a heading only ever returns one inside the steering cone",
+			"%.1f deg off" % rad_to_deg(picked.angle_to(main_axis)))
+
 	# The ramp mouths sit BESIDE the planet, not above it. Directly above is inside
 	# the approach envelope, and a ship taking the ramp would arm a landing sequence
 	# it did not ask for (ADR 0012).
@@ -3446,6 +3520,16 @@ func _test_exploration_builds() -> void:
 	_expect(is_zero_approx(deepest_mouth),
 		"…and every one is inside the bounded volume of its own system",
 		"%.1f m outside" % deepest_mouth)
+	# THE ENVELOPE HAS TO REACH THE COMBAT PLANE. The planet sits below it by decision
+	# (ADR 0061), and at 420 m against a 450 m depth the envelope's roof was thirty
+	# metres UNDER y = 0: a ship flying level at a planet closed to exactly 450 m,
+	# stopped, and never entered. Docking read as not existing, and was reported that
+	# way. Arriving is still a descent; the way in just has to start where the player is.
+	var envelope_top := Tuning.num("exploration/approach_envelope_radius") \
+		- Tuning.num("exploration/planet_center_depth")
+	_expect(envelope_top > Tuning.num("exploration/planet_radius") * 0.25,
+		"the approach envelope reaches the combat plane — docking is enterable by flying at it",
+		"its roof is %.0f m from y = 0" % envelope_top)
 	_expect(closest_to_planet < discs[0].radius(),
 		"…while still being BESIDE the planet rather than somewhere else entirely",
 		"%.0f m away in a %.0f m disc" % [closest_to_planet, discs[0].radius() * 2.0])
@@ -3464,7 +3548,7 @@ func _test_exploration_builds() -> void:
 
 	# ADR 0057: the lane is VISUALLY OPEN. Ribs and rails, not a surface — the system
 	# and the war outside it are what the road is not allowed to hide.
-	var structure := mainlines[0].get_node_or_null("Structure") as MeshInstance3D
+	var structure := mainlines[0].get_node_or_null("Rails") as MeshInstance3D
 	_expect(structure != null and structure.mesh != null
 			and structure.mesh.surface_get_primitive_type(0) == Mesh.PRIMITIVE_LINES,
 		"the lane is drawn as LINES — visually open, never a tunnel (ADR 0057)",

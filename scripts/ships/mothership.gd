@@ -77,6 +77,20 @@ var _cruise_spool: float = 0.0
 ## The road's top speed, remembered across the spool-down so leaving the road has
 ## something to decelerate FROM after `cruise` has already gone null.
 var _cruise_ceiling: float = 0.0
+## The road direction the nose is actually held against, which FOLLOWS the lane's
+## own axis at a bounded rate rather than being it.
+##
+## The cone clamp is instantaneous by construction — the nose is put inside a cone
+## around the road every frame — so anything that moves the road's axis moves the
+## nose by the same amount in the same frame. A bend does that gently. A handover
+## between decks did it violently: drifting wide of a mainline beside an interchange
+## handed the ship to a ramp whose axis was thirty degrees away, and thirty degrees
+## in one frame is eighteen hundred a second. The ship shook (ADR 0072).
+##
+## Slewing the reference instead means the ship is *steered onto* a new lane at the
+## rate it can be steered, and the camera — which frames the road, not the nose —
+## follows the same vector, so the two can never disagree about where the road is.
+var _road_axis: Vector3 = Vector3.ZERO
 
 var _velocity: Vector3 = Vector3.ZERO
 ## Forward speed, carried between frames so it can be RATE-LIMITED on the way down.
@@ -327,6 +341,22 @@ func is_cruising() -> bool:
 	return cruise != null
 
 
+## The road direction the nose is held against, and the one the camera frames. Zero
+## off the road. See `_road_axis` for why it is not simply `cruise.axis`.
+func road_axis() -> Vector3:
+	return _road_axis
+
+
+## Called when the ship joins the road, so the first frame on it does not slew from
+## wherever the last road went.
+func adopt_road_axis(axis: Vector3) -> void:
+	_road_axis = axis.normalized()
+
+
+func leave_road() -> void:
+	_road_axis = Vector3.ZERO
+
+
 ## Read the class back out of tuning. Called at build and on every hot reload, so
 ## editing `ship/hull_class` changes the ship in place, and so the debug roster
 ## (POC step 4) can put it back.
@@ -464,11 +494,22 @@ func _fly_cruise(delta: float) -> void:
 		Tuning.num("controls/stick_reticle_speed_deg_per_sec"),
 		Tuning.num("controls/mouse_sensitivity"),
 		cruise.turn_rate_deg, 180.0)
+	# The road the nose is held against is the SLEWED axis, not the lane's raw one.
+	# See `_road_axis`: everything that can move a road's direction — a bend, a
+	# handover, a flare — moves it through this, at a rate the ship could have flown.
+	var axis := road_axis()
+	if _road_axis == Vector3.ZERO:
+		_road_axis = cruise.axis
+		axis = _road_axis
+	else:
+		_road_axis = FlightGeometry.turn_towards(_road_axis, cruise.axis,
+			deg_to_rad(cruise.turn_rate_deg) * delta)
+		axis = _road_axis
 	var cone := deg_to_rad(cruise.clamp_deg)
 	basis = FlightGeometry.basis_from_forward(
-		FlightGeometry.clamp_to_cone(-turned.z, cruise.axis, cone))
+		FlightGeometry.clamp_to_cone(-turned.z, axis, cone))
 	_reticle.aim_basis = FlightGeometry.basis_from_forward(
-		FlightGeometry.clamp_to_cone(-_reticle.aim_basis.z, cruise.axis, cone))
+		FlightGeometry.clamp_to_cone(-_reticle.aim_basis.z, axis, cone))
 
 	var strafe := Input.get_axis("strafe_left", "strafe_right") * strafe_speed()
 	var top := manual_max_speed()

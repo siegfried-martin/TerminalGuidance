@@ -330,8 +330,11 @@ func _process(delta: float) -> void:
 	# On the road the camera frames the ROAD, not the nose, and the ship yaws inside
 	# the frame (ADR 0057). With the camera on the nose, steering left and the road
 	# curving left look identical and the player has nothing to hold a line against.
+	# The SLEWED road axis, not the lane's raw one: the camera and the nose are held
+	# against the same vector, so a bend or a handover can never move one without the
+	# other (ADR 0072).
 	_camera.heading_override = Vector3.ZERO if _ship.cruise == null \
-		else _ship.cruise.axis
+		else _ship.road_axis()
 
 
 ## Arriving takes the helm, because there is nowhere to fly from a docked ship. The

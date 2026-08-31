@@ -15,9 +15,9 @@ the human's explicit direction.
 | | |
 |---|---|
 | Branch | `feat/exploration-tuning-and-hud`, PR #14 |
-| Gate | `make check` — 1073 checks, 0 failed |
+| Gate | `make check` — 1087 checks, 0 failed |
 | Run it | `make fly` |
-| Built | Exploration POC steps 1–6 and **step 8** (ADRs 0062–0071) |
+| Built | Exploration POC steps 1–6 and **step 8** (ADRs 0062–0072) |
 | **Do next** | **POC step 7** — cruise fuel and the debug teleport. It is the only step left before traffic. |
 | **Waiting on you** | **The fourth checkpoint, and the important one**: success criterion 1, on a trunk road that now weaves and undulates. Ten minutes on it. `cruise_turn_clamp_deg` is tuned WITH `road_curve_deg` and `road_curve_period`, never against them. The third checkpoint is still open too — is a 38-second hop worth the portal, against 203 s by hand? |
 
@@ -55,6 +55,37 @@ From play-session feedback. Five things, one branch:
 
 **Decks are stacked FLUSH** (`deck_separation` = `lane_height` = 150), on request, to
 see how it reads with no air between them. One slider back up and the gap returns.
+
+### And later the same day — the second play session's list
+
+- **The violent shake at an interchange, found.** Drifting wide of a mainline handed
+  the ship to a ramp thirty degrees off its heading, and the nose is *put* inside a
+  cone around the road every frame — so thirty degrees arrived in one of them, with a
+  14 m/s velocity step. The ship now follows a road axis at a bounded rate rather than
+  adopting the lane's, and a handover can only offer a lane inside the steering cone
+  (ADR 0072). Measured: taking an off-ramp is a 0.33 deg/frame merge; drifting wide no
+  longer hands over at all.
+- **Docking was unreachable, and it was arithmetic.** `approach_envelope_radius` 420
+  against `planet_center_depth` 450 put the envelope's roof **thirty metres below the
+  combat plane**: fly level at a planet and you close to exactly 450 m and stop.
+  Radius is 560 now, the gate asserts the envelope reaches the combat plane, and it
+  asserts no road ever enters one. Measured: level approach locks at 541 m and docks.
+- **The "moon going through phases" was the camera's far plane.** Godot's 4 km default
+  is shorter than the deep field is deep, and the far plane is measured along the view
+  axis — so a body six kilometres out sits inside it at the edge of the screen and
+  gets sliced away as you turn toward it. `camera/far_plane` is a tuned value now.
+- **The road rides high.** `road_height` = 320: the stack sits between +245 and +395
+  instead of straddling the combat plane. `system_ceiling_height` went 400 → 650 to
+  keep it clear of the warning band, and the gate checks the head room and the
+  envelope clearance both.
+- **The blue barrier is gone.** `bounds_face_alpha` = 0 — the solid faces are off at
+  rest and the deep field carries the volume's size instead. They still light red the
+  moment you near an edge; the telegraph is untouched. A faint ruled grid is what is
+  left, on its own alpha.
+- **The lane you are in is the only one drawing ribs**, in its own brighter colour and
+  with twice the rails. Four decks meet at an interchange and every one of them used
+  to draw a full rib every 120 m. The marker lattice went from 3310 to 339.
+- Ramp mouths are 70 m higher, the ramps are longer to suit, and the decks stay flush.
 
 Everything under §Where the build is and below is the **combat POC's history**,
 kept for its reasoning. It is not a to-do list, and its §Next is superseded by the

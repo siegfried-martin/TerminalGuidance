@@ -211,10 +211,13 @@ func _rebuild_markers() -> void:
 
 
 func paint(warning_level: float) -> void:
+	var alarm := Tuning.num("exploration/bounds_alarm_alpha")
+	var rim := Tuning.num("exploration/bounds_rim_alpha_scale")
 	BoundaryPaint.tint([_wall], warning_level,
-		Tuning.num("exploration/bounds_rim_alpha_scale"))
+		Tuning.num("exploration/bounds_face_alpha") * rim, alarm * rim)
 	BoundaryPaint.tint([_grid], warning_level,
-		Tuning.num("exploration/bounds_grid_alpha_scale"))
+		Tuning.num("exploration/bounds_grid_alpha"),
+		alarm * Tuning.num("exploration/bounds_grid_alpha_scale"))
 
 
 ## The boundary this node draws: the bounded space between two systems. The map
