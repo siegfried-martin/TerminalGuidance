@@ -81,6 +81,7 @@ func _ready() -> void:
 			["BaysOpenRight", "bay_open_right", true],
 			["BaysOpenLeft", "bay_open_left", true],
 			["BaysOpenTop", "bay_open_top", true],
+			["Stations", "station", false],
 			["Rings", "ring", false]]:
 		_layers[spec[0]] = _make_layer(spec[0], spec[1], spec[2])
 	rebuild()
@@ -160,8 +161,18 @@ func rebuild() -> void:
 	# A bay fills the space BETWEEN two collars, and a collar sits on every joint
 	# including both ends. That is one more rib than there are bays, and it is what
 	# makes the road read as a chain of segments rather than as a striped tube.
+	# A COLLAR ON EVERY JOINT, and every so often a SERVICE STATION instead of one.
+	# The concept art's spine is not evenly ribbed: a long road that is, reads as an
+	# extrusion with a texture on it, and the thicker segments are what make it a
+	# built thing with places along it. A station takes a collar's slot and a longer
+	# stretch of it.
+	var every := maxi(int(Tuning.num("exploration/structure_station_spacing")), 0)
+	var station := maxf(Tuning.num("exploration/structure_station_length"), collar)
 	for i in bays + 1:
-		placed["Ribs"].append(_module(float(i) * step, collar))
+		if every > 0 and i > 0 and i < bays and i % every == 0:
+			placed["Stations"].append(_module(float(i) * step, station))
+		else:
+			placed["Ribs"].append(_module(float(i) * step, collar))
 
 	for i in bays:
 		var from := float(i) * step + collar * 0.5
@@ -397,7 +408,7 @@ func repaint() -> void:
 			as StandardMaterial3D
 		if key == "Rings":
 			mat.albedo_color = Tuning.color("exploration/ramp_ring_color")
-		elif key == "Ribs" or key == "Plates":
+		elif key == "Ribs" or key == "Plates" or key == "Stations":
 			mat.albedo_color = metal
 		else:
 			mat.albedo_color = glass

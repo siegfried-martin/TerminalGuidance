@@ -15,11 +15,64 @@ the human's explicit direction.
 | | |
 |---|---|
 | Branch | `feat/exploration-tuning-and-hud`, PR #14 |
-| Gate | `make check` — 1178 checks, 0 failed |
+| Gate | `make check` — 1207 checks, 0 failed |
 | Run it | `make fly` |
-| Built | Exploration POC steps 1–6, **step 8**, and **highway rebuild steps A–D** (ADRs 0062–0083) |
-| **Do next** | **A drive on the finished road** — it is flyable end to end now. Then either `RoadPath`'s bounded-radius curve (without it the "over the top" exit can never be built) or POC step 7, cruise fuel. Step E is traffic and is deferred to POC steps 9–10. |
+| Built | Exploration POC steps 1–6, **step 8**, and **highway rebuild steps A–D** plus a play-session pass (ADRs 0062–0085) |
+| **Do next** | **A drive on the five-system map.** Then the "over the top" left turn — `RoadPath.sweep` now exists and may be most of what it needed — or POC step 7, cruise fuel. Step E is traffic, deferred to POC steps 9–10. |
 | **Waiting on you** | **The fourth checkpoint, and the important one**: success criterion 1, on a trunk road that now weaves and undulates. Ten minutes on it. `cruise_turn_clamp_deg` is tuned WITH `road_curve_deg` and `road_curve_period`, never against them. The third checkpoint is still open too — is a 38-second hop worth the portal, against 203 s by hand? |
+
+### What landed on 2026-08-31 — the first play session's feedback
+
+Everything below came from the human flying the road. Ordered as it was fixed.
+
+**A planet accepts the second landing.** After docking and leaving once, a planet
+stopped accepting a landing at all. The abort read `Input.get_last_mouse_velocity()`,
+which is the velocity of the LAST motion event and never decays — opening the dock
+screen leaves it high for ever, so every later approach aborted on frame one and
+RELOCKING never cleared. The rate is asked of the ship now, which totals the motion it
+is actually fed. Headless, the engine's value reads zero, so no test could have caught
+it; the test asserts the replacement decays.
+
+**The exit selection was invisible.** Roads have names now (`A-377B`, `K-112`) and a
+routing row says what happens if you do nothing — *"STAY ON HIGHWAY A-377B · look at an
+exit sign and click to take it"*. Signs have three states: idle, aimed, and **selected**,
+and the selected one grows as well as brightens, because colour alone is a weak signal
+on a 70 m sign 1400 m out. Clicking the lit sign cancels.
+
+**Two real defects the human spotted from the seat.** Signs for the *oncoming*
+carriageway were pickable, so a click could bind the berth to a ramp going the other
+way — fixed with the geometric rule the union already uses. And the berth chased a
+receding target instead of following the rail (644 m off on a ramp); it integrates its
+own arc length now.
+
+**A road may refuse to let you off it** (ADR 0084). Every exit carries a blue/red
+permission surface — the same split ADR 0060 makes at a portal, at the other end of the
+ramp. It refuses by making the ramp not a candidate and its sign dark, never by
+blocking. Today it is driven by the same rule that reddens a portal; what it is for is
+standing.
+
+**Five systems on two crossing highways** (ADR 0085). A-377B runs A, B, C; K-112 runs
+D, B, E across it, higher; B has four apertures. Four interchange ramps — every
+carriageway gets its own right-hand turn. `RoadPath.sweep` is a second curve
+constructor for road-to-road turns, and an interchange **swings out before it changes
+height**, which is the human's own "to the right if the highway is below" made
+geometric: a curve aimed straight at a road below leaves through the floor.
+
+**Unequal legs are a design principle now**, in the human's words: the short A–B and
+long B–C were an accident and the difference is the point. All four legs differ and the
+gate says so.
+
+**Service stations.** Every fifth joint carries a heavier segment instead of a collar,
+so a long road has landmarks rather than an unbroken run of identical ribs.
+
+**Cancelled by the human mid-flight:** making all exits right-hand. The overhead
+interchange reading as *"the left turn is up there"* is worth keeping, so the
+above-exit rule stands — and with it the still-unbuilt left turn.
+
+**Yours to judge:** `structure_station_spacing` (5) and `_length` (190 m),
+`exit_sign_selected_scale` (1.6), `interchange_side_offset` (420 m),
+`interchange_curve_tightness` (0.48), `ramp_gate_alpha_scale` (0.7), and the four leg
+lengths — 2600, 18000, 9600, 6600.
 
 ### What landed on 2026-08-31 — the roadway is a dock (rebuild step D)
 

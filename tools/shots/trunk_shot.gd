@@ -15,8 +15,12 @@ const ALONG_FRACTION := 0.25
 ## Beside the road and above it, rather than in the lane. A chase camera two hundred
 ## metres behind a ship that is IN a 240 m lane photographs the inside of the lane and
 ## nothing else; the shape of the road only reads from off it.
-const SIDE_METRES := 560.0
-const UP_METRES := 280.0
+## Pulled IN from 560 and 280. The corridor is 875 m in radius around the leg's own
+## centre-line, and the carriageway is already 120 m off it — the old offsets put the
+## camera 29 m outside the boundary, and a frame taken from out there is a red wall
+## rather than a photograph of the road.
+const SIDE_METRES := 430.0
+const UP_METRES := 180.0
 ## How far down the road to look. Far enough that a weave with a six-kilometre period
 ## has somewhere to bend inside the frame.
 const LOOK_AHEAD_METRES := 4500.0

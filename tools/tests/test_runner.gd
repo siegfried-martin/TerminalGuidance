@@ -168,6 +168,8 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/lane_handover_margin", "exploration/lane_ramp_shade",
 	"exploration/structure_module_length", "exploration/structure_rib_thickness",
 	"exploration/structure_glass_alpha", "exploration/structure_metal_color",
+	"exploration/structure_station_spacing",
+	"exploration/structure_station_length",
 	"exploration/structure_glass_color", "exploration/ramp_ring_diameter",
 	"exploration/ramp_ring_depth", "exploration/ramp_ring_color",
 	"exploration/crossing_bearing_deg", "exploration/crossing_road_height",
@@ -3790,13 +3792,33 @@ func _test_exploration_builds() -> void:
 	var glazing := (pair_built.get_node_or_null("Bays") as MultiMeshInstance3D)
 	var expected_bays := maxi(int(pair_built.length()
 		/ Tuning.num("exploration/structure_module_length")), 1)
-	_expect(collars.multimesh.instance_count == expected_bays + 1,
-		"…with a collar on every joint, both ends included",
-		"%d collars for %d bays" % [collars.multimesh.instance_count, expected_bays])
+	# A joint carries either a collar or a service station, and every joint carries
+	# one. Counted together, because a station takes a collar's place.
+	var joints := collars.multimesh.instance_count \
+		+ (pair_built.get_node_or_null("Stations")
+			as MultiMeshInstance3D).multimesh.instance_count
+	_expect(joints == expected_bays + 1,
+		"…with a collar or a station on every joint, both ends included",
+		"%d joints for %d bays" % [joints, expected_bays])
 	_expect(glazing.multimesh.instance_count >= expected_bays,
 		"…and a bay in every gap between them",
 		"%d bay pieces for %d gaps" % [glazing.multimesh.instance_count,
 			expected_bays])
+	# SERVICE STATIONS take a collar's place every so many joints, so the road has
+	# landmarks rather than an unbroken run of identical ribs. Counted against the
+	# collars they replaced: every station is a joint that is not a rib.
+	var stations := (pair_built.get_node_or_null("Stations")
+		as MultiMeshInstance3D)
+	var every := maxi(int(Tuning.num("exploration/structure_station_spacing")), 0)
+	var due := 0 if every <= 0 else maxi((expected_bays - 1) / every, 0)
+	_expect(stations != null and stations.multimesh.instance_count == due,
+		"…with a service station in place of a collar every few joints",
+		"%d stations, %d due" % [
+			0 if stations == null else stations.multimesh.instance_count, due])
+	_expect(collars.multimesh.instance_count + due == expected_bays + 1,
+		"…and a station REPLACES a collar rather than being added beside one",
+		"%d collars and %d stations for %d joints" % [
+			collars.multimesh.instance_count, due, expected_bays + 1])
 
 	# --- RINGS AND EXIT FACES (ADR 0080) ---
 	# Every ramp goes through the mainline's building somewhere, and the building has

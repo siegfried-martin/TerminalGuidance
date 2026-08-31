@@ -72,6 +72,41 @@ def rib_parts():
     ]
 
 
+def station_parts():
+    """A SERVICE STATION: a collar with things built onto it.
+
+    The concept art's spine is not evenly ribbed — every so often a segment is
+    thicker and carries structure, and that is what stops a long road reading as
+    an extrusion with a texture on it. Same unit section as everything else, so
+    it drops into the collar's place and is simply given a longer slot.
+
+    Built as convex boxes, like the collar, because `objlib.Part` fixes winding
+    against a part's own centroid and that is only exact for a convex piece.
+    """
+    stand = PROUD * 2.4
+    outer = 1.0 + 2.0 * stand
+    parts = [
+        box((-(0.5 + stand * 0.5), 0.0, 0.0), (stand, outer, 1.0)),
+        box((+(0.5 + stand * 0.5), 0.0, 0.0), (stand, outer, 1.0)),
+        box((0.0, +(0.5 + stand * 0.5), 0.0), (outer, stand, 1.0)),
+        box((0.0, -(0.5 + stand * 0.5), 0.0), (outer, stand, 1.0)),
+    ]
+    # Service blocks on the outside, staggered so the station is not symmetrical —
+    # a symmetrical lump reads as another rib, and an asymmetrical one reads as a
+    # place. They also give the road a landmark you can tell one end of from the other.
+    reach = 0.5 + stand
+    for sx, sy, along, size in [
+            (1.0, 0.55, -0.24, (0.30, 0.34, 0.40)),
+            (-1.0, 0.30, 0.18, (0.22, 0.26, 0.30)),
+            (1.0, -0.62, 0.26, (0.24, 0.22, 0.26)),
+            (-1.0, -0.40, -0.30, (0.18, 0.20, 0.22))]:
+        parts.append(box(
+            (sx * (reach + size[0] * 0.5), sy, along), size))
+    # …and a mast on top, because a station in space is a thing other ships find.
+    parts.append(box((0.12, reach + 0.34, 0.0), (0.05, 0.68, 0.05)))
+    return parts
+
+
 def bay_parts():
     """The glazing between two collars: both walls and the roof.
 
@@ -155,6 +190,7 @@ def main():
         ("road_bay_open_right", open_bay_parts("right")),
         ("road_bay_open_left", open_bay_parts("left")),
         ("road_bay_open_top", open_bay_parts("roof")),
+        ("road_station", station_parts()),
     ]:
         write_obj(OUT / ("%s.obj" % name), name, parts, "gen_road_modules.py",
                   uv_scale=1.0)
