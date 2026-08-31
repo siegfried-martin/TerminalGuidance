@@ -122,5 +122,6 @@ The reasoning, including what the alternative was and why it lost.
 | [0073](0073-the-fighter-may-outrun-a-missile.md) | The fighter may outrun a missile; the classes a missile is *for* may not |
 | [0074](0074-the-lane-is-a-translucent-solid.md) | The lane is a translucent solid, and "visually open" means you can see through it — its "one lane lit" clause is superseded by 0075 |
 | [0075](0075-every-lane-is-drawn-and-a-lane-has-a-floor.md) | Every lane is drawn; the one you are on is brighter, and a lane has a floor |
+| [0076](0076-a-lane-that-has-ended-cannot-govern.md) | A lane that has ended behind you cannot govern, and a ramp is drawn darker |
 
-*Next number: 0076.*
+*Next number: 0077.*

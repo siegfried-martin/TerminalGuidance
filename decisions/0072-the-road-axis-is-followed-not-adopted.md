@@ -58,3 +58,5 @@ over at all.
   ADR 0067 stands: the union decides, and it decides on depth alone.
 - Do not fix a snap at a handover by adding hysteresis to which deck is chosen. That
   changes how often the jump happens, not how big it is.
+  *(Narrowed by ADR 0076: hysteresis is not banned outright, it is banned as a
+  SUBSTITUTE for bounding the snap. The slew above is still what bounds it.)*

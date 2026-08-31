@@ -165,7 +165,8 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/bounds_grid_spacing", "exploration/bounds_grid_alpha_scale",
 	"exploration/bounds_grid_alpha", "exploration/road_height",
 	"exploration/lane_active_color", "exploration/lane_active_alpha",
-	"exploration/lane_shell_alpha",
+	"exploration/lane_shell_alpha", "exploration/lane_handover_margin",
+	"exploration/lane_ramp_shade",
 	"exploration/lane_shell_outer_color", "exploration/lane_shell_divider_color",
 	"exploration/lane_shell_divider_bias",
 	"exploration/lane_shell_idle_alpha",
@@ -2125,13 +2126,31 @@ func _test_debug_panel() -> void:
 		"the panel builds a row for every documented value",
 		"%d rows for %d entries" % [rows, Tuning.schema().size()])
 
-	# One collapsible section per [section] in the file, so the list is navigable
-	# rather than one two-hundred-row scroll.
+	# One collapsible fold per [section] AND per `;;;` group inside it, so the list is
+	# navigable rather than one two-hundred-row scroll. `[exploration]` alone is over a
+	# hundred keys, which is a scroll hunt whatever the section header says.
 	var expected_sections := {}
+	var grouped := {}
 	for entry in Tuning.schema():
-		expected_sections[String(entry["section"])] = true
+		var label := String(entry["section"])
+		var group := String(entry.get("group", ""))
+		if not group.is_empty():
+			label += "  ·  " + group
+			grouped[String(entry["section"])] = true
+		expected_sections[label] = true
+	_expect(grouped.has("exploration"),
+		"the biggest section is subdivided into groups rather than left as one list",
+		"exploration carries no `;;;` groups")
+	# A group heading must not eat the documentation of the key under it.
+	for entry in Tuning.schema():
+		if String(entry["key"]) == "lane_width":
+			_expect(String(entry["long"]).contains("GROWN from 150 x 100")
+					and String(entry["group"]) == "The lane, and how wide it is",
+				"…and a group heading keeps the tooltip of the key beneath it",
+				"group %s, long %d chars" % [entry["group"],
+					String(entry["long"]).length()])
 	_expect(DebugPanel.section_count() == expected_sections.size(),
-		"the panel builds one collapsible section per tuning section",
+		"the panel builds one collapsible fold per section and per group",
 		"%d sections for %d in the file" % [
 			DebugPanel.section_count(), expected_sections.size()])
 	_expect(DebugPanel.open_section_count() == 0,
@@ -3512,6 +3531,22 @@ func _test_exploration_builds() -> void:
 		Vector2.ZERO, main_axis)
 	_expect(free_pick != null and aligned_pick != null,
 		"a deck governs the middle of an interchange either way", "nothing does")
+	# A DECK THAT HAS ENDED BEHIND YOU CANNOT GOVERN. `RoadPath.closest` clamps, so a
+	# ship at the top of a ramp reports as sitting on the ramp's last metre for ever:
+	# the ramp hands over because it has ended, the union hands straight back because
+	# the ramp is still the nearest thing, and the two alternate every frame until the
+	# ship falls off the road. That is the stutter at an exit ramp (ADR 0076).
+	var an_on_ramp := road.get_node_or_null("RampOnBUpper") as RoadDeck
+	if an_on_ramp != null:
+		var at_the_top: Vector3 = an_on_ramp.path().finish()
+		var after := road.governing(at_the_top, an_on_ramp.is_upper, null,
+			Vector2.ZERO, an_on_ramp.path().tangent_at(an_on_ramp.length()))
+		_expect(after != null and after != an_on_ramp,
+			"a ramp that has ended does not govern the point it ended at — something else does",
+			"the union handed back the ramp the ship just ran off")
+		_expect(after == null or not after.is_ramp(),
+			"…and what takes over at a merge is the mainline",
+			"handed to %s" % (after.name if after != null else "nothing"))
 	if aligned_pick != null:
 		var picked: Vector3 = aligned_pick.sample(probe).axis
 		_expect(rad_to_deg(picked.angle_to(main_axis))
@@ -3606,9 +3641,14 @@ func _test_exploration_builds() -> void:
 			and skin_mat.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED,
 		"the lane is a TRANSLUCENT surface, never an opaque tunnel (ADR 0057)",
 		"the lane's shell is missing or opaque")
-	_expect(Tuning.num("exploration/lane_shell_alpha") <= 0.35,
-		"…and its alpha is low enough that the system beyond it is still there",
-		"alpha %.2f" % Tuning.num("exploration/lane_shell_alpha"))
+	# The clause is that the surrounding space stays RENDERED, so what is guarded is
+	# opacity itself rather than a number someone picked. A tube you cannot see the
+	# stars through is the tunnel ADR 0057 forbids; one you can is a road.
+	_expect(Tuning.num("exploration/lane_shell_alpha") < 0.85
+			and Tuning.num("exploration/lane_shell_idle_alpha") < 0.85,
+		"…and neither alpha reaches opacity, so the system beyond it is still there",
+		"active %.2f, idle %.2f" % [Tuning.num("exploration/lane_shell_alpha"),
+			Tuning.num("exploration/lane_shell_idle_alpha")])
 	var structure := mainlines[0].get_node_or_null("Rails") as MeshInstance3D
 	_expect(structure != null and structure.mesh != null
 			and structure.mesh.surface_get_primitive_type(0) == Mesh.PRIMITIVE_LINES,

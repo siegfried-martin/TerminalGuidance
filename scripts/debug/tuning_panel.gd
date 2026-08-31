@@ -139,11 +139,19 @@ func _populate() -> void:
 	_row_nodes.clear()
 	_sections.clear()
 
+	# Grouped by section AND by the `;;;` group inside it. `[exploration]` grew past a
+	# hundred keys and a flat list of a hundred sliders is a list nobody can find
+	# anything in; a group is a heading in the file and a fold here, and it costs the
+	# key no rename because a path is still `section/key`.
 	var section := ""
 	var body: VBoxContainer = null
 	for entry in Tuning.schema():
-		if String(entry["section"]) != section or body == null:
-			section = String(entry["section"])
+		var here := String(entry["section"])
+		var group := String(entry.get("group", ""))
+		if not group.is_empty():
+			here += "  ·  " + group
+		if here != section or body == null:
+			section = here
 			body = _add_section(section)
 		var row := _make_row(entry)
 		if row != null:

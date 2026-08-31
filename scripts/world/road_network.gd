@@ -29,6 +29,10 @@ extends Node3D
 ## segments that the polyline reads as a curve at the scale a ramp is flown, and that
 ## `RoadPath.max_turn_deg_per_metre` measures the ramp rather than the tessellation.
 const RAMP_SEGMENTS := 24
+## How near a deck's own end still counts as being ON it. `RoadPath.closest` clamps, so
+## a ship past the end of a ramp still reports as sitting on its last metre — and a
+## lane that has ended behind you is not a lane you can be in. Infrastructure.
+const END_TOLERANCE := 0.5
 
 var _decks: Array[RoadDeck] = []
 ## The line the whole highway is laid on, in the map's frame. Not a road itself — the
@@ -211,6 +215,15 @@ func governing(point: Vector3, upper: bool, exclude: RoadDeck = null,
 		if deck.is_upper != upper or deck.length() <= 0.0 or deck == exclude:
 			continue
 		var lane := deck.sample(point, clearance)
+		# A deck that does not REACH this point cannot govern it. `closest` clamps to
+		# the ends, so without this a ship at the top of a ramp is reported as sitting
+		# on the ramp's last metre for ever: the ramp hands over because it has ended,
+		# the union hands straight back because the ramp is still the nearest thing,
+		# and the two alternate every frame until the ship falls off the road (ADR
+		# 0076). This is `TubeRegion.applies_to`'s rule, for lanes.
+		if lane.metres_travelled <= END_TOLERANCE \
+				or lane.metres_remaining <= END_TOLERANCE:
+			continue
 		if along != Vector3.ZERO and lane.axis.dot(along) < cone:
 			continue
 		var depth := lane.edge_distance()

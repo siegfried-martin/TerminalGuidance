@@ -8,6 +8,7 @@ extends RefCounted
 ##
 ## Annotation format:
 ##
+##     ;;; The speed ladder
 ##     ;; Long-form description. One or more lines. Shown as the tooltip.
 ##     ;; Wraps as many lines as it needs.
 ##     base_speed = 90.0        ; [10..400] m/s. Short label, shown beside the row
@@ -15,12 +16,19 @@ extends RefCounted
 ## The `[min..max]` marker is optional. With it a numeric value gets a slider;
 ## without it, a plain number box. Everything after it is the short label.
 ##
+## A `;;;` line opens a **group**, and every key after it belongs to that group until
+## the next one or the next `[section]`. Groups exist because `[exploration]` grew past
+## a hundred keys and a flat list of a hundred sliders is a list nobody can find
+## anything in. They are a *presentation* device on purpose: a key's path is still
+## `section/key`, so grouping one costs no rename, no ADR and no call site.
+##
 ## Pure and static: no scene tree, no file access, so it is directly testable.
 
-## Entry keys: section, key, path, short, long, min, max, has_range, line
+## Entry keys: section, group, key, path, short, long, min, max, has_range, line
 static func parse(text: String) -> Array[Dictionary]:
 	var entries: Array[Dictionary] = []
 	var section := ""
+	var group := ""
 	var pending_long: PackedStringArray = []
 	var lines := text.split("\n")
 
@@ -29,6 +37,12 @@ static func parse(text: String) -> Array[Dictionary]:
 		var trimmed := raw.strip_edges()
 
 		if trimmed.is_empty():
+			pending_long.clear()
+			continue
+
+		# Tested BEFORE `;;`, which it also starts with.
+		if trimmed.begins_with(";;;"):
+			group = trimmed.substr(3).strip_edges()
 			pending_long.clear()
 			continue
 
@@ -43,6 +57,7 @@ static func parse(text: String) -> Array[Dictionary]:
 
 		if trimmed.begins_with("[") and trimmed.ends_with("]"):
 			section = trimmed.substr(1, trimmed.length() - 2).strip_edges()
+			group = ""
 			pending_long.clear()
 			continue
 
@@ -57,6 +72,7 @@ static func parse(text: String) -> Array[Dictionary]:
 
 		entries.append({
 			"section": section,
+			"group": group,
 			"key": key,
 			"path": "%s/%s" % [section, key],
 			"short": String(range_and_short["short"]),

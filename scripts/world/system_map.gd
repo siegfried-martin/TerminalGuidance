@@ -313,9 +313,15 @@ func _ride_the_road(ship: Mothership, here: Vector3) -> void:
 				ship.reset_reticle()
 				return
 			_riding = alternative
+		# BY A MARGIN, not by a hair. Near a divergence the mainline and the ramp are
+		# nearly equally near and the winner alternates frame to frame — the road you
+		# are on flickers between the two, and with it the lane's speed penalty, which
+		# is felt as a stutter. ADR 0072 forbade hysteresis as a fix for the SNAP, and
+		# that stands: the snap is fixed by the slew, and this is a different defect
+		# with a different cause (ADR 0076).
 		elif alternative != null \
 				and alternative.sample(here, clearance).edge_distance() \
-					< lane.edge_distance():
+					< lane.edge_distance() - Tuning.num("exploration/lane_handover_margin"):
 			_riding = alternative
 		ship.cruise = _riding.sample(here, clearance)
 		return

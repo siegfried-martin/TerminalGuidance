@@ -20,5 +20,9 @@ mono_crash.*.json
 .shots/
 .apiref/
 
+# Screenshots and screencasts handed over for a bug report. Useful in the moment,
+# and not something to carry in the history — a screencast is nine megabytes.
+temp/
+
 # Python bytecode from the asset generators
 __pycache__/

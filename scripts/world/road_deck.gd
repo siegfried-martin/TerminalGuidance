@@ -417,6 +417,14 @@ func is_active() -> bool:
 	return _active
 
 
+## A ramp carries a portal at its planet end; a mainline carries none (ADR 0065). That
+## is the whole difference, and it is enough to draw them apart: a ramp is the same
+## road at `lane_ramp_shade` of the brightness, so "that one leaves the highway" is
+## something the eye answers rather than a sign you have to read.
+func is_ramp() -> bool:
+	return has_start_portal or has_end_portal
+
+
 ## A point on the lane's cross-section. The superellipse `CruiseLane.edge_distance`
 ## measures against, so the drawn lane and the felt lane are the same shape.
 func _lozenge(frame: Array[Vector3], extents: Vector2, angle: float) -> Vector3:
@@ -428,17 +436,20 @@ func _lozenge(frame: Array[Vector3], extents: Vector2, angle: float) -> Vector3:
 
 
 func repaint() -> void:
+	var shade := Tuning.num("exploration/lane_ramp_shade") if is_ramp() else 1.0
 	var color := Tuning.color("exploration/lane_active_color" if _active
 		else "exploration/lane_color")
 	color.a = Tuning.num("exploration/lane_active_alpha" if _active
 		else "exploration/lane_line_alpha")
+	color = color.darkened(1.0 - clampf(shade, 0.0, 1.0))
 	(_rails.material_override as StandardMaterial3D).albedo_color = color
 	(_lines.material_override as StandardMaterial3D).albedo_color = color
 	(_ribs.material_override as StandardMaterial3D).albedo_color = color
-	# White, because the SHELL'S colour lives in its vertices — the floor and the roof
-	# are different colours and this would flatten them back into one.
+	# The SHELL'S own colour lives in its vertices — the floor and the roof are
+	# different colours and a tinted albedo would flatten them back into one — so what
+	# the material carries is the alpha and, on a ramp, the shade.
 	(_shell.material_override as StandardMaterial3D).albedo_color = Color(
-		1.0, 1.0, 1.0, Tuning.num("exploration/lane_shell_alpha" if _active
+		shade, shade, shade, Tuning.num("exploration/lane_shell_alpha" if _active
 			else "exploration/lane_shell_idle_alpha"))
 
 

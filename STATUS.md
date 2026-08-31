@@ -17,7 +17,7 @@ the human's explicit direction.
 | Branch | `feat/exploration-tuning-and-hud`, PR #14 |
 | Gate | `make check` — 1091 checks, 0 failed |
 | Run it | `make fly` |
-| Built | Exploration POC steps 1–6 and **step 8** (ADRs 0062–0075) |
+| Built | Exploration POC steps 1–6 and **step 8** (ADRs 0062–0076) |
 | **Do next** | **POC step 7** — cruise fuel and the debug teleport. It is the only step left before traffic. |
 | **Waiting on you** | **The fourth checkpoint, and the important one**: success criterion 1, on a trunk road that now weaves and undulates. Ten minutes on it. `cruise_turn_clamp_deg` is tuned WITH `road_curve_deg` and `road_curve_period`, never against them. The third checkpoint is still open too — is a 38-second hop worth the portal, against 203 s by hand? |
 
@@ -135,6 +135,28 @@ see how it reads with no air between them. One slider back up and the gap return
   walls are ~100 m away. That is the remaining reason it may not feel like a tunnel,
   and `lane_width` / `lane_height` are the lever — but shrinking them is bounded by
   the capital fitting (ADR 0068) and the gate will say so.
+
+### Fifth session — the stutter at every exit ramp, found
+
+- **`RoadPath.closest` clamps**, so a ship that had run off the top of a ramp still
+  reported as sitting on the ramp's *last metre*, at zero lateral offset — the nearest
+  lane in the world. The ramp handed over because it had ended; the union handed
+  straight back because the ramp was still nearest; repeat. Measured on a flown route
+  it alternated **every one to two frames for a third of a second and then dropped the
+  ship off the road**. That is both the stutter and the tunnel that stops rendering.
+  **A lane that has ended behind you cannot govern** (ADR 0076) — the same rule
+  `TubeRegion.applies_to` already used for regions. Measured after: one clean handover
+  at the merge, no flapping, no fall-off.
+- **Ramps are drawn darker** (`lane_ramp_shade`), because even with the flapping gone
+  four roads cross the view at an interchange and which one leaves the highway should
+  be something the eye answers.
+- **`[exploration]` is subdivided into 21 groups** in the F2 panel. A `;;;` line in
+  `tuning.cfg` opens a group and every key after it belongs to it — a presentation
+  device on purpose, so grouping a key costs no rename, no ADR and no call site. The
+  largest fold is now 18 keys instead of 133.
+- The human's own tuning is kept as-is: `lane_shell_alpha` 0.6, rings every 50 m. The
+  gate's opacity ceiling was mine and was too tight — what ADR 0057 protects is that
+  the space beyond stays *rendered*, so the check now guards opacity itself.
 
 Everything under §Where the build is and below is the **combat POC's history**,
 kept for its reasoning. It is not a to-do list, and its §Next is superseded by the
