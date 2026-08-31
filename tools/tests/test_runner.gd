@@ -4418,6 +4418,56 @@ func _test_approach_envelope() -> void:
 		"…and the ship is unconstrained the same frame — no drag on the way out",
 		"scale %.2f" % envelope.speed_scale())
 
+	# THE SECOND LANDING. Reported from a play session: after docking and leaving a
+	# planet once, it stopped accepting a landing at all and the ship flew straight
+	# through. The cause was the abort reading `Input.get_last_mouse_velocity()`,
+	# which is the velocity of the LAST motion event and never decays — one brisk
+	# movement, which opening the dock screen is, left it high for ever and aborted
+	# every approach on its first frame. The rate is asked of the ship now, and the
+	# ship totals the motion it is actually fed.
+	#
+	# WHAT THIS CAN AND CANNOT PROVE. Headless, the engine's own value reads zero, so
+	# no test here could have caught the original defect — it was only ever visible
+	# from the seat. What is checked instead is the replacement's defining property:
+	# the reading falls to zero on its own, a second landing resolves, and a mouse
+	# that is really moving still aborts. If someone reaches for `Input` again, the
+	# first of those is what fails.
+	ship.position = Vector3(0.0, 0.0, envelope.radius() * 3.0)
+	for _i in int(Tuning.num("exploration/approach_relock_seconds") / step) + 6:
+		envelope.observe(ship, step)
+	_expect(envelope.state() == ApproachEnvelope.State.CLEAR,
+		"…and after all that the envelope is armed again", "state %d" % envelope.state())
+	# A mouse that moved once and then stopped is a mouse that is not flying. Fed a
+	# large motion and then nothing, exactly as a dock screen leaves it.
+	ship.add_mouse_steer(Vector2(4000.0, 0.0))
+	ship._process(step)
+	ship._process(step)
+	_expect(is_zero_approx(ship.mouse_speed()),
+		"a mouse that moved and then stopped reads as stopped, not as still moving",
+		"%.0f px/s after two idle frames" % ship.mouse_speed())
+	ship.position = Vector3(0.0, 0.0, envelope.radius() * 0.5)
+	for _i in int(Tuning.num("exploration/approach_seconds") / step) + 8:
+		envelope.observe(ship, step)
+		ship._process(step)
+	_expect(envelope.state() == ApproachEnvelope.State.DOCKED,
+		"…so the SECOND landing resolves, the same as the first",
+		"state %d" % envelope.state())
+	# …and the abort still fires for a mouse that really is moving.
+	envelope.depart()
+	ship.position = Vector3(0.0, 0.0, envelope.radius() * 3.0)
+	for _i in int(Tuning.num("exploration/approach_relock_seconds") / step) + 6:
+		envelope.observe(ship, step)
+	ship.position = Vector3(0.0, 0.0, envelope.radius() * 0.5)
+	envelope.observe(ship, step)
+	envelope.observe(ship, step)
+	ship.add_mouse_steer(Vector2(
+		Tuning.num("exploration/approach_abort_mouse_speed") * step * 4.0, 0.0))
+	ship._process(step)
+	envelope.observe(ship, step)
+	_expect(envelope.state() == ApproachEnvelope.State.RELOCKING,
+		"…while a mouse that is actually moving still aborts it (ADR 0012)",
+		"state %d" % envelope.state())
+
 	# Flying out the far side is not an abort: nothing refused, the geometry just
 	# did not resolve. It must clear rather than relock, or passing through a system
 	# on your way somewhere else would leave the envelope disarmed behind you.

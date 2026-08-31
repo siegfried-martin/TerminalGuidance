@@ -109,7 +109,7 @@ func observe(ship: Mothership, delta: float) -> void:
 				_state = State.CLEAR
 				_timer = 0.0
 				return
-			if _has_flight_input():
+			if _has_flight_input(ship):
 				abort()
 				return
 			_timer += delta
@@ -134,12 +134,19 @@ func observe(ship: Mothership, delta: float) -> void:
 ## Any flight input at all breaks the lock (ADR 0012). Mouse motion counts, above a
 ## threshold — a hand resting on a desk must not abort an approach, and a hand that
 ## has decided to fly somewhere else must.
-func _has_flight_input() -> bool:
+##
+## The mouse rate is asked of the SHIP rather than of `Input`. The engine's
+## `get_last_mouse_velocity()` is the velocity of the last motion event and does not
+## decay: once the mouse has been moved briskly — opening the dock screen does it —
+## the reading stays high for ever, so every approach after the first was aborted on
+## its first frame and the planet stopped accepting a landing at all. The ship totals
+## the motion events it is fed and the total falls to zero on its own.
+func _has_flight_input(ship: Mothership) -> bool:
 	for action in ["throttle_up", "throttle_down", "strafe_left", "strafe_right",
 			"aim_left", "aim_right", "aim_up", "aim_down", "boost", "brake"]:
 		if InputMap.has_action(action) and Input.is_action_pressed(action):
 			return true
-	return Input.get_last_mouse_velocity().length() \
+	return ship.mouse_speed() \
 		> Tuning.num("exploration/approach_abort_mouse_speed")
 
 

@@ -119,6 +119,9 @@ var _last_depth: float = -1.0
 ## 0 to 1. Held, not impulsive: this is the difference the human asked for between
 ## the ship's W and the missile's.
 var _throttle: float = 0.0
+## Mouse motion this frame, in pixels, and last frame's rate. See `mouse_speed`.
+var _mouse_pixels: float = 0.0
+var _mouse_speed: float = 0.0
 var _reticle := ReticleSteering.new()
 ## Seconds until the launch tube can put another missile out. The tube belongs to
 ## the ship, not to the arena that happens to be wiring it up.
@@ -189,6 +192,8 @@ func _process(delta: float) -> void:
 	# station the player happens to be standing at.
 	_missile_cooldown = maxf(_missile_cooldown - delta, 0.0)
 	_hit_flash = maxf(_hit_flash - delta, 0.0)
+	_mouse_speed = _mouse_pixels / delta
+	_mouse_pixels = 0.0
 	_spool(delta)
 	if berth != null:
 		_fly_berthed(delta)
@@ -713,9 +718,27 @@ func set_autopilot(on: bool) -> bool:
 
 ## Mouse motion arrives as events, not as a polled axis; the view controller feeds
 ## it here so the ship stays the only thing that decides how input becomes turn.
+##
+## The distance is also totalled, because "is the player trying to fly right now" is a
+## fact about the ship's own inputs and everything that needs to know it should ask
+## the ship (`mouse_speed`).
 func add_mouse_steer(relative: Vector2) -> void:
+	_mouse_pixels += relative.length()
 	if not autopilot:
 		_reticle.add_mouse(relative)
+
+
+## How fast the mouse moved last frame, in pixels per second.
+##
+## Accumulated from the motion events themselves rather than read from
+## `Input.get_last_mouse_velocity()`, and that is a bug fix rather than a preference.
+## The engine's value is the velocity of the LAST motion event and it does not decay:
+## once the mouse has been moved briskly — opening the dock screen does it — the
+## reading stays high for ever. `ApproachEnvelope` aborts on mouse motion, so every
+## approach after the first one was aborted on its first frame, and the planet stopped
+## accepting a landing. This is per-frame and falls to zero on its own.
+func mouse_speed() -> float:
+	return _mouse_speed
 
 
 # --- shared ------------------------------------------------------------------
