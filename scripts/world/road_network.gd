@@ -59,6 +59,10 @@ var _mainline_structure: RoadStructure = null
 ## Every exit sign on the network. Mounted on the mainline's building ahead of each
 ## off-ramp, naming where that exit goes.
 var _signs: Array[ExitSign] = []
+## The permission surface across each exit's mouth. Blue if you may take it, red if
+## you may not — the same split ADR 0060 makes at a portal, on the other end of the
+## ramp (ADR 0084).
+var _gates: Array[RampGate] = []
 ## The line the whole highway is laid on, in the map's frame. Not a road itself — the
 ## mainlines are this lifted to each deck, and the ramps branch off it.
 var _spine: RoadPath = RoadPath.new()
@@ -77,6 +81,7 @@ func rebuild(spine: PackedVector3Array, centres: Array[Vector3],
 	_decks.clear()
 	_structures.clear()
 	_signs.clear()
+	_gates.clear()
 	_spine.set_points(spine)
 	if centres.size() < 2 or _spine.is_empty():
 		return
@@ -221,6 +226,7 @@ func _build_ramps(centre: Vector3, place: String, sense: float, base: Vector3,
 		# and back on, which is the price ADR 0057 already sets (ADR 0083).
 		_open_for(off_ramp.path(), true)
 		_sign_for(off_ramp, place)
+		_gate_for(off_ramp)
 
 	if not ahead.is_empty():
 		var on_mouth := _mouth(here + sense * gap, entry_out, entry_down, sense,
@@ -451,6 +457,51 @@ func _sign_for(ramp: RoadDeck, place: String) -> void:
 	_signs.append(sign)
 
 
+## The permission surface across an exit's mouth, in the opening the ramp makes.
+##
+## Mounted on the mainline's building rather than on the ramp, because what it gates is
+## the decision to LEAVE — it has to be read from the road you are on, before you are
+## committed, which is the same clause ADR 0012 asks of everything else that offers
+## you something.
+func _gate_for(ramp: RoadDeck) -> void:
+	if _mainline_structure == null:
+		return
+	var openings := _mainline_structure.apertures()
+	if openings.is_empty():
+		return
+	var opening: Array = openings[openings.size() - 1]
+	var at: float = opening[0]
+	var face: int = opening[1]
+	var line := _mainline_structure.path()
+	var frame := CruiseLane.frame_for(line.tangent_at(at))
+	var extents := _mainline_structure.extents_at(at)
+	var out := frame[0]
+	var reach := extents.x
+	match face:
+		int(RoadStructure.Face.LEFT):
+			out = -frame[0]
+		int(RoadStructure.Face.ABOVE):
+			out = frame[1]
+			reach = extents.y
+		int(RoadStructure.Face.BELOW):
+			out = -frame[1]
+			reach = extents.y
+	var gate := RampGate.new()
+	gate.name = "Gate" + ramp.name
+	gate.deck = ramp
+	add_child(gate)
+	gate.position = line.point_at(at) + out * reach
+	# Facing out through the opening, so it fills the ring rather than edging it.
+	gate.look_at(gate.position + out, Vector3.UP if absf(out.dot(Vector3.UP)) < 0.99
+		else Vector3.BACK)
+	_gates.append(gate)
+
+
+## Every exit's permission surface. For the scene and the gate.
+func gates() -> Array[RampGate]:
+	return _gates
+
+
 ## Every exit sign on the network. For the berth, the HUD and the gate.
 func signs() -> Array[ExitSign]:
 	return _signs
@@ -535,7 +586,7 @@ func governing(point: Vector3, along: Vector3, exclude: RoadDeck = null,
 	var best_depth := INF
 	var cone := cos(deg_to_rad(Tuning.num("exploration/cruise_turn_clamp_deg")))
 	for deck in _decks:
-		if deck.length() <= 0.0 or deck == exclude:
+		if deck.length() <= 0.0 or deck == exclude or not deck.passable:
 			continue
 		var lane := deck.sample(point, clearance)
 		# A deck that does not REACH this point cannot govern it. `closest` clamps to
@@ -594,3 +645,5 @@ func repaint() -> void:
 		built.repaint()
 	for sign in _signs:
 		sign.rebuild()
+	for gate in _gates:
+		gate.rebuild()

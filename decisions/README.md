@@ -130,5 +130,6 @@ The reasoning, including what the alternative was and why it lost.
 | [0081](0081-the-map-carries-more-than-one-road.md) | The map carries more than one road, so the union's guard is geometric and a ramp is declared |
 | [0082](0082-the-road-is-a-dock-host.md) | The road is a dock host, and a berth is left on purpose |
 | [0083](0083-a-sign-is-clicked-not-planned.md) | An exit is a sign you click, and taking it is a rail rebind |
+| [0084](0084-a-road-may-refuse-to-let-you-off-it.md) | A road may refuse to let you off it, and it refuses by not being a candidate |
 
-*Next number: 0084.*
+*Next number: 0085.*

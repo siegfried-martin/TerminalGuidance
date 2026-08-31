@@ -313,7 +313,9 @@ future session would re-derive into a merge planner:
 - **There is no merge logic.** The only rule is an entry clearance check — "make sure
   when the player enters, there does not happen to be a ship there." Same for NPCs
   entering from on-ramps.
-- **ADR 0084** — there is no merge logic, only an entry clearance check.
+- **An ADR** — there is no merge logic, only an entry clearance check. It takes
+  whichever number is next when it is written; the numbers below have drifted once
+  already and reserving them is not worth the bookkeeping.
 
 *(ADR numbers shifted after step C: rings and exit faces took 0080, the crossing
 highway's grouping change 0081, the dock 0082, and exit signs 0083. Numbers are

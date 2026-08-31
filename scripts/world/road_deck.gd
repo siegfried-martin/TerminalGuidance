@@ -77,6 +77,13 @@ var has_end_portal: bool = false
 ## The portal was a proxy for "this is a connector" and the proxy has run out (ADR
 ## 0081).
 var is_ramp: bool = false
+## Whether this road may be taken at all. False is a red gate at its mouth: the ramp
+## stops being a candidate for the lane union and its exit sign goes dark (ADR 0084).
+##
+## It REFUSES rather than blocks. A road that could stop the ship would be
+## interdiction with an extra step (ADR 0014); a closed exit is a turn you may not
+## take, and the player drives past it.
+var passable: bool = true
 
 var _path: RoadPath = RoadPath.new()
 ## Markings run the length of the carriageway and are ALWAYS drawn, brighter on the
@@ -282,9 +289,10 @@ func repaint() -> void:
 	(_lines.material_override as StandardMaterial3D).albedo_color = color
 
 
-## Blue or red on this deck's portals, decided against the hull the player is flying
-## right now (ADR 0060).
+## Blue or red on this deck's portals and on its own mouth gate, decided against the
+## hull the player is flying right now (ADR 0060), and later against their standing.
 func set_permitted(allowed: bool) -> void:
+	passable = allowed
 	if _start != null:
 		_start.permitted = allowed
 	if _end != null:

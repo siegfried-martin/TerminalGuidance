@@ -181,6 +181,7 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/exit_sign_selected_color", "exploration/exit_sign_aimed_scale",
 	"exploration/exit_sign_selected_scale",
 	"exploration/exit_sign_selected_panel_alpha",
+	"exploration/ramp_gate_alpha_scale",
 	"exploration/exit_sign_pick_deg", "exploration/berth_look_cone_deg",
 	"camera/near_plane", "camera/far_plane",
 	"exploration/deep_seed",
@@ -4180,7 +4181,38 @@ func _test_exploration_builds() -> void:
 	_expect(reachable,
 		"…and none of them is ever the live pick, because you could not steer onto it",
 		"a sign for a road going the other way was live")
-	berth.release(scene.ship())
+	# A CLOSED EXIT (ADR 0084). The same red barrier that keeps a fighter off an
+	# on-ramp now exists at the other end: a road can refuse to let you off it. Today
+	# it is driven by the same rule that reddens a portal — which a ship on the road
+	# never fails, because a hull with no cruise drive is never on the road at all —
+	# so it is closed directly here. What standing will need is the refusal and the
+	# two places that honour it, and those are what is under test.
+	var shut := road.get_node_or_null("RampOffCForward") as RoadDeck
+	if shut != null:
+		berth.engage(scene.ship(), map.riding())
+		shut.passable = false
+		_step_exploration(scene, 1.0 / 60.0)
+		var still_live := false
+		for sign: ExitSign in signs:
+			if sign.ramp == shut and sign.is_aimed():
+				still_live = true
+		_expect(not still_live,
+			"a closed exit's sign is dark — a refusal you find out about after choosing is not a refusal",
+			"the sign for a shut exit was still live")
+		var offered := road.governing(scene.ship().position,
+			map.riding().sample(scene.ship().position).axis, null, Vector2.ZERO)
+		_expect(offered != shut,
+			"…and the union never hands you a road you may not take",
+			"a shut ramp governed the ship")
+		# It REFUSES rather than blocks: nothing stops the ship, which would be
+		# interdiction with an extra step (ADR 0014).
+		var still_moving := scene.ship().speed()
+		_step_exploration(scene, 1.0 / 60.0)
+		_expect(scene.ship().speed() > still_moving * 0.5,
+			"…and nothing stops the ship — a closed exit is a turn you may not take",
+			"the ship was slowed by a refusal")
+		shut.passable = true
+		berth.release(scene.ship())
 
 	# Getting off, through an off-ramp's portal beside a planet.
 	var off_ramp := road.get_node_or_null("RampOffCForward") as RoadDeck

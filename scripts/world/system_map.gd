@@ -278,6 +278,8 @@ func observe(ship: Mothership, delta: float) -> void:
 	# berth keeps `RoadBerth` drivable by the gate, which has no input device.
 	_berth.observe(ship, _riding, Input.is_action_just_pressed("dock"), delta)
 	_aim_signs(ship, Input.is_action_just_pressed("fire_primary"))
+	for gate in _road.gates():
+		gate.repaint(delta)
 	_road.set_active(_riding)
 	# The starfield rides with the player so it never gets nearer, the way a sky does.
 	# Everything else in the deep field stays where it was put, which is what makes it
@@ -438,7 +440,10 @@ func _aim_signs(ship: Mothership, clicked: bool) -> void:
 		var heading := _berth.hold().axis
 		var cone := cos(deg_to_rad(Tuning.num("exploration/cruise_turn_clamp_deg")))
 		for sign in _road.signs():
-			if sign.ramp == null \
+			# A closed exit is dark. The road is refusing to let you off it, and a
+			# sign you can still click would be a refusal you only discover after
+			# choosing (ADR 0084).
+			if sign.ramp == null or not sign.ramp.passable \
 					or sign.ramp.path().tangent_at(0.0).dot(heading) < cone:
 				continue
 			var off := sign.offset_degrees(ship.position, looking)
