@@ -206,6 +206,14 @@ func _build_hud() -> void:
 			return "DOCKED"
 		var settling := "settling, %.0f m off the rail" % hold.error \
 			if hold.error > 1.0 else "on the rail"
+		var taking := _map.berth().taking()
+		if taking != null:
+			return "DOCKED  ·  %s  ·  taking %s  ·  C to leave" % [
+				hold.deck_name, taking.deck_name]
+		var aimed := _map.aimed_sign()
+		if aimed != null:
+			return "DOCKED  ·  %s  ·  click to take %s" % [hold.deck_name,
+				aimed.label_text]
 		return "DOCKED  ·  %s  ·  %.0f m/s  ·  %s  ·  C to leave" % [
 			hold.deck_name, hold.speed, settling]
 	)

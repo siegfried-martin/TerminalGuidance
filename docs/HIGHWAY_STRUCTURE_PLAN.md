@@ -275,7 +275,23 @@ primitive is the next piece of road work, and it must not be "fixed" by relaxing
   mouth needs roughly 120 m clear. This is the check ADR 0068 said the gate should be
   able to make and could not.
 
-### D — The floor road and the dock
+### D — The floor road and the dock ✅ built 2026-08-31 (ADRs 0082, 0083)
+
+*Landed. One correction to this plan and one number to watch.*
+
+***The mechanism is NOT `ApproachEnvelope`, as written below.*** *The envelope is a
+countdown that walks a speed ceiling to zero and aborts on input; a berth is a moving
+hold that ignores input. They share the verb, the offer, and nothing else, and one
+class doing both would carry a mode contradicting its own ADR. `RoadBerth` and
+`BerthHold` mirror `RoadDeck` and `CruiseLane` instead.*
+
+***The reticle became the cursor.*** *The plan assumed a freed mouse; the mouse is
+captured while steering, so picking by the reticle is both simpler and more in keeping
+with ADR 0035. While berthed the stick and mouse move the reticle and nothing else,
+which is also what makes a berth somewhere you look around from.*
+
+***Watch `exit_sign_metres`.** At the 1400 m lead a 70 m sign is a small mark in the
+frame. It is legible enough to aim at, and it is the human's number.*
 
 Depends on C for an interchange to exit at.
 
@@ -297,10 +313,11 @@ future session would re-derive into a merge planner:
 - **There is no merge logic.** The only rule is an entry clearance check — "make sure
   when the player enters, there does not happen to be a ship there." Same for NPCs
   entering from on-ramps.
-- **ADR 0083** — there is no merge logic, only an entry clearance check.
+- **ADR 0084** — there is no merge logic, only an entry clearance check.
 
-*(ADR numbers shifted by one after step C: rings and exit faces took 0080, and the
-crossing highway's grouping change takes 0081. Numbers are sequential, not reserved.)*
+*(ADR numbers shifted after step C: rings and exit faces took 0080, the crossing
+highway's grouping change 0081, the dock 0082, and exit signs 0083. Numbers are
+sequential, not reserved.)*
 
 ---
 

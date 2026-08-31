@@ -56,6 +56,9 @@ var _structures: Array[RoadStructure] = []
 ## The building over both mainlines. Held because every ramp has to tell it where it
 ## goes through, and that cannot be known until the ramp's curve exists.
 var _mainline_structure: RoadStructure = null
+## Every exit sign on the network. Mounted on the mainline's building ahead of each
+## off-ramp, naming where that exit goes.
+var _signs: Array[ExitSign] = []
 ## The line the whole highway is laid on, in the map's frame. Not a road itself — the
 ## mainlines are this lifted to each deck, and the ramps branch off it.
 var _spine: RoadPath = RoadPath.new()
@@ -72,6 +75,7 @@ func rebuild(spine: PackedVector3Array, centres: Array[Vector3],
 		child.queue_free()
 	_decks.clear()
 	_structures.clear()
+	_signs.clear()
 	_spine.set_points(spine)
 	if centres.size() < 2 or _spine.is_empty():
 		return
@@ -206,8 +210,12 @@ func _build_ramps(centre: Vector3, place: String, sense: float, base: Vector3,
 		# portal at the end it meets the planet.
 		_make_structure("StructureRampOff" + suffix, true, false).follow(
 			off_curve, _lane_section(), _mouth_section(), false, true)
-		# The mainline's wall has to open where this ramp leaves through it.
+		# The mainline's wall has to open where this ramp leaves through it — and a
+		# sign has to hang far enough back that the choice arrives before the exit
+		# does. Reading it in time is a piloting act, and missing it costs one hop off
+		# and back on, which is the price ADR 0057 already sets (ADR 0083).
 		_open_for(off_ramp.path(), true)
+		_sign_for(off_ramp, place)
 
 	if not ahead.is_empty():
 		var on_mouth := _mouth(here + sense * gap, entry_out, entry_down, sense,
@@ -402,6 +410,43 @@ func _build_interchange(onto: RoadDeck, meeting: float, to_the_right: bool,
 	_open_for(ramp.path(), true)
 
 
+## A sign on the mainline, ahead of an exit, naming where it goes.
+##
+## Placed from the opening the ramp actually makes, not from the ramp's own start: what
+## the player has to see coming is the hole in the wall, and the sign belongs a lead
+## distance back from that, on the same side, tucked just inside the section.
+func _sign_for(ramp: RoadDeck, place: String) -> void:
+	if _mainline_structure == null:
+		return
+	var openings := _mainline_structure.apertures()
+	if openings.is_empty():
+		return
+	var opening: Array = openings[openings.size() - 1]
+	var at: float = opening[0]
+	var face: int = opening[1]
+	var lead := Tuning.num("exploration/exit_sign_lead_metres")
+	var along := clampf(at - lead, 0.0, _mainline_structure.length())
+	var line := _mainline_structure.path()
+	var frame := CruiseLane.frame_for(line.tangent_at(along))
+	var extents := _mainline_structure.extents_at(along)
+	var side := 1.0 if face == int(RoadStructure.Face.LEFT) else -1.0
+	var sign := ExitSign.new()
+	sign.name = "Sign" + ramp.name
+	sign.ramp = ramp
+	sign.label_text = "EXIT  %s" % place
+	# Just inside the wall the exit is in, and up out of the traffic on the roadway.
+	sign.position = line.point_at(along) \
+		- frame[0] * side * extents.x * Tuning.num("exploration/exit_sign_inset") \
+		+ frame[1] * extents.y * Tuning.num("exploration/exit_sign_rise")
+	add_child(sign)
+	_signs.append(sign)
+
+
+## Every exit sign on the network. For the berth, the HUD and the gate.
+func signs() -> Array[ExitSign]:
+	return _signs
+
+
 ## One carriageway's own half-section, and the narrower one at a portal mouth. Read
 ## here rather than inside the structure so a ramp's building and a ramp's lane are
 ## handed the same two numbers.
@@ -538,3 +583,5 @@ func repaint() -> void:
 		deck.repaint()
 	for built in _structures:
 		built.repaint()
+	for sign in _signs:
+		sign.rebuild()

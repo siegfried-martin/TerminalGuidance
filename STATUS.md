@@ -15,11 +15,46 @@ the human's explicit direction.
 | | |
 |---|---|
 | Branch | `feat/exploration-tuning-and-hud`, PR #14 |
-| Gate | `make check` — 1136 checks, 0 failed |
+| Gate | `make check` — 1178 checks, 0 failed |
 | Run it | `make fly` |
-| Built | Exploration POC steps 1–6, **step 8**, and **highway rebuild steps A–C** (ADRs 0062–0081) |
-| **Do next** | **The highway rebuild, step D** — the floor road and the dock. `ApproachEnvelope` on the road, 75% of cruise, `C` toggles, clickable exit signs. Before or after it: `RoadPath` needs a bounded-radius curve, or the "over the top" exit can never be built. |
+| Built | Exploration POC steps 1–6, **step 8**, and **highway rebuild steps A–D** (ADRs 0062–0083) |
+| **Do next** | **A drive on the finished road** — it is flyable end to end now. Then either `RoadPath`'s bounded-radius curve (without it the "over the top" exit can never be built) or POC step 7, cruise fuel. Step E is traffic and is deferred to POC steps 9–10. |
 | **Waiting on you** | **The fourth checkpoint, and the important one**: success criterion 1, on a trunk road that now weaves and undulates. Ten minutes on it. `cruise_turn_clamp_deg` is tuned WITH `road_curve_deg` and `road_curve_period`, never against them. The third checkpoint is still open too — is a 38-second hop worth the portal, against 203 s by hand? |
+
+### What landed on 2026-08-31 — the roadway is a dock (rebuild step D)
+
+**The road is a dock host** (ADR 0082). Come down near the roadway and a berth is
+offered; **C** takes it and the ship stops being flown, carried along its carriageway
+just above the floor at **75% of cruise**. C again leaves it, at speed.
+
+Your framing is what makes it legal — the ship stops being piloted and attaches to
+something larger that is going somewhere, the same verb as a planet. Three properties
+are gated: **chosen** (offered on proximity, declined by doing nothing), **reversible**
+(same key, any moment, at speed), **never optimal** (a fraction of cruise — ADR 0058's
+rule applied to travel; at 1.0 the berth would become the correct way to drive).
+
+**A berth is left on purpose; a threshold aborts on input.** ADR 0012 is narrowed, not
+reversed: it governs a countdown to a commitment you might not have meant. A berth is
+somewhere you sit, look around from, and click things in.
+
+**Exits are signs you click** (ADR 0083). Each off-ramp hangs one 1400 m before its
+opening. Clickable **only while berthed** — flying, a click that changed your road
+would be autopilot growth. The pick is by the **reticle**, not a mouse cursor: the
+mouse is captured while steering, and while berthed the stick and mouse move the
+reticle and nothing else. Clicking *takes* the exit; the berth swaps rails when the
+ramp is actually under the ship, which is smooth by construction because ADR 0070
+already makes ramps tangential where they leave.
+
+**Two corrections to the plan, both recorded.** The mechanism is **not**
+`ApproachEnvelope` — that walks a speed ceiling to zero and aborts on input, a berth is
+a moving hold that ignores it; one class doing both would carry a mode contradicting
+its own ADR. And the plan assumed a freed mouse; the reticle turned out to be simpler
+and more in keeping with ADR 0035.
+
+**Yours to judge:** `berth_speed_fraction` (0.75), `berth_offer_height` (60 m),
+`berth_ride_height` (18 m), `berth_pull_rate` (0.6), `berth_look_cone_deg` (75°),
+`exit_sign_lead_metres` (1400) and `exit_sign_metres` (70 — at that lead it is a small
+mark in the frame; legible enough to aim at, but it is your call).
 
 ### What landed on 2026-08-31 — rings, exit faces, and a second road (rebuild step C)
 

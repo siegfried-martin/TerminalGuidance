@@ -129,5 +129,6 @@ The reasoning, including what the alternative was and why it lost.
 | [0080](0080-a-ring-marks-every-way-through.md) | A steel ring marks every way through, and which face a ramp uses is authored |
 | [0081](0081-the-map-carries-more-than-one-road.md) | The map carries more than one road, so the union's guard is geometric and a ramp is declared |
 | [0082](0082-the-road-is-a-dock-host.md) | The road is a dock host, and a berth is left on purpose |
+| [0083](0083-a-sign-is-clicked-not-planned.md) | An exit is a sign you click, and taking it is a rail rebind |
 
-*Next number: 0083.*
+*Next number: 0084.*

@@ -268,6 +268,7 @@ func observe(ship: Mothership, delta: float) -> void:
 	# what decides which one that is. Reading the key here rather than inside the
 	# berth keeps `RoadBerth` drivable by the gate, which has no input device.
 	_berth.observe(ship, _riding, Input.is_action_just_pressed("dock"))
+	_aim_signs(ship, Input.is_action_just_pressed("fire_primary"))
 	_road.set_active(_riding)
 	# The starfield rides with the player so it never gets nearer, the way a sky does.
 	# Everything else in the deep field stays where it was put, which is what makes it
@@ -313,6 +314,10 @@ func _ride_the_road(ship: Mothership, here: Vector3) -> void:
 			ship.leave_road()
 			ship.reset_reticle()
 			return
+		# The one thing that DOES change the road under a berthed ship is the player
+		# taking an exit, and that switch is the berth's (ADR 0083).
+		if _berth.deck() != null:
+			_riding = _berth.deck()
 		ship.cruise = _riding.sample(here, ship.lane_clearance())
 		_previous = here
 		return
@@ -395,6 +400,39 @@ func _left_through_a_portal(here: Vector3) -> bool:
 				and deck.start_portal().crossed(_previous, here) < 0:
 			return true
 	return false
+
+
+## Which exit sign the player is looking at, and taking it if they click.
+##
+## Only while berthed. Flying, a click that changed which road you were on would be
+## autopilot growth (ADR 0013); berthed, the ship is not being flown and the reticle
+## is free, so it is a cursor (ADR 0083).
+##
+## The pick is by the RETICLE rather than by a screen-space cursor, because the mouse
+## is captured while the player is steering and the reticle is the game's existing
+## way of pointing at a thing in the world (ADR 0035).
+func _aim_signs(ship: Mothership, clicked: bool) -> void:
+	var picked: ExitSign = null
+	if _berth.is_berthed():
+		var looking := ship.aim_direction()
+		var best := Tuning.num("exploration/exit_sign_pick_deg")
+		for sign in _road.signs():
+			var off := sign.offset_degrees(ship.position, looking)
+			if off >= 0.0 and off < best:
+				best = off
+				picked = sign
+	for sign in _road.signs():
+		sign.set_aimed(sign == picked)
+	if picked != null and clicked:
+		_berth.take_exit(picked.ramp)
+
+
+## The exit sign the reticle is on, or null. For the HUD and for tests.
+func aimed_sign() -> ExitSign:
+	for sign in _road.signs():
+		if sign.is_aimed():
+			return sign
+	return null
 
 
 ## The deck the player is riding, or null. For the HUD and for tests.

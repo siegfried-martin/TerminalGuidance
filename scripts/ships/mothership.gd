@@ -568,7 +568,19 @@ func _fly_berthed(delta: float) -> void:
 	var axis := FlightGeometry.turn_towards(-basis.z, berth.axis,
 		deg_to_rad(turn_rate_deg_per_sec()) * delta)
 	basis = FlightGeometry.basis_from_forward(axis)
-	_reticle.aim_basis = basis
+
+	# THE RETICLE STILL MOVES, and the nose does not. Nothing here is steering, so the
+	# stick and the mouse are LOOKING — which is what a berth is for, and what makes
+	# the reticle the cursor the exit signs are picked with (ADR 0083). The turn rate
+	# is passed as zero because the returned nose is deliberately thrown away.
+	var stick := ReticleSteering.apply_deadzone(Vector2(
+		Input.get_axis("aim_left", "aim_right"),
+		Input.get_axis("aim_up", "aim_down"),
+	), Tuning.num("controls/deadzone"))
+	_reticle.update(basis, stick, delta,
+		Tuning.num("controls/stick_reticle_speed_deg_per_sec"),
+		Tuning.num("controls/mouse_sensitivity"), 0.0,
+		Tuning.num("exploration/berth_look_cone_deg"))
 
 	_velocity = berth.axis * _speed + slide / maxf(delta, 0.0001)
 	position += berth.axis * _speed * delta + slide

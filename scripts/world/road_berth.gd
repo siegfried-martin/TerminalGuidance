@@ -34,6 +34,11 @@ var _state: State = State.CLEAR
 ## berth choosing a route.
 var _deck: RoadDeck = null
 var _hold: BerthHold = null
+## An exit the player has clicked but the ship has not reached yet. The berth rebinds
+## when the ramp actually begins, not when the sign is clicked: the ramp starts ahead,
+## and a rail that pulled the ship back onto its start would be a route rather than a
+## rebind (ADR 0083).
+var _taking: RoadDeck = null
 
 
 ## Offer, hold, or release, for this frame. `riding` is the deck the ship is on, or
@@ -53,6 +58,7 @@ func observe(ship: Mothership, riding: RoadDeck, pressed: bool) -> void:
 				or _deck.sample(ship.position).metres_remaining <= 0.001:
 			release(ship)
 			return
+		_rebind_if_reached(ship)
 		_hold = _sample(ship)
 		ship.berth = _hold
 		return
@@ -80,6 +86,7 @@ func release(ship: Mothership) -> void:
 	_state = State.CLEAR
 	_deck = null
 	_hold = null
+	_taking = null
 
 
 ## Near enough the roadway to be offered a berth. Measured from the FLOOR of the lane,
@@ -114,6 +121,39 @@ func _sample(ship: Mothership) -> BerthHold:
 	hold.deck_name = _deck.deck_name
 	hold.metres_remaining = maxf(_deck.length() - along, 0.0)
 	return hold
+
+
+## Take an exit. Called when the player clicks its sign; the switch itself happens
+## when the ship reaches the ramp.
+##
+## **This is a rail rebind, not a route.** Nothing is planned, nothing is chosen for
+## the player, and there is no destination held anywhere: the road the berth follows
+## changes, once, at a place the player could see (ADR 0083).
+func take_exit(ramp: RoadDeck) -> void:
+	if _state != State.BERTHED or ramp == null:
+		return
+	_taking = ramp
+
+
+## Whether an exit has been taken and is still ahead.
+func taking() -> RoadDeck:
+	return _taking
+
+
+## Swap rails the moment the chosen ramp actually starts under the ship.
+##
+## It is smooth by construction rather than by tuning: ADR 0070 already requires every
+## ramp to be tangential to the mainline where it leaves, so there is no angle here to
+## absorb. That ADR was written about ship handling and turns out to be what makes this
+## safe.
+func _rebind_if_reached(ship: Mothership) -> void:
+	if _taking == null or _taking.length() <= 0.0:
+		return
+	var onto := _taking.sample(ship.position)
+	if onto.metres_travelled <= 0.001 or onto.metres_remaining <= 0.001:
+		return
+	_deck = _taking
+	_taking = null
 
 
 func state() -> State:

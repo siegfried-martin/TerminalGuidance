@@ -174,6 +174,11 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/crossing_road_length", "exploration/interchange_run_length",
 	"exploration/berth_speed_fraction", "exploration/berth_offer_height",
 	"exploration/berth_ride_height", "exploration/berth_pull_rate",
+	"exploration/exit_sign_lead_metres", "exploration/exit_sign_metres",
+	"exploration/exit_sign_inset", "exploration/exit_sign_rise",
+	"exploration/exit_sign_color", "exploration/exit_sign_aimed_color",
+	"exploration/exit_sign_panel_alpha",
+	"exploration/exit_sign_pick_deg", "exploration/berth_look_cone_deg",
 	"camera/near_plane", "camera/far_plane",
 	"exploration/deep_seed",
 	"exploration/starfield_count", "exploration/starfield_distance",
@@ -4043,6 +4048,85 @@ func _test_exploration_builds() -> void:
 	_expect(map.riding() != null and scene.ship().cruise != null,
 		"…and back on the road it was already on, flying it again",
 		"it came off the road entirely")
+
+	# --- EXIT SIGNS (ADR 0083) ---
+	# A sign is an object on the road, not a map. What is under test is that there is
+	# one for every exit, that it hangs far enough back to be read in time, and that
+	# clicking it changes which RAIL the berth is on rather than planning a route.
+	var signs := road.signs()
+	_expect(signs.size() == planet_ramps.size() / 2,
+		"there is a sign for every exit, and only for exits",
+		"%d signs for %d off-ramps" % [signs.size(), planet_ramps.size() / 2])
+	var lead_ok := true
+	var worst_lead := 0.0
+	for sign: ExitSign in signs:
+		var opening := RoadNetwork.crossing(pair_built, sign.ramp.path(), true)
+		if opening.is_empty():
+			continue
+		var sign_at: float = pair_built.path().closest(sign.position)[0]
+		var gap: float = float(opening[0]) - sign_at
+		worst_lead = maxf(worst_lead, absf(
+			gap - Tuning.num("exploration/exit_sign_lead_metres")))
+		if gap <= 0.0:
+			lead_ok = false
+	_expect(lead_ok,
+		"…and every sign hangs BEFORE the exit it names, not level with it or past it",
+		"a sign sits at or beyond its own exit")
+	_expect(worst_lead < 60.0,
+		"…at the lead distance the road promises, so reading it in time is the same act everywhere",
+		"one sign is %.0f m off its lead" % worst_lead)
+	var named := true
+	for sign: ExitSign in signs:
+		if not sign.label_text.begins_with("EXIT"):
+			named = false
+	_expect(named, "…and reads as an exit, naming where it goes",
+		"a sign does not name its exit")
+
+	# CLICKABLE ONLY WHILE BERTHED. Flying, a click that changed which road you were on
+	# would be autopilot growth (ADR 0013).
+	scene.ship().position = floor_point
+	_step_exploration(scene, 1.0 / 60.0)
+	_expect(not berth.is_berthed() and map.aimed_sign() == null,
+		"no sign is aimable while flying — a click may not change the road you are on",
+		"a sign was live off the berth")
+
+	# TAKEN, and the swap happens WHEN THE RAMP ARRIVES rather than when the sign is
+	# clicked. The ramp starts ahead, and a rail that pulled the ship back onto its
+	# start would be a route rather than a rebind.
+	var exit_ramp := road.get_node_or_null("RampOffCForward") as RoadDeck
+	if exit_ramp != null:
+		var main_line := mainlines[0].path()
+		var diverge: float = main_line.closest(exit_ramp.path().start())[0]
+		var before: Vector3 = main_line.point_at(maxf(diverge - 900.0, 0.0))
+		var frame_at := CruiseLane.frame_for(
+			main_line.tangent_at(maxf(diverge - 900.0, 0.0)))
+		scene.ship().position = before - frame_at[1] * (
+			Tuning.num("exploration/lane_height") * 0.5
+			- Tuning.num("exploration/berth_ride_height"))
+		_step_exploration(scene, 1.0 / 60.0)
+		berth.engage(scene.ship(), map.riding())
+		berth.take_exit(exit_ramp)
+		_expect(berth.deck() == mainlines[0] and berth.taking() == exit_ramp,
+			"clicking a sign does not move the ship — the exit is taken, not yet reached",
+			"the berth swapped rails on the click")
+		var jumped := 0.0
+		var was_at := scene.ship().position
+		for _i in 600:
+			_step_exploration(scene, 1.0 / 60.0)
+			jumped = maxf(jumped, (scene.ship().position - was_at).length())
+			was_at = scene.ship().position
+			if berth.deck() == exit_ramp:
+				break
+		_expect(berth.deck() == exit_ramp,
+			"…and the berth swaps rails once the ramp is actually under the ship",
+			"the exit was never reached")
+		_expect(jumped < Tuning.num("exploration/cruise_speed") / 60.0 * 1.5,
+			"…without a jump, because a ramp is tangential where it leaves (ADR 0070)",
+			"a %.1f m frame at the rebind" % jumped)
+		_expect(berth.taking() == null,
+			"…and the exit is spent, so nothing is still holding a destination",
+			"the berth is still carrying a route")
+		berth.release(scene.ship())
 
 	# Getting off, through an off-ramp's portal beside a planet.
 	var off_ramp := road.get_node_or_null("RampOffCForward") as RoadDeck
