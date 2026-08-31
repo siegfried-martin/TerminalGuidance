@@ -172,6 +172,8 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/ramp_ring_depth", "exploration/ramp_ring_color",
 	"exploration/crossing_bearing_deg", "exploration/crossing_road_height",
 	"exploration/crossing_road_length", "exploration/interchange_run_length",
+	"exploration/berth_speed_fraction", "exploration/berth_offer_height",
+	"exploration/berth_ride_height", "exploration/berth_pull_rate",
 	"camera/near_plane", "camera/far_plane",
 	"exploration/deep_seed",
 	"exploration/starfield_count", "exploration/starfield_distance",
@@ -206,7 +208,7 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 const REQUIRED_ACTIONS: Array[String] = [
 	"fire_missile", "detonate", "boost", "brake", "dodge_left", "dodge_right",
 	"aim_left", "aim_right", "aim_up", "aim_down",
-	"throttle_up", "throttle_down", "strafe_left", "strafe_right",
+	"throttle_up", "throttle_down", "strafe_left", "strafe_right", "dock",
 	"role_pilot", "role_gunner",
 	"fire_primary", "fire_secondary", "loadout_1", "loadout_2",
 	"cam_forward", "cam_back", "cam_left", "cam_right", "cam_up", "cam_down",
@@ -3944,6 +3946,103 @@ func _test_exploration_builds() -> void:
 	_expect(map.riding() == mainlines[0] and scene.ship().cruise != null,
 		"…and out on the mainline over a system's centre it is on the MAINLINE",
 		"riding %s" % ("nothing" if map.riding() == null else map.riding().name))
+
+	# --- THE BERTH ON THE ROADWAY (ADR 0082) ---
+	# The road is a dock host. What is under test is the three properties that make it
+	# a dock rather than a conveyor: chosen, reversible, and never the fast route.
+	var berth := map.berth()
+	_expect(Tuning.num("exploration/berth_speed_fraction") < 1.0,
+		"the berth is SLOWER than driving yourself — automation is never the fast route",
+		"%.2f of cruise" % Tuning.num("exploration/berth_speed_fraction"))
+	_expect(Tuning.num("exploration/berth_ride_height")
+			< Tuning.num("exploration/berth_offer_height"),
+		"…and it is offered before you are in it, not once you already are",
+		"held at %.0f m, offered at %.0f" % [
+			Tuning.num("exploration/berth_ride_height"),
+			Tuning.num("exploration/berth_offer_height")])
+	_expect(Tuning.num("exploration/berth_offer_height")
+			< Tuning.num("exploration/lane_height"),
+		"…and offered near the ROADWAY rather than anywhere in the tube",
+		"offered %.0f m up a %.0f m section" % [
+			Tuning.num("exploration/berth_offer_height"),
+			Tuning.num("exploration/lane_height")])
+
+	# CHOSEN. Up in the middle of the lane there is no offer; down by the roadway
+	# there is, and doing nothing declines it.
+	var mid_lane: Vector3 = mainlines[0].path().closest(map.system_center(1))[1]
+	scene.ship().position = mid_lane
+	_step_exploration(scene, 1.0 / 60.0)
+	_expect(not berth.is_offered() and not berth.is_berthed(),
+		"out in the middle of the lane no berth is offered",
+		"the berth offered itself in mid-air")
+	var floor_point: Vector3 = mid_lane - Vector3.UP * (
+		Tuning.num("exploration/lane_height") * 0.5
+		- Tuning.num("exploration/berth_ride_height"))
+	scene.ship().position = floor_point
+	_step_exploration(scene, 1.0 / 60.0)
+	_expect(berth.is_offered(),
+		"…and down by the roadway it is, without taking itself",
+		"no offer beside the road")
+	_step_exploration(scene, 1.0 / 60.0)
+	_expect(not berth.is_berthed(),
+		"…and doing nothing declines it — an offer is not a commitment",
+		"the berth engaged on its own")
+
+	# TAKEN, and it CONVERGES rather than snapping. Engaged well off the rail on
+	# purpose: a berth that teleported the ship onto the centre-line would be the one
+	# transition on this road that did not carry momentum (ADR 0066).
+	scene.ship().position = floor_point + mainlines[0].sample(floor_point).right * 40.0
+	_step_exploration(scene, 1.0 / 60.0)
+	berth.engage(scene.ship(), map.riding())
+	_expect(berth.is_berthed() and scene.ship().is_berthed(),
+		"pressing dock takes the berth, and the ship knows it is being carried",
+		"the berth did not engage")
+	var was_off := berth.hold().error
+	var biggest_step := 0.0
+	var before_step := scene.ship().position
+	for _i in 90:
+		_step_exploration(scene, 1.0 / 60.0)
+		biggest_step = maxf(biggest_step,
+			(scene.ship().position - before_step).length())
+		before_step = scene.ship().position
+	_expect(berth.hold().error < was_off,
+		"…and the ship slides ONTO the rail rather than being put on it",
+		"%.1f m off, was %.1f" % [berth.hold().error, was_off])
+	var reach := Tuning.num("exploration/cruise_speed") / 60.0 * 1.5
+	_expect(biggest_step < reach,
+		"…never moving further in a frame than a ship at cruise could have",
+		"a %.1f m frame against a %.1f m budget" % [biggest_step, reach])
+
+	# NOT STEERED BY INPUT, and that is the difference from the planet's threshold: a
+	# threshold aborts on any input because it is a countdown to a commitment, a berth
+	# is a place you sit inside and is left on purpose (ADR 0082).
+	var bound := berth.deck()
+	scene.ship().add_mouse_steer(Vector2(400.0, 0.0))
+	_step_exploration(scene, 1.0 / 60.0)
+	_expect(berth.is_berthed() and berth.deck() == bound,
+		"looking around does not abort the berth, and does not change which road it is on",
+		"the berth let go or changed roads")
+
+	# NEVER THE FAST ROUTE, measured rather than asserted from the tuning value.
+	var carried := scene.ship().speed()
+	_expect(carried < Tuning.num("exploration/cruise_speed") - 1.0,
+		"…and it carries the ship below cruise speed, as the fraction says",
+		"%.0f m/s against a %.0f m/s road" % [carried,
+			Tuning.num("exploration/cruise_speed")])
+
+	# REVERSIBLE, and left FLYING. A berth that dropped the ship to a stop would be a
+	# trap with an exit rather than a berth.
+	berth.release(scene.ship())
+	_step_exploration(scene, 1.0 / 60.0)
+	_expect(not berth.is_berthed() and not scene.ship().is_berthed(),
+		"pressing dock again leaves the berth, at any moment",
+		"the berth would not let go")
+	_expect(scene.ship().speed() > carried * 0.8,
+		"…still carrying its speed, so leaving is not a stop",
+		"%.0f m/s after leaving, was %.0f" % [scene.ship().speed(), carried])
+	_expect(map.riding() != null and scene.ship().cruise != null,
+		"…and back on the road it was already on, flying it again",
+		"it came off the road entirely")
 
 	# Getting off, through an off-ramp's portal beside a planet.
 	var off_ramp := road.get_node_or_null("RampOffCForward") as RoadDeck

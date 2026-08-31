@@ -128,5 +128,6 @@ The reasoning, including what the alternative was and why it lost.
 | [0079](0079-glass-is-a-diffuser.md) | The glass is a diffuser, and "visually open" is measured as area |
 | [0080](0080-a-ring-marks-every-way-through.md) | A steel ring marks every way through, and which face a ramp uses is authored |
 | [0081](0081-the-map-carries-more-than-one-road.md) | The map carries more than one road, so the union's guard is geometric and a ramp is declared |
+| [0082](0082-the-road-is-a-dock-host.md) | The road is a dock host, and a berth is left on purpose |
 
-*Next number: 0082.*
+*Next number: 0083.*

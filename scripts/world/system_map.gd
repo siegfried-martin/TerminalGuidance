@@ -69,6 +69,9 @@ var _outbound: float = 0.0
 ## carries — it is a place the ship is in (ADR 0057), so the map knows where it is
 ## and the ship only ever receives a sample of the road under it.
 var _riding: RoadDeck = null
+## The berth on the roadway. One per map rather than one per road: it is a thing the
+## player does, not a thing a stretch of road has (ADR 0082).
+var _berth: RoadBerth = null
 ## Last frame's position, for the SWEPT portal test. At 96.7 m/s a ship covers 1.6 m
 ## in a frame, and a portal tested against a position rather than a segment is one
 ## that intermittently does not exist.
@@ -84,6 +87,9 @@ func _ready() -> void:
 
 func _build() -> void:
 	var count := LEG_KEYS.size() + 1
+	_berth = RoadBerth.new()
+	_berth.name = "Berth"
+	add_child(_berth)
 	for i in count:
 		var letter := LETTERS[i]
 		var disc := SystemDisc.new()
@@ -258,6 +264,10 @@ func observe(ship: Mothership, delta: float) -> void:
 		_speed_scale = minf(_speed_scale, approach.speed_scale())
 
 	_ride_the_road(ship, here)
+	# AFTER the road, because a berth binds to the deck the ship is on and the road is
+	# what decides which one that is. Reading the key here rather than inside the
+	# berth keeps `RoadBerth` drivable by the gate, which has no input device.
+	_berth.observe(ship, _riding, Input.is_action_just_pressed("dock"))
 	_road.set_active(_riding)
 	# The starfield rides with the player so it never gets nearer, the way a sky does.
 	# Everything else in the deep field stays where it was put, which is what makes it
@@ -291,6 +301,21 @@ func observe(ship: Mothership, delta: float) -> void:
 ## colour rather than a second rule about who may use a portal.
 func _ride_the_road(ship: Mothership, here: Vector3) -> void:
 	var allowed := ship.has_cruise_drive()
+	# A BERTHED SHIP DOES NOT CHANGE ROADS. The berth is bound to one carriageway and
+	# follows its centre-line; letting the union hand it to a ramp on proximity would
+	# be the berth choosing a route, which is the one thing it must never do (ADR
+	# 0082). It still gets a lane sample, because the HUD and the speed ceiling read
+	# it, and it still comes off the road when the drive or the road runs out.
+	if ship.is_berthed() and _riding != null:
+		if not allowed:
+			_riding = null
+			ship.cruise = null
+			ship.leave_road()
+			ship.reset_reticle()
+			return
+		ship.cruise = _riding.sample(here, ship.lane_clearance())
+		_previous = here
+		return
 	# The hull's own half-section. The lane is measured against the ship rather than
 	# against a point, and every sample below has to be taken with the SAME clearance
 	# or the union would compare a hull-measured depth against a point-measured one.
@@ -375,6 +400,11 @@ func _left_through_a_portal(here: Vector3) -> bool:
 ## The deck the player is riding, or null. For the HUD and for tests.
 func riding() -> RoadDeck:
 	return _riding
+
+
+## The berth on the roadway. For the HUD and for tests.
+func berth() -> RoadBerth:
+	return _berth
 
 
 ## Every portal on the map. Only the ramps carry one — a mainline is joined and left

@@ -64,6 +64,16 @@ var speed_ceiling_scale: float = 1.0
 ## differences are a much higher ceiling and a cone around the road's axis. Nothing
 ## here fades, loads, or plays.
 var cruise: CruiseLane = null
+## The berth the ship is sitting in, or null. Handed down by the map exactly as
+## `cruise` is, and it takes precedence: in a berth the ship is not being flown.
+##
+## **A berth is a dock** (ADR 0082). The ship stops piloting and attaches to
+## infrastructure that is going somewhere, the same verb as landing on a planet. Every
+## flight input is ignored while it is set — that is not a lapse in ADR 0012's "any
+## sequence that moves the ship must abort on any player input", it is the difference
+## between a threshold you might cross by accident and a berth you deliberately
+## entered. It is left the way it was entered: by pressing the key again.
+var berth: BerthHold = null
 
 ## 0 to 1: how far the cruise drive has wound up. The ceiling is blended across it,
 ## so joining the road accelerates and leaving it decelerates instead of the speed
@@ -180,7 +190,9 @@ func _process(delta: float) -> void:
 	_missile_cooldown = maxf(_missile_cooldown - delta, 0.0)
 	_hit_flash = maxf(_hit_flash - delta, 0.0)
 	_spool(delta)
-	if autopilot:
+	if berth != null:
+		_fly_berthed(delta)
+	elif autopilot:
 		_fly_autopilot(delta)
 	elif piloted and cruise != null:
 		_fly_cruise(delta)
@@ -534,6 +546,42 @@ func _fly_cruise(delta: float) -> void:
 ## Turning damage on later is a single flip of `ship/invulnerable`, not a build:
 ## the counting, the flash and the readouts are all here already and are exercised
 ## by the pacing test itself.
+func _fly_berthed(delta: float) -> void:
+	# NO INPUT IS READ HERE, and that is the whole of what a berth is. The throttle,
+	# the stick and the strafe all do nothing; the one control that still works is the
+	# one that leaves (ADR 0082).
+	var top := manual_max_speed()
+	var brake_seconds := maxf(
+		HullClass.num(hull_class, "brake_seconds", "ship/manual_brake_seconds"), 0.01)
+	_speed = brake_limited(_speed, berth.speed, top, brake_seconds, delta)
+
+	# Onto the rail at a bounded rate rather than onto it at once. Engaging a berth is
+	# a move the ship makes — the one moment on the road that must not be a teleport
+	# (ADR 0066).
+	var toward := berth.point - position
+	var slide := toward.limit_length(berth.closing_speed() * delta) \
+		if toward.length() > 0.001 else Vector3.ZERO
+
+	# The nose comes round to the road at the ship's OWN turn rate, so a berth taken
+	# while pointing off the lane looks like the ship straightening rather than like
+	# the camera cutting.
+	var axis := FlightGeometry.turn_towards(-basis.z, berth.axis,
+		deg_to_rad(turn_rate_deg_per_sec()) * delta)
+	basis = FlightGeometry.basis_from_forward(axis)
+	_reticle.aim_basis = basis
+
+	_velocity = berth.axis * _speed + slide / maxf(delta, 0.0001)
+	position += berth.axis * _speed * delta + slide
+	# The throttle is kept honest against the speed being held, so leaving the berth
+	# does not lurch: the ship carries on at what it was already doing.
+	_throttle = clampf(_speed / maxf(top, 0.001), 0.0, 1.0)
+
+
+## Sitting in a berth on the road, carried rather than flown.
+func is_berthed() -> bool:
+	return berth != null
+
+
 func take_hit(damage: float) -> bool:
 	_hits_taken += 1
 	_hit_flash = Tuning.num("hud/hit_flash_seconds")

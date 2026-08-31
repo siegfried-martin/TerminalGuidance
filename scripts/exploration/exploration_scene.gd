@@ -190,6 +190,25 @@ func _build_hud() -> void:
 			lane.deck_name, lane.metres_remaining, seconds,
 			"at this speed" if moving else "at full throttle"]
 	)
+	# THE BERTH. Its own row rather than a word on the road row, because the offer has
+	# to be readable at a glance while the player is settling onto the roadway, and
+	# because "you are being carried" is a different fact about the ship than "you are
+	# on this road" (ADR 0082).
+	_hud.add_row("berth", func() -> String:
+		var berth := _map.berth()
+		if berth.is_offered():
+			return "ROADWAY BELOW  ·  press C to dock  ·  %.0f%% of cruise, C again to leave" % (
+				Tuning.num("exploration/berth_speed_fraction") * 100.0)
+		if not berth.is_berthed():
+			return "—"
+		var hold := berth.hold()
+		if hold == null:
+			return "DOCKED"
+		var settling := "settling, %.0f m off the rail" % hold.error \
+			if hold.error > 1.0 else "on the rail"
+		return "DOCKED  ·  %s  ·  %.0f m/s  ·  %s  ·  C to leave" % [
+			hold.deck_name, hold.speed, settling]
+	)
 	# Lane position, stated as metres rather than as a bar. The lane boundary is soft
 	# and the penalty is proportional, so "how far out am I" is the number that
 	# explains why the speed row is reading low.
