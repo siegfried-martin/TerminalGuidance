@@ -63,6 +63,16 @@ var runs_forward: bool = true
 ## rather than something that stops at each one (ADR 0065).
 var has_start_portal: bool = false
 var has_end_portal: bool = false
+## Whether this road CONNECTS two others rather than running between places.
+##
+## **Declared, not derived from the portal it carries.** ADR 0065 made "carries a
+## portal" the whole difference between a ramp and a mainline, and that held while
+## every ramp led to a planet and every mainline ran the length of the map. A second
+## highway breaks it from both ends at once: an interchange ramp joins two roads and
+## carries no portal, and a road that simply stops carries one without being a ramp.
+## The portal was a proxy for "this is a connector" and the proxy has run out (ADR
+## 0081).
+var is_ramp: bool = false
 
 var _path: RoadPath = RoadPath.new()
 ## Markings run the length of the carriageway and are ALWAYS drawn, brighter on the
@@ -258,16 +268,8 @@ func is_active() -> bool:
 	return _active
 
 
-## A ramp carries a portal at its planet end; a mainline carries none (ADR 0065). That
-## is the whole difference, and it is enough to draw them apart: a ramp's STRUCTURE is
-## built at `lane_ramp_shade` of the brightness, so "that one leaves the highway" is
-## something the eye answers rather than a sign you have to read (ADR 0076).
-func is_ramp() -> bool:
-	return has_start_portal or has_end_portal
-
-
 func repaint() -> void:
-	var shade := Tuning.num("exploration/lane_ramp_shade") if is_ramp() else 1.0
+	var shade := Tuning.num("exploration/lane_ramp_shade") if is_ramp else 1.0
 	var color := Tuning.color("exploration/lane_active_color" if _active
 		else "exploration/lane_color")
 	color.a = Tuning.num("exploration/lane_active_alpha" if _active

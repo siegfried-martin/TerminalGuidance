@@ -57,5 +57,8 @@ highway should be something the eye answers, not something read off a sign.
   candidate. If a deck is winning that it should not, the filter is wrong.
 - Do not read ADR 0072's forbid as banning hysteresis outright. It bans hysteresis
   *instead of* bounding the snap, and the snap is still bounded by the slew.
-- Do not distinguish a ramp from a mainline by anything other than the portal it
-  carries. That is what a ramp is (ADR 0065).
+- ~~Do not distinguish a ramp from a mainline by anything other than the portal it
+  carries.~~ *Superseded by ADR 0081: with a second road on the map an interchange ramp
+  carries no portal and a road that simply stops carries one, so the portal has stopped
+  being a proxy for "this is a connector". `RoadDeck.is_ramp` is declared. The drawing
+  rule — a ramp is built at `lane_ramp_shade` of the brightness — is unchanged.*

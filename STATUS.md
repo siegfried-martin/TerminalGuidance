@@ -15,11 +15,56 @@ the human's explicit direction.
 | | |
 |---|---|
 | Branch | `feat/exploration-tuning-and-hud`, PR #14 |
-| Gate | `make check` — 1110 checks, 0 failed |
+| Gate | `make check` — 1136 checks, 0 failed |
 | Run it | `make fly` |
-| Built | Exploration POC steps 1–6, **step 8**, and **highway rebuild steps A–B** (ADRs 0062–0079) |
-| **Do next** | **The highway rebuild, step C** — see `docs/HIGHWAY_STRUCTURE_PLAN.md`. A steel ring at each ramp mouth, authored exit faces, and a second highway crossing at system B so all three exit cases are flyable. ADR 0080 is step D's. |
+| Built | Exploration POC steps 1–6, **step 8**, and **highway rebuild steps A–C** (ADRs 0062–0081) |
+| **Do next** | **The highway rebuild, step D** — the floor road and the dock. `ApproachEnvelope` on the road, 75% of cruise, `C` toggles, clickable exit signs. Before or after it: `RoadPath` needs a bounded-radius curve, or the "over the top" exit can never be built. |
 | **Waiting on you** | **The fourth checkpoint, and the important one**: success criterion 1, on a trunk road that now weaves and undulates. Ten minutes on it. `cruise_turn_clamp_deg` is tuned WITH `road_curve_deg` and `road_curve_period`, never against them. The third checkpoint is still open too — is a 38-second hop worth the portal, against 203 s by hand? |
+
+### What landed on 2026-08-31 — rings, exit faces, and a second road (rebuild step C)
+
+**Every way through the structure is marked by a steel ring** (ADR 0080) — the mouth at
+each end of a ramp, and the opening in the wall or roadway where a ramp goes through.
+Step B made the road solid, so a ramp that used to pass through open air now has to
+pass through something, and that made "which face" a real question.
+
+**Where a ramp crosses is measured off its own curve; which face is authored.** An exit
+leaves through a wall or the roof and never the floor; an entry comes up through the
+roadway. **An exit and an entry therefore need different numbers** — one pair could not
+satisfy both, and the four `ramp_exit_*` / `ramp_entry_*` values replace the pair that
+served both. The gate checks the *rule* and names the ramp that breaks it.
+
+**A ramp is also a chord across a bend, and that is what broke first.** With both
+ratios right on paper, `RampOnAForward` still reached a wall — the local leg weaves and
+the cubic bulges out of it. `ramp_entry_depth` is 520 rather than the 320 the algebra
+allows, and `portal_site_offset` went 400 → 600 to keep the deeper mouth outside the
+approach envelope.
+
+**The ring is the one piece of road drawn at uniform scale**, and the gate clears it
+against the hull's **diagonal** for every class. That is the check ADR 0068 said the
+gate ought to make and could not.
+
+**A second highway crosses the first over system B** (ADR 0081), above it, inside the
+disc, with no portals — run off it and you drop into normal flight. It exists so an
+exit rule can be *flown*. Building it retired two single-road assumptions:
+
+- **The union's guard is geometric now.** A per-route direction flag cannot serve two
+  routes. The steering cone already excluded the oncoming lane at 180°, so `governing`
+  filters on the cone alone and `along` is required. Stronger guarantee, less code.
+- **A ramp is declared, not inferred from its portal.** An interchange ramp carries no
+  portal; a road that stops carries one without being a ramp.
+
+`system_ceiling_height` 650 → 900, because a second deck above the first has to fit
+under it with the warning band clear. Yours to judge.
+
+**Not built, and named as such: the "over the top" exit.** Turning onto the carriageway
+coming the other way is more than 90°, and a cubic told two tangents puts all of it in
+one place — measured at **72 deg/s** against a ship that turns at 34, and **132** for
+two chained cubics. The physics is fine (125° at the ship's own minimum radius is under
+a kilometre of arc); what is missing is a `RoadPath` curve built to a bounded **radius**
+rather than to two tangents. That primitive is the next piece of road work and it must
+not be substituted by relaxing ADR 0070's turn check. Turning **right** onto a road
+going right is built and flyable, so the mechanism is judgeable.
 
 ### What landed on 2026-08-31 — the road is a building (rebuild step B)
 

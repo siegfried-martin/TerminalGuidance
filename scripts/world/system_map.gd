@@ -195,7 +195,25 @@ func relayout() -> void:
 	var centres: Array[Vector3] = []
 	for disc in _discs:
 		centres.append(disc.position)
-	_road.rebuild(_spine, centres, NAMES)
+	# A SECOND HIGHWAY, crossing the first over system B. It is here so the exit-face
+	# rules can be flown rather than only read (ADR 0081): turning right onto a road
+	# going right, and going over the top to reach one coming the other way, are the
+	# two cases, and both need a road to turn onto.
+	#
+	# It rides ABOVE the main road, stays inside the system's own disc, and simply
+	# ends at both ends — run off it and you drop into normal flight, exactly as at
+	# the edge of the map. Straight, because its job is to be crossed, not driven.
+	var crossing := PackedVector3Array()
+	if _discs.size() > 1:
+		var cross_step := SystemDisc.bearing_to_direction(
+			bearing + Tuning.num("exploration/crossing_bearing_deg"))
+		var reach := Tuning.num("exploration/crossing_road_length") * 0.5
+		var meets := _discs[1].position \
+			+ Vector3.UP * Tuning.num("exploration/crossing_road_height")
+		crossing.append(meets - cross_step * reach)
+		crossing.append(meets)
+		crossing.append(meets + cross_step * reach)
+	_road.rebuild(_spine, centres, NAMES, crossing)
 
 	_field.regions.clear()
 	for disc in _discs:
@@ -300,8 +318,8 @@ func _ride_the_road(ship: Mothership, here: Vector3) -> void:
 		var lane := _riding.sample(here, clearance)
 		# Candidates are limited to decks the ship could actually be steered onto, so
 		# a handover is a merge rather than a snap (ADR 0072).
-		var alternative := _road.governing(here, _riding.runs_forward, _riding, clearance,
-			ship.road_axis())
+		var alternative := _road.governing(here, ship.road_axis(), _riding,
+			clearance)
 		if lane.metres_remaining <= 0.001:
 			# Off the end of this deck. A ramp ends on the mainline and hands over; a
 			# mainline ends at the edge of the map, where there is nothing to hand to

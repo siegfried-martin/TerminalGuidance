@@ -26,6 +26,12 @@ physical twist and its ban on ring roads — goes with it.
 consider decks that agree on it, so ADR 0067's "no oncoming traffic in your lane"
 stays structural. It carries no side information and nothing may derive one from it.
 
+> *Superseded in this clause by ADR 0081.* It is not a grouping key any more — a
+> second highway crossing the first cannot be served by a per-route flag, and the
+> steering cone already excluded the oncoming lane. `runs_forward` is now only a name
+> for which way a carriageway runs along its own spine. Everything else here stands,
+> and the forbid below applies to it unchanged.
+
 **One new invariant replaces the one deleted: the road may not bend tighter than the
 carriageways are far apart.** Minimum curve radius must exceed `deck_separation`.
 

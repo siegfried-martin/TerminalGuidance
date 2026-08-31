@@ -22,8 +22,11 @@ extends Node3D
 ## mainline and the ramp contain the ship, and steering toward the ramp is what makes
 ## the ramp the answer. **No junction logic exists, and none should be written.**
 ##
-## Decks are grouped by direction rather than by leg, so the union can never hand a
-## ship the oncoming lane: only decks sharing `runs_forward` are ever considered.
+## The union can never hand a ship the oncoming lane, and that is **geometric**: a
+## candidate has to lie inside the steering cone around the road the ship is already
+## held against, and a lane coming the other way is 180 degrees outside it (ADR 0081).
+## `runs_forward` is a name for which way a deck runs along its own spine and nothing
+## filters on it.
 ##
 ## **The two directions run side by side, and traffic runs on the right** (ADR 0077).
 ## Each deck is offset from the spine by half `deck_separation` along the spine's own
@@ -62,7 +65,8 @@ var _spine: RoadPath = RoadPath.new()
 ## move when the diameter or a leg length does, and the legs change shape when the
 ## curvature does.
 func rebuild(spine: PackedVector3Array, centres: Array[Vector3],
-		names: PackedStringArray) -> void:
+		names: PackedStringArray,
+		crossing: PackedVector3Array = PackedVector3Array()) -> void:
 	for child in get_children():
 		remove_child(child)
 		child.queue_free()
@@ -115,6 +119,9 @@ func rebuild(spine: PackedVector3Array, centres: Array[Vector3],
 				names[ahead] if ahead >= 0 and ahead < names.size() else "",
 				names[behind] if behind >= 0 and behind < names.size() else "")
 
+	if crossing.size() >= 2:
+		_build_crossing(crossing, across)
+
 
 ## The spine, raised to the road's height and moved to this deck's side of it, and
 ## reversed for the deck that runs the other way.
@@ -126,22 +133,30 @@ func rebuild(spine: PackedVector3Array, centres: Array[Vector3],
 ## the geometry: a bend tighter than the deck separation folds the inner lane through
 ## itself, so the gate checks the spine's minimum curve radius against it (ADR 0077).
 func _lifted(base: Vector3, sense: float, across: float) -> PackedVector3Array:
+	return _laid_on(_spine, base, sense, across)
+
+
+## The same, for any route. The crossing road is laid exactly like the main one — its
+## own spine, a carriageway to the right of each direction — because there is nothing
+## special about the first road on the map (ADR 0081).
+func _laid_on(route: RoadPath, base: Vector3, sense: float,
+		across: float) -> PackedVector3Array:
 	var line := PackedVector3Array()
-	var count := _spine.points.size()
+	var count := route.points.size()
 	for i in count:
 		var index := count - 1 - i if sense < 0.0 else i
-		line.append(_spine.points[index] + base
-			+ _across_at(index) * sense * across)
+		line.append(route.points[index] + base
+			+ _across_at(route, index) * sense * across)
 	return line
 
 
-## The spine's rightward normal at one of its own points, from the segments either
-## side of it. Taken from the spine rather than from a bearing: on a weaving leg those
+## A route's rightward normal at one of its own points, from the segments either side
+## of it. Taken from the route rather than from a bearing: on a weaving leg those
 ## differ, and a deck placed on the bearing would drift across the median.
-func _across_at(index: int) -> Vector3:
-	var last := _spine.points.size() - 1
-	var travel: Vector3 = _spine.points[mini(index + 1, last)] \
-		- _spine.points[maxi(index - 1, 0)]
+func _across_at(route: RoadPath, index: int) -> Vector3:
+	var last := route.points.size() - 1
+	var travel: Vector3 = route.points[mini(index + 1, last)] \
+		- route.points[maxi(index - 1, 0)]
 	var side := travel.cross(Vector3.UP)
 	return Vector3.RIGHT if side.length_squared() < 0.000001 else side.normalized()
 
@@ -304,6 +319,89 @@ static func crossing(built: RoadStructure, ramp: RoadPath,
 	return []
 
 
+## A SECOND HIGHWAY, crossing the first. Its own spine, its own pair of carriageways
+## in its own building, and two ramps from the main road onto it.
+##
+## It exists so the exit-face rules can be FLOWN. An exit rule you cannot fly is an
+## exit rule you cannot judge, and both interesting cases — turning right onto a road
+## going right, and going over the top to reach one coming the other way — need a
+## second road to turn onto.
+##
+## It carries no portals and simply ENDS, the way the main road ends at the edge of
+## the map: run off it and you drop into normal flight. That is deliberate rather than
+## unfinished — a portal at the end would make a mainline read as a ramp (ADR 0076
+## keyed that off the portal), and there is nothing on the far side of it yet.
+func _build_crossing(line: PackedVector3Array, across: float) -> void:
+	var route := RoadPath.new()
+	route.set_points(line)
+	var pair := Vector2(across * 2.0 + Tuning.num("exploration/lane_width"),
+		Tuning.num("exploration/lane_height")) * 0.5
+	_make_structure("StructureCrossing", false, true).follow(
+		_laid_on(route, Vector3.ZERO, 1.0, 0.0), pair, pair, false, false)
+
+	var carriageways: Array[RoadDeck] = []
+	for runs_forward in [true, false]:
+		var sense := 1.0 if runs_forward else -1.0
+		var deck := _make_deck(
+			"Crossing" + ("Forward" if runs_forward else "Reverse"),
+			runs_forward, false, false)
+		deck.deck_name = "crossing highway"
+		deck.follow(_laid_on(route, Vector3.ZERO, sense, across), "", "")
+		carriageways.append(deck)
+
+	# WHICH WAY EACH ONE GOES, from the main road's point of view. The exit-face rule
+	# is written in those terms — right onto a road going right, over the top onto one
+	# going left — so this is the one thing the interchange has to work out, and it is
+	# a cross product rather than a decision.
+	var meeting: float = _spine.closest(route.point_at(route.length() * 0.5))[0]
+	var main_travel := _spine.tangent_at(meeting)
+	# ONLY THE RIGHT-HAND TURN IS BUILT, and that is a real gap rather than an
+	# omission of taste. Turning onto the carriageway coming the OTHER way is better
+	# than ninety degrees of rotation, and `RoadPath.ramp` is a cubic: asked to hold
+	# that much it puts all the turning in one place, measured at 72 deg/s against a
+	# ship that turns at 34, and chaining two cubics through a crest measured worse
+	# still at 132. What that ramp needs is an arc — a curve built to a bounded
+	# radius rather than to two tangents — and that is a `RoadPath` primitive that
+	# does not exist yet, with its own gate. It is not a tuning problem and it must
+	# not be "fixed" by relaxing ADR 0070's check.
+	for deck: RoadDeck in carriageways:
+		var turn := main_travel.cross(
+			deck.path().tangent_at(deck.length() * 0.5)).dot(Vector3.UP)
+		if turn < 0.0:
+			_build_interchange(deck, meeting, true, across)
+
+
+## One ramp from the main road onto the crossing road.
+##
+## `to_the_right` says which of the two rules applies. Only the right-hand turn is
+## built: swing out through the wall and climb. The other rule — over the top and down
+## onto the carriageway coming the other way — is more than ninety degrees of rotation
+## and needs a curve built to a bounded radius, which `RoadPath` cannot make yet.
+## Which face the ramp actually uses is measured, and the gate holds the rule (ADR
+## 0080).
+func _build_interchange(onto: RoadDeck, meeting: float, to_the_right: bool,
+		across: float) -> void:
+	var run := Tuning.num("exploration/interchange_run_length")
+	var base := Vector3.UP * Tuning.num("exploration/road_height")
+	var lead := run if to_the_right else run * 1.7
+	var leaves := _at(meeting - lead, base, 1.0, across)
+	var lands: float = onto.path().closest(
+		_spine.point_at(meeting))[0] + run * 0.45
+	lands = clampf(lands, 0.0, onto.length())
+	var ramp := _make_deck("Interchange" + ("Right" if to_the_right else "Over"),
+		true, false, false, true)
+	ramp.deck_name = "to the crossing highway"
+	var tightness := Tuning.num("exploration/ramp_curve_tightness")
+	var arrives: Vector3 = onto.path().point_at(lands)
+	var joins: Vector3 = onto.path().tangent_at(lands)
+	var curve := RoadPath.ramp(leaves[0], leaves[1], arrives, joins, tightness,
+		RAMP_SEGMENTS)
+	ramp.follow(curve, "", "")
+	_make_structure("Structure" + ramp.name, true, false).follow(
+		curve, _lane_section(), _lane_section(), false, false)
+	_open_for(ramp.path(), true)
+
+
 ## One carriageway's own half-section, and the narrower one at a portal mouth. Read
 ## here rather than inside the structure so a ramp's building and a ramp's lane are
 ## handed the same two numbers.
@@ -330,10 +428,11 @@ func _make_structure(structure_name: String, ramp: bool,
 
 
 func _make_deck(deck_name: String, runs_forward: bool, start_portal: bool,
-		end_portal: bool) -> RoadDeck:
+		end_portal: bool, ramp: bool = false) -> RoadDeck:
 	var deck := RoadDeck.new()
 	deck.name = deck_name
 	deck.runs_forward = runs_forward
+	deck.is_ramp = ramp or start_portal or end_portal
 	deck.has_start_portal = start_portal
 	deck.has_end_portal = end_portal
 	add_child(deck)
@@ -368,22 +467,21 @@ func spine() -> RoadPath:
 ## the ship is flown with — comparing a hull-measured depth against a point-measured
 ## one would hand a big ship whichever deck happened to be asked with zero.
 ## `along` is the direction the ship is currently being held against — the road it is
-## on. A deck whose own direction here is more than the steering cone away from that
-## is NOT a candidate, however near the ship happens to be to it. That is not junction
-## logic and it does not choose anything: it is the same "can I point at it" the cone
-## already applies to the player, applied to the lane. Without it, drifting wide of a
-## mainline beside an interchange handed the ship to a ramp thirty degrees off its
-## heading and swung the nose there in a single frame (ADR 0072). Pass a zero vector
-## to consider every deck, which is what joining the road from outside does.
-func governing(point: Vector3, runs_forward: bool, exclude: RoadDeck = null,
-		clearance: Vector2 = Vector2.ZERO,
-		along: Vector3 = Vector3.ZERO) -> RoadDeck:
+## on — and it is **required**. A deck whose own direction here is more than the
+## steering cone away from it is NOT a candidate, however near the ship happens to be.
+## That is not junction logic and it does not choose anything: it is the same "can I
+## point at it" the cone already applies to the player, applied to the lane. Without
+## it, drifting wide of a mainline beside an interchange handed the ship to a ramp
+## thirty degrees off its heading and swung the nose there in a single frame (ADR
+## 0072); and with a second highway crossing the first, it is also the only thing that
+## keeps the union from handing you a road going somewhere else entirely (ADR 0081).
+func governing(point: Vector3, along: Vector3, exclude: RoadDeck = null,
+		clearance: Vector2 = Vector2.ZERO) -> RoadDeck:
 	var best: RoadDeck = null
 	var best_depth := INF
 	var cone := cos(deg_to_rad(Tuning.num("exploration/cruise_turn_clamp_deg")))
 	for deck in _decks:
-		if deck.runs_forward != runs_forward or deck.length() <= 0.0 \
-				or deck == exclude:
+		if deck.length() <= 0.0 or deck == exclude:
 			continue
 		var lane := deck.sample(point, clearance)
 		# A deck that does not REACH this point cannot govern it. `closest` clamps to
@@ -395,7 +493,13 @@ func governing(point: Vector3, runs_forward: bool, exclude: RoadDeck = null,
 		if lane.metres_travelled <= END_TOLERANCE \
 				or lane.metres_remaining <= END_TOLERANCE:
 			continue
-		if along != Vector3.ZERO and lane.axis.dot(along) < cone:
+		# THE WHOLE OF "never the oncoming lane", and of "never a road you could not
+		# steer onto". `along` is the direction the ship is being held against, so a
+		# deck more than the steering cone away from it is not a candidate however
+		# near the ship happens to be to it — which excludes the lane coming the other
+		# way at 180 degrees, every deck of a highway crossing at an angle, and the
+		# ramp thirty degrees off the heading that shook the ship (ADR 0072).
+		if lane.axis.dot(along) < cone:
 			continue
 		var depth := lane.edge_distance()
 		if depth < best_depth:

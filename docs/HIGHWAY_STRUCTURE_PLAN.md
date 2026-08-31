@@ -243,7 +243,26 @@ only a frame caught it. See ADR 0079.*
 - **ADR 0079** — glass is a diffuser, and "visually open" is measured as area.
   Supersede notes on 0074 and 0075.
 
-### C — Rings, exit faces, and a second highway
+### C — Rings, exit faces, and a second highway ✅ built 2026-08-31 (ADRs 0080, 0081)
+
+*Landed, with one piece named as not built. Three things to carry forward.*
+
+*Step B made the road solid, so every ramp now needs an aperture — that requirement did
+not exist when this plan was written. **An exit and an entry turned out to need
+different numbers**: one pair of offsets cannot satisfy "an exit reaches a wall" and
+"an entry reaches the floor" at once, and the gate now checks the rule rather than the
+values.*
+
+***A second road broke two single-road assumptions at once.** The union's direction
+flag cannot serve two routes, and the portal stopped being a proxy for "this is a
+ramp". Both are retired in ADR 0081 and both came out simpler.*
+
+***The "over the top" exit is NOT built.** Turning onto the carriageway coming the
+other way is more than ninety degrees, and a cubic told two tangents puts all of it in
+one place — 72 deg/s against a ship that turns at 34, and 132 for two chained cubics.
+It needs a `RoadPath` curve built to a bounded RADIUS, which does not exist yet. That
+primitive is the next piece of road work, and it must not be "fixed" by relaxing ADR
+0070.*
 
 - A steel ring at each ramp mouth: structure around the existing `Portal`, which keeps
   its blue/red per ADR 0060. No conflict — the ring is the building, the sheen is the

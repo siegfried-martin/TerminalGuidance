@@ -170,6 +170,8 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/structure_glass_alpha", "exploration/structure_metal_color",
 	"exploration/structure_glass_color", "exploration/ramp_ring_diameter",
 	"exploration/ramp_ring_depth", "exploration/ramp_ring_color",
+	"exploration/crossing_bearing_deg", "exploration/crossing_road_height",
+	"exploration/crossing_road_length", "exploration/interchange_run_length",
 	"camera/near_plane", "camera/far_plane",
 	"exploration/deep_seed",
 	"exploration/starfield_count", "exploration/starfield_distance",
@@ -3316,13 +3318,16 @@ func _test_exploration_builds() -> void:
 	# stops is the ramp: it leaves the mainline tangentially and curves down and out
 	# to a portal beside the planet.
 	var road := map.road()
+	# A ramp is DECLARED now, not inferred from the portal it carries. Once there is a
+	# second highway both halves of that inference break at once: an interchange ramp
+	# joins two roads and carries no portal (ADR 0081).
 	var mainlines: Array[RoadDeck] = []
 	var ramps: Array[RoadDeck] = []
 	for deck in road.decks():
-		if deck.start_portal() == null and deck.end_portal() == null:
-			mainlines.append(deck)
-		else:
+		if deck.is_ramp:
 			ramps.append(deck)
+		elif deck.name.begins_with("Mainline"):
+			mainlines.append(deck)
 	_expect(mainlines.size() == 2,
 		"there is one mainline per direction, spanning the whole map",
 		"%d mainlines" % mainlines.size())
@@ -3357,13 +3362,60 @@ func _test_exploration_builds() -> void:
 	# ramp that serves nobody is not built, because it would be an opening onto a road
 	# with no traffic and a sign with no name on it.
 	var through := map.systems().size() - 2
-	_expect(ramps.size() == through * 4 + 4,
+	var planet_ramps: Array[RoadDeck] = []
+	var interchange_ramps: Array[RoadDeck] = []
+	for ramp: RoadDeck in ramps:
+		if ramp.start_portal() != null or ramp.end_portal() != null:
+			planet_ramps.append(ramp)
+		else:
+			interchange_ramps.append(ramp)
+	_expect(planet_ramps.size() == through * 4 + 4,
 		"…and every system has the ramps it has traffic for, and no others",
 		"%d ramps for %d systems, %d of them through-systems" % [
-			ramps.size(), map.systems().size(), through])
+			planet_ramps.size(), map.systems().size(), through])
+	# THE CROSSING HIGHWAY. It is here so an exit-face rule can be flown rather than
+	# only read, and it is a road like any other: its own spine, a carriageway either
+	# side of it, its own building. It carries no portals and simply ends.
+	var crossing: Array[RoadDeck] = []
+	for deck in road.decks():
+		if deck.name.begins_with("Crossing"):
+			crossing.append(deck)
+	_expect(crossing.size() == 2,
+		"a second highway crosses the first, one carriageway per direction",
+		"%d crossing carriageways" % crossing.size())
+	_expect(crossing.size() == 2 and crossing[0].start_portal() == null
+			and crossing[0].end_portal() == null,
+		"…and it carries no portals — it ends, the way the main road ends at the map's edge",
+		"the crossing road has a portal on it")
+	_expect(interchange_ramps.size() >= 1,
+		"…and at least one ramp turns onto it, so the exit-face rule is flyable",
+		"%d interchange ramps" % interchange_ramps.size())
+	# It rides ABOVE the road it crosses, which is what makes "over the top" the answer
+	# for the carriageway coming the other way — and its own roof still has to clear
+	# the system's ceiling by more than the warning band.
+	var main_roof := Tuning.num("exploration/road_height") \
+		+ Tuning.num("exploration/lane_height") * 0.5
+	var cross_floor := Tuning.num("exploration/crossing_road_height") \
+		- Tuning.num("exploration/lane_height") * 0.5
+	_expect(cross_floor > main_roof,
+		"…and it passes clear ABOVE the road it crosses",
+		"its floor is at %.0f m over a %.0f m roof" % [cross_floor, main_roof])
+	var cross_head := Tuning.num("exploration/system_ceiling_height") \
+		- (Tuning.num("exploration/crossing_road_height")
+			+ Tuning.num("exploration/lane_height") * 0.5)
+	_expect(cross_head > Tuning.num("exploration/bounds_warning_band"),
+		"…with head room over it too, so the upper road is not a red alarm either",
+		"%.0f m of head room" % cross_head)
+	_expect(Tuning.num("exploration/crossing_road_length")
+			< Tuning.num("exploration/system_diameter"),
+		"…and it stays inside the system's own disc rather than running out of bounds",
+		"%.0f m of road in a %.0f m disc" % [
+			Tuning.num("exploration/crossing_road_length"),
+			Tuning.num("exploration/system_diameter")])
 	# The sign has to name the NEIGHBOUR, not the system you are standing in. "TO
 	# SYSTEM B" on a portal inside system B is the kind of thing only a frame catches.
-	for ramp: RoadDeck in ramps:
+	# Planet ramps only: an interchange ramp joins two roads and carries no sign.
+	for ramp: RoadDeck in planet_ramps:
 		var sign_at: Portal = ramp.start_portal() if ramp.start_portal() != null \
 			else ramp.end_portal()
 		var home := map.system_name(map.nearest_system(sign_at.position))
@@ -3373,7 +3425,7 @@ func _test_exploration_builds() -> void:
 				"%s reads \"%s\" while standing in %s" % [
 					ramp.name, sign_at.destination, home])
 			break
-	for ramp: RoadDeck in ramps:
+	for ramp: RoadDeck in planet_ramps:
 		var ends := 0
 		if ramp.start_portal() != null:
 			ends += 1
@@ -3554,12 +3606,18 @@ func _test_exploration_builds() -> void:
 	# a cone around the road every frame, so thirty degrees arrived in one of them.
 	var probe := map.system_center(1) + Vector3.UP * Tuning.num("exploration/road_height")
 	var main_axis: Vector3 = mainlines[0].sample(probe).axis
-	var free_pick := road.governing(probe, mainlines[0].runs_forward, null,
-		Vector2.ZERO, Vector3.ZERO)
-	var aligned_pick := road.governing(probe, mainlines[0].runs_forward, null,
-		Vector2.ZERO, main_axis)
-	_expect(free_pick != null and aligned_pick != null,
-		"a deck governs the middle of an interchange either way", "nothing does")
+	# The ONCOMING lane is never a candidate, and that is now geometry rather than a
+	# flag: asked along the mainline's own direction the union answers with a road
+	# going that way, and asked along the reverse it answers with the other
+	# carriageway. Nothing filters on which way a deck runs (ADR 0081).
+	var aligned_pick := road.governing(probe, main_axis, null, Vector2.ZERO)
+	var against_pick := road.governing(probe, -main_axis, null, Vector2.ZERO)
+	_expect(aligned_pick != null and against_pick != null,
+		"a deck governs the middle of an interchange from either direction",
+		"nothing does")
+	_expect(aligned_pick != against_pick,
+		"…and it is a different one each way — the union never hands you the oncoming lane",
+		"the same deck governs both directions")
 	# A DECK THAT HAS ENDED BEHIND YOU CANNOT GOVERN. `RoadPath.closest` clamps, so a
 	# ship at the top of a ramp reports as sitting on the ramp's last metre for ever:
 	# the ramp hands over because it has ended, the union hands straight back because
@@ -3568,12 +3626,12 @@ func _test_exploration_builds() -> void:
 	var an_on_ramp := road.get_node_or_null("RampOnBForward") as RoadDeck
 	if an_on_ramp != null:
 		var at_the_top: Vector3 = an_on_ramp.path().finish()
-		var after := road.governing(at_the_top, an_on_ramp.runs_forward, null,
-			Vector2.ZERO, an_on_ramp.path().tangent_at(an_on_ramp.length()))
+		var after := road.governing(at_the_top,
+			an_on_ramp.path().tangent_at(an_on_ramp.length()), null, Vector2.ZERO)
 		_expect(after != null and after != an_on_ramp,
 			"a ramp that has ended does not govern the point it ended at — something else does",
 			"the union handed back the ramp the ship just ran off")
-		_expect(after == null or not after.is_ramp(),
+		_expect(after == null or not after.is_ramp,
 			"…and what takes over at a merge is the mainline",
 			"handed to %s" % (after.name if after != null else "nothing"))
 	if aligned_pick != null:
@@ -3638,9 +3696,13 @@ func _test_exploration_builds() -> void:
 			ramp_structures += 1
 		else:
 			pair_structures += 1
-	_expect(pair_structures == 1,
-		"the two carriageways share ONE building — a deck is the lane, not the road",
-		"%d mainline structures" % pair_structures)
+	# One building per PAIR of carriageways — the main road's and the crossing road's —
+	# and one per ramp. A pair sharing a building is the whole reason the deck and the
+	# structure had to be split: a deck cannot own a building that also belongs to the
+	# deck coming the other way.
+	_expect(pair_structures == 2,
+		"each pair of carriageways shares ONE building — a deck is the lane, not the road",
+		"%d shared structures" % pair_structures)
 	_expect(ramp_structures == ramps.size(),
 		"…and every ramp is a building of its own, with one lane in it",
 		"%d structures for %d ramps" % [ramp_structures, ramps.size()])
@@ -3648,17 +3710,20 @@ func _test_exploration_builds() -> void:
 	for one: RoadStructure in built:
 		if one.has_median:
 			median_count += 1
-	_expect(median_count == 1,
-		"…and only the shared one carries a median, because only it divides two directions",
-		"%d structures carry a median" % median_count)
+	_expect(median_count == pair_structures,
+		"…and a median in every one that divides two directions, and in no ramp",
+		"%d medians for %d shared structures" % [median_count, pair_structures])
 
 	# MODULES, not an extrusion. Four layers of them, each a MultiMesh: this is what
 	# makes real art a mesh swap rather than a rewrite (ADR 0030), and it is what the
 	# old swept ArrayMesh could never be.
 	var pair_built: RoadStructure = null
 	for one: RoadStructure in built:
-		if not one.is_ramp:
+		if one.structure_name == "StructureMainline":
 			pair_built = one
+	_expect(pair_built != null,
+		"…and the main road's building is findable by name, so the gate can ask it things",
+		"StructureMainline is missing")
 	var layered := true
 	var instances := 0
 	for layer_name: String in ["Ribs", "Bays", "Plates", "Panes"]:
@@ -3712,8 +3777,10 @@ func _test_exploration_builds() -> void:
 	# which is where this first went wrong, at system A on the weaving local leg.
 	var exits_downward := ""
 	var entries_not_from_below := ""
+	# Every ramp, planet and interchange alike: an interchange ramp leaves the main
+	# road through a wall exactly as a planet off-ramp does, and the rule is the rule.
 	for ramp: RoadDeck in ramps:
-		var leaving := ramp.has_end_portal
+		var leaving := not ramp.has_start_portal
 		var found := RoadNetwork.crossing(pair_built, ramp.path(), leaving)
 		if found.is_empty():
 			continue

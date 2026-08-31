@@ -38,8 +38,10 @@ The grouping by deck is what keeps it safe: only decks sharing `is_upper` are ev
 considered, so the union can never hand a ship the oncoming lane. One-way stays
 structural rather than becoming a check.
 *(ADR 0077 renamed that field to `runs_forward` when the carriageways went side by
-side. The safety property is unchanged and so is this decision — the key is a
-direction rather than a deck now, and it still carries nothing but the grouping.)*
+side. ADR 0081 then retired it entirely: a second highway crossing the first cannot be
+served by a per-route flag, and the steering cone already excluded the oncoming lane at
+180 degrees. The safety property is unchanged and so is this decision — it is geometry
+now rather than a declaration.)*
 
 ## What this forbids
 
