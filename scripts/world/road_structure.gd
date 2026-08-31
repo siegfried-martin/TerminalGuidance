@@ -34,6 +34,16 @@ extends Node3D
 ## `tools/gen_road_modules.py` for the unit-section contract they are built to.
 const MODULE_PATH := "res://assets/models/road_%s.obj"
 
+## Which face of the building a ramp passes through. **Authored, never computed from
+## a preference** (ADR 0080): a ramp is built to leave through a particular face and
+## the structure is told which.
+##
+## There is no DOWN for an exit. The floor is the roadway — the road you dock on —
+## and an exit competing with it for the meaning of "down" is clutter. Entries are
+## the opposite and are always BELOW: merging upward into the only lane there is is
+## unambiguous, and there is nothing else it could mean.
+enum Face { RIGHT, LEFT, ABOVE, BELOW }
+
 
 var structure_name: String = "structure"
 ## A ramp is drawn darker than a mainline, because a ramp carries a portal and a
@@ -54,17 +64,25 @@ var _mouth: Vector2 = Vector2.ONE
 var _narrows_at_start: bool = false
 var _narrows_at_end: bool = false
 
-var _ribs: MultiMeshInstance3D
-var _bays: MultiMeshInstance3D
-var _plates: MultiMeshInstance3D
-var _panes: MultiMeshInstance3D
+## Where ramps pierce this building, along the path, and through which face. Two
+## parallel lists rather than a dictionary so both stay typed.
+var _pierced_at: PackedFloat32Array = PackedFloat32Array()
+var _pierced_face: PackedInt32Array = PackedInt32Array()
+
+## Every layer of modules by name. The `open_*` layers are the same bay with one face
+## left out, and they are empty on a road nothing leaves.
+var _layers: Dictionary = {}
 
 
 func _ready() -> void:
-	_ribs = _make_layer("Ribs", "rib", false)
-	_bays = _make_layer("Bays", "bay", true)
-	_plates = _make_layer("Plates", "plate", false)
-	_panes = _make_layer("Panes", "pane", true)
+	for spec: Array in [
+			["Ribs", "rib", false], ["Bays", "bay", true],
+			["Plates", "plate", false], ["Panes", "pane", true],
+			["BaysOpenRight", "bay_open_right", true],
+			["BaysOpenLeft", "bay_open_left", true],
+			["BaysOpenTop", "bay_open_top", true],
+			["Rings", "ring", false]]:
+		_layers[spec[0]] = _make_layer(spec[0], spec[1], spec[2])
 	rebuild()
 
 
@@ -100,55 +118,215 @@ func _make_layer(node_name: String, module: String,
 func follow(line: PackedVector3Array, full: Vector2, mouth: Vector2,
 		narrows_at_start: bool, narrows_at_end: bool) -> void:
 	_path.set_points(line)
+	_pierced_at = PackedFloat32Array()
+	_pierced_face = PackedInt32Array()
 	_full = full
 	_mouth = mouth
 	_narrows_at_start = narrows_at_start
 	_narrows_at_end = narrows_at_end
-	if _ribs == null:
+	if _layers.is_empty():
 		return
 	rebuild()
 
 
+## A ramp passes through this building here, through this face. Called by the network
+## once it has measured where the ramp actually leaves — the crossing is *found*, not
+## assumed, because a cubic ramp's shape is a consequence of four tuned numbers and
+## guessing where it clears the wall is how an opening ends up in the wrong place.
+func pierce(along: float, face: Face) -> void:
+	_pierced_at.append(along)
+	_pierced_face.append(int(face))
+	if not _layers.is_empty():
+		rebuild()
+
+
 func rebuild() -> void:
-	if _ribs == null:
+	if _layers.is_empty():
 		return
+	var placed := {}
+	for key: String in _layers:
+		placed[key] = [] as Array[Transform3D]
 	var span := _path.length()
 	if span <= 0.0:
-		for layer: MultiMeshInstance3D in [_ribs, _bays, _plates, _panes]:
-			layer.multimesh.instance_count = 0
+		_place(placed)
 		return
 	var module := maxf(Tuning.num("exploration/structure_module_length"), 1.0)
 	var collar := clampf(Tuning.num("exploration/structure_rib_thickness"),
 		0.0, module)
+	var mouth := maxf(Tuning.num("exploration/ramp_ring_diameter"), 1.0)
 	var bays := maxi(int(span / module), 1)
 	var step := span / float(bays)
 
 	# A bay fills the space BETWEEN two collars, and a collar sits on every joint
 	# including both ends. That is one more rib than there are bays, and it is what
 	# makes the road read as a chain of segments rather than as a striped tube.
-	_lay(_ribs, bays + 1, step, 0.0, collar)
-	_lay(_bays, bays, step, 0.5, step - collar)
-	_lay(_plates, bays, step, 0.5, step)
-	_lay(_panes, bays if has_median else 0, step, 0.5, step)
+	for i in bays + 1:
+		placed["Ribs"].append(_module(float(i) * step, collar))
+
+	for i in bays:
+		var from := float(i) * step + collar * 0.5
+		var to := float(i + 1) * step - collar * 0.5
+		# A bay is laid as one piece unless a ramp goes through it, and then as a
+		# solid piece either side of every mouth-sized gap. More than one ramp can
+		# land in the same bay — at an interchange the two carriageways' ramps pierce
+		# opposite walls within metres of each other — so this walks the openings in
+		# order rather than handling "the" opening.
+		var here := from
+		for opening: Array in _openings_in(from, to, mouth):
+			var gap_from: float = opening[0]
+			var gap_to: float = opening[1]
+			var face: int = opening[2]
+			_fill(placed, here, gap_from, -1)
+			_fill(placed, gap_from, gap_to, face)
+			placed["Rings"].append(
+				_ring((gap_from + gap_to) * 0.5, face, mouth))
+			here = gap_to
+		_fill(placed, here, to, -1)
+
+	# A ring at every portal mouth too. A ramp's ends and a ramp's side openings are
+	# the same object to the player: a steel hoop that says "this is the way through".
+	if _narrows_at_start:
+		placed["Rings"].append(_end_ring(0.0, mouth))
+	if _narrows_at_end:
+		placed["Rings"].append(_end_ring(span, mouth))
+
+	_place(placed)
+
+
+## Hand each layer the transforms gathered for it.
+func _place(placed: Dictionary) -> void:
+	for key: String in _layers:
+		var layer := _layers[key] as MultiMeshInstance3D
+		var rows := placed[key] as Array[Transform3D]
+		layer.multimesh.instance_count = rows.size()
+		for i in rows.size():
+			layer.multimesh.set_instance_transform(i, rows[i])
 	repaint()
 
 
-## Place `count` copies of one module, `step` apart, each `length` long.
+## Lay one stretch of the road. `face` is the face left open across it, or negative
+## for a solid stretch.
 ##
-## `offset` is where in its own slot a module sits: 0 puts it on the joint (a collar
-## straddling the seam), 0.5 puts it in the middle of the bay (everything else).
-func _lay(layer: MultiMeshInstance3D, count: int, step: float, offset: float,
-		length: float) -> void:
-	layer.multimesh.instance_count = count
-	for i in count:
-		var along := clampf((float(i) + offset) * step, 0.0, _path.length())
-		var forward := _path.tangent_at(along)
-		var frame := CruiseLane.frame_for(forward)
-		var extents := extents_at(along)
-		layer.multimesh.set_instance_transform(i, Transform3D(
-			Basis(frame[0] * extents.x * 2.0, frame[1] * extents.y * 2.0,
-				-forward * maxf(length, 0.01)),
-			_path.point_at(along)))
+## The floor is the odd one out: a BELOW opening lays no roadway at all, because a
+## hole in the roadway IS the hole, while the walls and roof carry straight on over
+## it. Everything else keeps its floor — you do not stop being able to drive because
+## a ramp leaves through the wall beside you.
+func _fill(placed: Dictionary, from: float, to: float, face: int) -> void:
+	if to - from < 1.0:
+		return
+	var piece := _span(from, to)
+	if face == int(Face.BELOW):
+		placed["Bays"].append(piece)
+	elif face < 0:
+		placed["Bays"].append(piece)
+		placed["Plates"].append(piece)
+	else:
+		placed[_open_layer(face)].append(piece)
+		placed["Plates"].append(piece)
+	# The median runs on through every opening. A ramp joins or leaves its own
+	# carriageway and never crosses the middle of the road — that is what right-hand
+	# traffic buys (ADR 0077) — so there is nothing here for a ramp to interrupt.
+	if has_median:
+		placed["Panes"].append(piece)
+
+
+## Every opening inside this stretch, in order along the road, as
+## `[gap_from, gap_to, face]`. Each is one ring wide and kept inside the stretch.
+func _openings_in(from: float, to: float, mouth: float) -> Array:
+	var found: Array = []
+	for i in _pierced_at.size():
+		if _pierced_at[i] < from or _pierced_at[i] >= to:
+			continue
+		var at := clampf(_pierced_at[i], from + mouth * 0.5, to - mouth * 0.5)
+		found.append([at - mouth * 0.5, at + mouth * 0.5, _pierced_face[i]])
+	found.sort_custom(func(a, b): return a[0] < b[0])
+	# Two ramps can pierce within a ring of each other — at an interchange the two
+	# carriageways' ramps land within metres, on opposite walls. Overlapping gaps
+	# would lay geometry on top of itself, so each is pushed clear of the one before
+	# and then the whole run is pulled back inside the bay. An opening is never
+	# dropped: a way through with no ring on it is worse than a ring sitting a little
+	# off its ramp.
+	for i in range(1, found.size()):
+		if found[i][0] < found[i - 1][1]:
+			var shift: float = found[i - 1][1] - found[i][0]
+			found[i][0] += shift
+			found[i][1] += shift
+	var overflow: float = found[found.size() - 1][1] - to if not found.is_empty() \
+		else 0.0
+	if overflow > 0.0:
+		for one: Array in found:
+			one[0] -= overflow
+			one[1] -= overflow
+	return found
+
+
+func _open_layer(face: int) -> String:
+	match face:
+		int(Face.LEFT):
+			return "BaysOpenLeft"
+		int(Face.ABOVE):
+			return "BaysOpenTop"
+		_:
+			return "BaysOpenRight"
+
+
+## One module centred at `along`, `length` long.
+func _module(along: float, length: float) -> Transform3D:
+	var at := clampf(along, 0.0, _path.length())
+	var forward := _path.tangent_at(at)
+	var frame := CruiseLane.frame_for(forward)
+	var extents := extents_at(at)
+	return Transform3D(
+		Basis(frame[0] * extents.x * 2.0, frame[1] * extents.y * 2.0,
+			-forward * maxf(length, 0.01)),
+		_path.point_at(at))
+
+
+## One module filling the stretch between two points along the road.
+func _span(from: float, to: float) -> Transform3D:
+	return _module((from + to) * 0.5, to - from)
+
+
+## A hoop on one face of the building, at its own uniform scale.
+##
+## Uniform, unlike every other module here, and that is the point: a mouth you fly
+## through has to read as one size from any angle, and an ellipse does not (ADR 0080).
+func _ring(along: float, face: int, diameter: float) -> Transform3D:
+	var at := clampf(along, 0.0, _path.length())
+	var forward := _path.tangent_at(at)
+	var frame := CruiseLane.frame_for(forward)
+	var extents := extents_at(at)
+	var out := frame[0]
+	var offset := extents.x
+	match face:
+		int(Face.LEFT):
+			out = -frame[0]
+		int(Face.ABOVE):
+			out = frame[1]
+			offset = extents.y
+		int(Face.BELOW):
+			out = -frame[1]
+			offset = extents.y
+	var depth := maxf(Tuning.num("exploration/ramp_ring_depth"), 0.01)
+	# The hoop's hole runs along its own Z, so Z is the face normal and the other two
+	# axes are anything perpendicular — here, the road and the remaining direction.
+	var tall := out.cross(forward).normalized()
+	return Transform3D(
+		Basis(forward * diameter, tall * diameter, out * depth),
+		_path.point_at(at) + out * offset)
+
+
+## A hoop around the end of a road, facing along it. This is the portal mouth's
+## surround: the sheen inside it says whether you may use it (ADR 0060), the steel
+## says where it is.
+func _end_ring(along: float, diameter: float) -> Transform3D:
+	var at := clampf(along, 0.0, _path.length())
+	var forward := _path.tangent_at(at)
+	var frame := CruiseLane.frame_for(forward)
+	var depth := maxf(Tuning.num("exploration/ramp_ring_depth"), 0.01)
+	return Transform3D(
+		Basis(frame[0] * diameter, frame[1] * diameter, -forward * depth),
+		_path.point_at(at))
 
 
 ## The clear interior's half-extents at this point. The lane inside is measured
@@ -158,6 +336,15 @@ func extents_at(along: float) -> Vector2:
 	return LaneProfile.extents(along, _path.length(), _full, _mouth,
 		Tuning.num("exploration/portal_flare_length"),
 		_narrows_at_start, _narrows_at_end)
+
+
+## Every aperture in this building, as `[along, face]`. For the gate — nothing in the
+## game asks, and the exit-face rules are only checkable from here.
+func apertures() -> Array:
+	var found: Array = []
+	for i in _pierced_at.size():
+		found.append([_pierced_at[i], _pierced_face[i]])
+	return found
 
 
 func path() -> RoadPath:
@@ -185,7 +372,7 @@ static func open_fraction(module_length: float, rib_thickness: float) -> float:
 
 
 func repaint() -> void:
-	if _ribs == null:
+	if _layers.is_empty():
 		return
 	var shade := Tuning.num("exploration/lane_ramp_shade") if is_ramp else 1.0
 	shade = clampf(shade, 0.0, 1.0)
@@ -194,7 +381,16 @@ func repaint() -> void:
 	var glass := Tuning.color("exploration/structure_glass_color").darkened(
 		1.0 - shade)
 	glass.a = Tuning.num("exploration/structure_glass_alpha")
-	for layer: MultiMeshInstance3D in [_ribs, _plates]:
-		(layer.material_override as StandardMaterial3D).albedo_color = metal
-	for layer: MultiMeshInstance3D in [_bays, _panes]:
-		(layer.material_override as StandardMaterial3D).albedo_color = glass
+	# A RING IS NEVER SHADED DOWN. Everything else on a ramp is drawn darker so the eye
+	# can tell which road leaves the highway (ADR 0076); the ring is the opposite job —
+	# it is the thing that says "the way through is here", and a dimmed signpost is a
+	# worse signpost. Steel, at full brightness, on a mainline and a ramp alike.
+	for key: String in _layers:
+		var mat := (_layers[key] as MultiMeshInstance3D).material_override \
+			as StandardMaterial3D
+		if key == "Rings":
+			mat.albedo_color = Tuning.color("exploration/ramp_ring_color")
+		elif key == "Ribs" or key == "Plates":
+			mat.albedo_color = metal
+		else:
+			mat.albedo_color = glass

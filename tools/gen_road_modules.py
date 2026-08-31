@@ -29,9 +29,10 @@ Godot convention: -Z is forward, +Y is up, +X is starboard.
 Run: python3 tools/gen_road_modules.py   (or `make assets`)
 """
 
+import math
 from pathlib import Path
 
-from objlib import box, write_obj
+from objlib import box, prism, write_obj
 
 OUT = Path(__file__).resolve().parent.parent / "assets" / "models"
 
@@ -48,6 +49,11 @@ DECK = 0.06
 ## The kerb along each edge of the roadway, where the floor meets the wall. Small,
 ## and it is what stops the roadway reading as a floating plane.
 KERB = 0.035
+## How many facets a circle gets. Faceted rather than smooth, matching the cut-crystal
+## read of the hulls, and it keeps every piece a convex solid.
+FACETS = 24
+## How thick the steel of a ring is, as a fraction of its own inner radius.
+RING_STEEL = 0.16
 
 
 def rib_parts():
@@ -92,6 +98,44 @@ def plate_parts():
     ]
 
 
+def ring_parts():
+    """A steel hoop, hole along Z. Authored at INNER DIAMETER 1.0, so an instance
+    scaled uniformly by the ring's diameter has exactly that opening.
+
+    Scaled uniformly, unlike everything else here — a ring marks a mouth you fly
+    through, and a mouth that is an ellipse is a mouth you cannot judge the size of
+    at a glance. It is the one piece whose size is its meaning (ADR 0080).
+    """
+    parts = []
+    inner, outer = 0.5, 0.5 * (1.0 + RING_STEEL)
+    for i in range(FACETS):
+        a = 2.0 * math.pi * i / FACETS
+        b = 2.0 * math.pi * (i + 1) / FACETS
+        face = [
+            (inner * math.cos(a), inner * math.sin(a), -0.5),
+            (outer * math.cos(a), outer * math.sin(a), -0.5),
+            (outer * math.cos(b), outer * math.sin(b), -0.5),
+            (inner * math.cos(b), inner * math.sin(b), -0.5),
+        ]
+        parts.append(prism(face, (0.0, 0.0, 1.0)))
+    return parts
+
+
+def open_bay_parts(missing):
+    """A bay with one face left out, so a ramp can leave through it.
+
+    The whole face, not a hole in it: an interchange opening is full height, and a
+    circular cut in a panel scaled by height and by length is an ellipse. The steel
+    ring placed in the gap is what says how big the mouth actually is.
+    """
+    faces = {
+        "left": box((-(0.5 + PANE * 0.5), 0.0, 0.0), (PANE, 1.0, 1.0)),
+        "right": box((+(0.5 + PANE * 0.5), 0.0, 0.0), (PANE, 1.0, 1.0)),
+        "roof": box((0.0, +(0.5 + PANE * 0.5), 0.0), (1.0, PANE, 1.0)),
+    }
+    return [part for key, part in faces.items() if key != missing]
+
+
 def pane_parts():
     """The median: one pane of glass down the middle, floor to roof.
 
@@ -107,6 +151,10 @@ def main():
         ("road_bay", bay_parts()),
         ("road_plate", plate_parts()),
         ("road_pane", pane_parts()),
+        ("road_ring", ring_parts()),
+        ("road_bay_open_right", open_bay_parts("right")),
+        ("road_bay_open_left", open_bay_parts("left")),
+        ("road_bay_open_top", open_bay_parts("roof")),
     ]:
         write_obj(OUT / ("%s.obj" % name), name, parts, "gen_road_modules.py",
                   uv_scale=1.0)

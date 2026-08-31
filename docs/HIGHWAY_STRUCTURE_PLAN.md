@@ -265,7 +265,7 @@ Depends on C for an interchange to exit at.
 - `C` binds in `data/input_map.json` and toggles. No abort on look.
 - Exit signs: clickable while docked, rebinding the dock to that ramp.
 - HUD line.
-- **ADR 0080** — the road is a dock host; a berth is left deliberately; a sign click
+- **ADR 0082** — the road is a dock host; a berth is left deliberately; a sign click
   is a rail rebind, not a route.
 
 ### E — Deferred to traffic (POC steps 9–10)
@@ -278,7 +278,10 @@ future session would re-derive into a merge planner:
 - **There is no merge logic.** The only rule is an entry clearance check — "make sure
   when the player enters, there does not happen to be a ship there." Same for NPCs
   entering from on-ramps.
-- **ADR 0081** — there is no merge logic, only an entry clearance check.
+- **ADR 0083** — there is no merge logic, only an entry clearance check.
+
+*(ADR numbers shifted by one after step C: rings and exit faces took 0080, and the
+crossing highway's grouping change takes 0081. Numbers are sequential, not reserved.)*
 
 ---
 

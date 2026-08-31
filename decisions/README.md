@@ -126,5 +126,6 @@ The reasoning, including what the alternative was and why it lost.
 | [0077](0077-traffic-runs-on-the-right.md) | Traffic runs on the right, and the deck convention is retired |
 | [0078](0078-the-road-is-built-from-modules.md) | The road is built from modules, and a deck is the lane rather than the building |
 | [0079](0079-glass-is-a-diffuser.md) | The glass is a diffuser, and "visually open" is measured as area |
+| [0080](0080-a-ring-marks-every-way-through.md) | A steel ring marks every way through, and which face a ramp uses is authored |
 
-*Next number: 0080.*
+*Next number: 0081.*

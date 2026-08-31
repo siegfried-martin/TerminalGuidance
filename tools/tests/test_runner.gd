@@ -168,7 +168,8 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/lane_handover_margin", "exploration/lane_ramp_shade",
 	"exploration/structure_module_length", "exploration/structure_rib_thickness",
 	"exploration/structure_glass_alpha", "exploration/structure_metal_color",
-	"exploration/structure_glass_color",
+	"exploration/structure_glass_color", "exploration/ramp_ring_diameter",
+	"exploration/ramp_ring_depth", "exploration/ramp_ring_color",
 	"camera/near_plane", "camera/far_plane",
 	"exploration/deep_seed",
 	"exploration/starfield_count", "exploration/starfield_distance",
@@ -182,8 +183,9 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/deep_dust_max_size", "exploration/deep_dust_color",
 	"exploration/lane_color", "exploration/lane_line_alpha",
 	"exploration/portal_label_metres", "exploration/portal_site_offset",
-	"exploration/ramp_run_length", "exploration/ramp_side_offset",
-	"exploration/ramp_depth",
+	"exploration/ramp_run_length",
+	"exploration/ramp_exit_side_offset", "exploration/ramp_exit_depth",
+	"exploration/ramp_entry_side_offset", "exploration/ramp_entry_depth",
 	"exploration/cruise_spool_seconds", "exploration/cruise_spool_down_seconds",
 	"exploration/depart_speed_fraction",
 	"exploration/planet_radius", "exploration/planet_center_depth",
@@ -3674,13 +3676,83 @@ func _test_exploration_builds() -> void:
 		"%d module instances" % instances)
 	# There is one more collar than there are bays: a collar sits on every joint,
 	# including both ends, which is what makes the road read as a chain of segments
-	# rather than as a striped tube.
+	# rather than as a striped tube. Counted against the module length rather than
+	# against the glazing, because a bay that a ramp goes through is laid as several
+	# pieces and the glazing count is no longer the number of bays.
 	var collars := (pair_built.get_node_or_null("Ribs") as MultiMeshInstance3D)
 	var glazing := (pair_built.get_node_or_null("Bays") as MultiMeshInstance3D)
-	_expect(collars.multimesh.instance_count == glazing.multimesh.instance_count + 1,
+	var expected_bays := maxi(int(pair_built.length()
+		/ Tuning.num("exploration/structure_module_length")), 1)
+	_expect(collars.multimesh.instance_count == expected_bays + 1,
 		"…with a collar on every joint, both ends included",
-		"%d collars for %d bays" % [collars.multimesh.instance_count,
-			glazing.multimesh.instance_count])
+		"%d collars for %d bays" % [collars.multimesh.instance_count, expected_bays])
+	_expect(glazing.multimesh.instance_count >= expected_bays,
+		"…and a bay in every gap between them",
+		"%d bay pieces for %d gaps" % [glazing.multimesh.instance_count,
+			expected_bays])
+
+	# --- RINGS AND EXIT FACES (ADR 0080) ---
+	# Every ramp goes through the mainline's building somewhere, and the building has
+	# to be open where it does. The opening is MEASURED off the ramp's own curve, so
+	# this is also the check that the measurement found every one of them.
+	_expect(pair_built.apertures().size() == ramps.size(),
+		"the building opens once for every ramp that goes through it",
+		"%d openings for %d ramps" % [pair_built.apertures().size(), ramps.size()])
+	# THE EXIT-FACE RULE, asked of each ramp's own curve rather than of the opening it
+	# was given. An exit leaves through a wall or the roof and NEVER through the floor
+	# — the floor is the roadway, and an exit competing with it for the meaning of
+	# "down" is clutter. An entry is the opposite and comes up through the floor,
+	# because merging upward into the only lane there is is unambiguous.
+	#
+	# The entry half is the one that can quietly stop being true: it holds only while
+	# a ramp drops faster, in section-widths, than it swings out — and the exit half
+	# needs exactly the opposite. `ramp_*_depth` against `ramp_*_side_offset` is what
+	# decides each, and all four are sliders. Measured against the road's real curve
+	# rather than a straight one: a ramp is a chord across a bend and bulges outward,
+	# which is where this first went wrong, at system A on the weaving local leg.
+	var exits_downward := ""
+	var entries_not_from_below := ""
+	for ramp: RoadDeck in ramps:
+		var leaving := ramp.has_end_portal
+		var found := RoadNetwork.crossing(pair_built, ramp.path(), leaving)
+		if found.is_empty():
+			continue
+		var face: int = found[1]
+		if leaving and face == int(RoadStructure.Face.BELOW):
+			exits_downward = "%s leaves through the floor" % ramp.name
+		if not leaving and face != int(RoadStructure.Face.BELOW):
+			entries_not_from_below = "%s reaches a wall before the floor" % ramp.name
+	_expect(exits_downward.is_empty(),
+		"no ramp leaves through the FLOOR — down is the roadway, and it is not an exit",
+		exits_downward)
+	_expect(entries_not_from_below.is_empty(),
+		"…and every ramp joins from BELOW, up through the roadway",
+		entries_not_from_below)
+
+	# THE RING PASSES THE LARGEST HULL. This is the check ADR 0068 said the gate should
+	# be able to make and could not: a mouth is round, so what has to clear it is the
+	# hull's DIAGONAL, not its width and height taken separately.
+	var ring := Tuning.num("exploration/ramp_ring_diameter")
+	var carrier := load("res://assets/models/carrier.obj") as Mesh
+	for kind: HullClass.Kind in HullClass.all():
+		var body := carrier.get_aabb().size \
+			* HullClass.num(kind, "hull_scale", "ship/hull_scale")
+		var diagonal := sqrt(body.x * body.x + body.y * body.y)
+		_expect(ring > diagonal * 1.25,
+			"a %s passes through a ramp ring with room around it, corner to corner"
+				% HullClass.name_of(kind),
+			"%.0f m ring against a %.0f m diagonal" % [ring, diagonal])
+	# …and a ring may not be taller than the wall it sits in. A side opening is the
+	# wall's full height, and a hoop bigger than that stands proud of the road.
+	_expect(ring <= Tuning.num("exploration/lane_height"),
+		"…and no bigger than the wall it opens, so it sits in the building",
+		"%.0f m ring in a %.0f m section" % [ring,
+			Tuning.num("exploration/lane_height")])
+	var hoops := pair_built.get_node_or_null("Rings") as MultiMeshInstance3D
+	_expect(hoops != null and hoops.multimesh.instance_count == ramps.size(),
+		"…and every opening actually carries one",
+		"%d rings for %d openings" % [
+			0 if hoops == null else hoops.multimesh.instance_count, ramps.size()])
 
 	# THE BUILDING CONTAINS THE LANES. The pair's interior spans both carriageways and
 	# the gap between them, so the outermost lane edge is exactly its inside face. If

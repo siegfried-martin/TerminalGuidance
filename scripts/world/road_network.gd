@@ -31,6 +31,11 @@ extends Node3D
 ## oncoming lane is on your left from either seat. Nothing here needs to know a
 ## bearing, and no segment declares a deck.
 
+## How finely a ramp is walked when looking for where it goes through the building it
+## leaves. 96 steps over a 2.6 km ramp is a 27 m answer, which is well inside one
+## module. Infrastructure.
+const CROSSING_STEPS := 96
+
 ## How finely a ramp's curve is tessellated. Infrastructure, not feel: enough
 ## segments that the polyline reads as a curve at the scale a ramp is flown, and that
 ## `RoadPath.max_turn_deg_per_metre` measures the ramp rather than the tessellation.
@@ -45,6 +50,9 @@ var _decks: Array[RoadDeck] = []
 ## single building straddling the spine, and every ramp is a building of its own with
 ## one lane in it (ADR 0078). A deck is the lane you fly in; this is what it is inside.
 var _structures: Array[RoadStructure] = []
+## The building over both mainlines. Held because every ramp has to tell it where it
+## goes through, and that cannot be known until the ramp's curve exists.
+var _mainline_structure: RoadStructure = null
 ## The line the whole highway is laid on, in the map's frame. Not a road itself — the
 ## mainlines are this lifted to each deck, and the ramps branch off it.
 var _spine: RoadPath = RoadPath.new()
@@ -78,8 +86,9 @@ func rebuild(spine: PackedVector3Array, centres: Array[Vector3],
 	# outermost lane edge is exactly its inside face.
 	var pair := Vector2(across * 2.0 + Tuning.num("exploration/lane_width"),
 		Tuning.num("exploration/lane_height")) * 0.5
-	_make_structure("StructureMainline", false, true).follow(
-		_lifted(deck_base, 1.0, 0.0), pair, pair, false, false)
+	_mainline_structure = _make_structure("StructureMainline", false, true)
+	_mainline_structure.follow(_lifted(deck_base, 1.0, 0.0), pair, pair,
+		false, false)
 
 	for runs_forward in [true, false]:
 		# The reversed deck runs the other way, sits on the other side of the spine,
@@ -157,8 +166,13 @@ func _build_ramps(centre: Vector3, place: String, sense: float, base: Vector3,
 		across: float, runs_forward: bool, ahead: String, behind: String) -> void:
 	var run := Tuning.num("exploration/ramp_run_length")
 	var gap := Tuning.num("exploration/portal_site_offset")
-	var out := Tuning.num("exploration/ramp_side_offset")
-	var down := Tuning.num("exploration/ramp_depth")
+	# An exit and an entry are different shapes, and this is where that is decided: an
+	# exit swings wide and stays high so it reaches a WALL, an entry sits close in and
+	# drops so it reaches the FLOOR (ADR 0080).
+	var exit_out := Tuning.num("exploration/ramp_exit_side_offset")
+	var exit_down := Tuning.num("exploration/ramp_exit_depth")
+	var entry_out := Tuning.num("exploration/ramp_entry_side_offset")
+	var entry_down := Tuning.num("exploration/ramp_entry_depth")
 	var tightness := Tuning.num("exploration/ramp_curve_tightness")
 	var here: float = _spine.closest(centre)[0]
 	var letter := place.substr(place.length() - 1, 1)
@@ -166,7 +180,8 @@ func _build_ramps(centre: Vector3, place: String, sense: float, base: Vector3,
 
 	if not behind.is_empty():
 		var leaves := _at(here - sense * run, base, sense, across)
-		var off_mouth := _mouth(here - sense * gap, out, down, sense, base, across)
+		var off_mouth := _mouth(here - sense * gap, exit_out, exit_down, sense,
+			base, across)
 		var off_ramp := _make_deck("RampOff" + suffix, runs_forward, false, true)
 		off_ramp.deck_name = "%s off-ramp" % place
 		var off_curve := RoadPath.ramp(leaves[0], leaves[1], off_mouth[0],
@@ -176,9 +191,12 @@ func _build_ramps(centre: Vector3, place: String, sense: float, base: Vector3,
 		# portal at the end it meets the planet.
 		_make_structure("StructureRampOff" + suffix, true, false).follow(
 			off_curve, _lane_section(), _mouth_section(), false, true)
+		# The mainline's wall has to open where this ramp leaves through it.
+		_open_for(off_ramp.path(), true)
 
 	if not ahead.is_empty():
-		var on_mouth := _mouth(here + sense * gap, out, down, sense, base, across)
+		var on_mouth := _mouth(here + sense * gap, entry_out, entry_down, sense,
+			base, across)
 		var rejoins := _at(here + sense * run, base, sense, across)
 		var on_ramp := _make_deck("RampOn" + suffix, runs_forward, true, false)
 		on_ramp.deck_name = "%s to %s on-ramp" % [place, ahead]
@@ -191,6 +209,8 @@ func _build_ramps(centre: Vector3, place: String, sense: float, base: Vector3,
 		on_ramp.follow(on_curve, ahead, place)
 		_make_structure("StructureRampOn" + suffix, true, false).follow(
 			on_curve, _lane_section(), _mouth_section(), true, false)
+		# …and its roadway has to open where this one comes up through it.
+		_open_for(on_ramp.path(), false)
 
 
 ## A point on the mainline and the direction traffic runs there, as `[point, tangent]`.
@@ -222,6 +242,66 @@ func _mouth(along: float, out: float, down: float, sense: float, base: Vector3,
 func _side_of(travel: Vector3) -> Vector3:
 	var side := travel.cross(Vector3.UP)
 	return Vector3.RIGHT if side.length_squared() < 0.000001 else side.normalized()
+
+
+## Open the mainline's building where a ramp goes through it.
+##
+## **Measured, not assumed.** A ramp is a cubic whose shape falls out of four tuned
+## numbers, so where it clears the wall moves the moment any of them moves; an opening
+## placed by arithmetic would drift off its ramp the first time the human touched a
+## slider. Walk the ramp from the end that touches the mainline until it is outside
+## the building, and ask the building where that was.
+##
+## The FACE is **authored**, not chosen. An entry comes up through the floor and
+## nothing else; an exit leaves through whichever wall or roof its own curve reaches,
+## and never the floor (ADR 0080). What is measured is WHERE, and — through
+## `crossing()` — whether the ramp actually obeys the rule it was authored to.
+func _open_for(ramp: RoadPath, leaving: bool) -> void:
+	if _mainline_structure == null or ramp.length() <= 0.0:
+		return
+	var found := crossing(_mainline_structure, ramp, leaving)
+	if found.is_empty():
+		return
+	_mainline_structure.pierce(found[0],
+		found[1] if leaving else RoadStructure.Face.BELOW)
+
+
+## Where a ramp first leaves the building it is inside, walking from the end that
+## touches the mainline, as `[along, face]`. Empty if it never does.
+##
+## **Measured, not assumed.** A ramp is a cubic whose shape falls out of four tuned
+## numbers, so where it clears the wall moves the moment any of them moves; an opening
+## placed by arithmetic would drift off its ramp the first time the human touched a
+## slider.
+##
+## Static and public because the gate needs the same answer: the rule that an entry
+## comes from below is only true if the ramp's curve actually crosses the FLOOR before
+## it crosses a wall, and that is a property of four sliders rather than of this code.
+static func crossing(built: RoadStructure, ramp: RoadPath,
+		leaving: bool) -> Array:
+	var line := built.path()
+	for i in CROSSING_STEPS + 1:
+		var t := float(i) / float(CROSSING_STEPS)
+		var point := ramp.point_at(ramp.length() * (t if leaving else 1.0 - t))
+		var found := line.closest(point)
+		var here: float = found[0]
+		var frame := CruiseLane.frame_for(found[2] as Vector3)
+		var offset: Vector3 = point - (found[1] as Vector3)
+		var extents := built.extents_at(here)
+		var across := offset.dot(frame[0])
+		var up := offset.dot(frame[1])
+		var out_across := absf(across) / maxf(extents.x, 0.001)
+		var out_up := absf(up) / maxf(extents.y, 0.001)
+		if out_across <= 1.0 and out_up <= 1.0:
+			continue
+		var face := RoadStructure.Face.BELOW
+		if out_across >= out_up:
+			face = RoadStructure.Face.RIGHT if across > 0.0 \
+				else RoadStructure.Face.LEFT
+		elif up > 0.0:
+			face = RoadStructure.Face.ABOVE
+		return [here, face]
+	return []
 
 
 ## One carriageway's own half-section, and the narrower one at a portal mouth. Read
