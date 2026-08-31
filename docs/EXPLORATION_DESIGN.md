@@ -38,9 +38,9 @@ These are settled. Do not re-litigate them; raise a flag if implementation revea
 
 - **The road network is a 2D graph presented on a map, realised as 3D tubes in space.** The map is the planning layer; the tube is the driving layer.
 - **Lanes are one-way.** Each direction is a physically separate deck. There is no oncoming traffic in the player's lane.
-- **The two decks are stacked vertically**, upper and lower, visible to each other. From outside, a road reads as one square-ish structure divided into two halves with streaks running opposite ways.
-- **Deck convention:** headings in the arc running clockwise from northwest through north, east, to southeast ride the **upper** deck. Everything else rides the **lower** deck. The mnemonic is *heading into the upper-right half of the map means the upper deck*.
-- **Deck assignment is a property of the authored road segment**, not a runtime function of heading. See *Enforced Invariants* below.
+- **The two carriageways run side by side**, visible to each other across a median. From outside, a road reads as one wide structure divided down the middle, with streaks running opposite ways either side of it. *(Amended 2026-08-31 by ADR 0077 — they were stacked vertically, upper and lower.)*
+- **Traffic runs on the right.** Each carriageway sits to the right of the spine as its own traffic travels, so the oncoming lane is on your left from either driver's seat, at any bearing. This is self-orienting and replaces the retired upper/lower deck convention: which lane is yours is a fact about the section, not a rule to remember.
+- **A carriageway declares nothing but its direction.** There is no deck to assign and nothing to check an assignment against. See *Enforced Invariants* below.
 - **Cross-section is wide and flat**, matching monitor aspect, ship proportions, and the locked-roll control scheme. Shape is a rounded lozenge rather than a rectangle, so no boundary edge is dramatically nearer than another.
 - **The lane boundary is soft.** Drifting out slows the player and pushes them back. It is an incentive, not a wall, and never a hard stop.
 - **Junctions do not exist.** Route choice happens at portals. Exits are frequent enough that a missed turn costs one hop off and back on in the other direction.
@@ -49,7 +49,7 @@ These are settled. Do not re-litigate them; raise a flag if implementation revea
 
 - **Cruise drive is a separate engine with its own fuel source.** It works only on the highway, and it is mandatory there. There is no personal cruise equivalent for open space.
 - **Fuel is tracked only for cruise.** Normal flight is free. Running out of cruise fuel means *slow*, never *immobilised*.
-- **Portals are the only way on and off.** A portal is a large square structure, unmissable, in shimmering material carrying the name of the system it leads toward. Two portals are stacked at each site, one per direction, so which is which is visible before entry and matches the map.
+- **Portals are the only way on and off.** A portal is a large square structure, unmissable, in shimmering material carrying the name of the system it leads toward. There is one portal per direction at each site, on that direction's own side of the road, so which is which is visible before entry and matches the map. *(They were stacked; ADR 0077 put the carriageways side by side.)*
 - **Portals open automatically for anyone entitled to use them.** Drive in. No docking sequence, no menu, no request-and-wait. Entry latency is a design constraint, not a visual choice — see *Two-Tier Network*.
 - **Faction-owned portals deny access to those who have broken that faction's laws.** This is a designed consequence of the reputation system, not a lockout: pirate and unaligned gateways exist and serve the outlaw playstyle.
 - **Portals exist in deep space as well as in systems**, including roads that dead-end at portals under construction. Deep-space exit points are among the more dangerous places in the game.
@@ -148,10 +148,10 @@ This list is illustrative. Actual ships emerge from faction catalogues.
 
 These are machine-checkable and belong in headless tests.
 
-1. **No road segment's heading may cross the northwest–southeast divider.** A route that must turn that far is either split into two segments joined at a portal, or is authored with a **physical twist** where the two decks roll past each other. The twist is the preferred resolution: the invariant never breaks, the player watches it happen, and it makes a landmark. A test walks the road graph and asserts every segment's declared deck matches its orientation.
-   - **Consequence:** long ring roads are illegal unless built as a chain of twists. X4's signature ring road could not exist here.
-   - **Worldbuilding hook:** placing the two major faction capitals in the southwest and northeast corners puts trunk roads perpendicular to the divider, so ordinary traffic stays far from it and twists remain rare and special.
-   - **Why enforce hard:** the convention's real value is as a mistake-catcher — *"I'm heading east, why am I on the lower deck?"* One exception and players stop trusting it, at which point it is worse than no rule.
+1. **No road may bend tighter than the two carriageways are far apart.** Minimum curve radius must exceed `deck_separation`. The carriageways are offset sideways from the spine, so through a bend the inner one is genuinely shorter than the outer — which is what a divided highway does, and is fine until the radius drops below the offset, at which point the inner lane folds through itself and stops being a lane. A test measures the spine's own `max_turn_deg_per_metre` against the separation. *(Replaced 2026-08-31 by ADR 0077. It was: no road segment's heading may cross the northwest–southeast divider, resolved by a physical twist where the two decks roll past each other.)*
+   - **Consequence:** long ring roads are now **legal**. The old invariant forbade a road from turning more than 180 degrees over its whole length, which made X4's signature ring road impossible here; right-hand traffic is self-orienting at every bearing, so nothing breaks when a road comes back on itself.
+   - **What was lost:** the twist as a landmark, and the mistake-catcher the convention was for. Neither is needed — the section itself says which lane is yours.
+   - **Why enforce hard:** a folded lane is not a tuning problem. It is geometry that has stopped being a road, and no feel value can rescue it.
 
 2. **The ship speed ceiling is per hull class, not global.** `manual_speed_ceiling_fraction` currently enforces one global missile-faster-than-ship ratio. At the ladder above, a taxi is 0.27× missile speed and a fighter is 0.67×. One value cannot express both. The invariant it protects changes from *"missiles outrun ships"* to *"a missile outruns its intended targets."* Do not widen the global clamp until fighters fit.
 

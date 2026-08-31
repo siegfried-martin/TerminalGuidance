@@ -25,6 +25,13 @@ from anywhere inside it.
 ADR 0074's *"Do not draw the shell on every deck"* is superseded. Everything else in
 0074 stands, including the alpha ceiling and the build-once rule.
 
+> *Amended again by ADR 0077, and the decision is still unchanged.* The carriageways
+> are side by side now, so the shared face is the **left of both of them** rather than
+> one deck's floor and the other's roof. The gradient still runs toward it from both,
+> and `shade()` lost its deck argument in the process: one function answers for both
+> sides, so the seam matches by construction instead of by two mirrored cases
+> agreeing. The mechanism is otherwise untouched.
+
 ## Why
 
 **One lane lit produced a bug that reads as a rendering fault.** Taking a ramp hands

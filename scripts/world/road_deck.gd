@@ -2,9 +2,14 @@ class_name RoadDeck
 extends Node3D
 ## One stretch of road in one direction: a mainline, or a ramp on or off one.
 ##
-## Lanes are **one-way**, and each direction is a physically separate deck stacked
-## above or below the other, visible to each other. There is no oncoming traffic in
-## the player's lane, ever, and that is structural rather than a spawn rule.
+## Lanes are **one-way**, and each direction is a physically separate deck laid
+## BESIDE the other, visible to each other. There is no oncoming traffic in the
+## player's lane, ever, and that is structural rather than a spawn rule.
+##
+## **Traffic runs on the right** (ADR 0077). Every deck sits to the right of the
+## spine as its own traffic travels, so the oncoming deck is on its left from either
+## driver's seat, at any bearing, in any frame. That is what retired the upper/lower
+## deck convention: the section says which side you are on without a rule to remember.
 ##
 ## The lane is **visually open** (ADR 0057): ribs and rails define it, and the system
 ## and the space around it stay rendered and visible from inside. An opaque tunnel
@@ -37,11 +42,14 @@ const LANE_LINE_COUNT := 16
 const SHELL_STATION_METRES := 120.0
 
 var deck_name: String = "deck"
-## Upper or lower, per the deck convention. **Declared, not derived** — a road
-## segment carries its deck, and a test asserts the declaration matches the
-## orientation. The convention's value is as a mistake-catcher ("I'm heading east,
-## why am I on the lower deck?"), and one exception makes it worse than no rule.
-var is_upper: bool = true
+## Which way along the spine this deck's traffic runs. It is a grouping key and
+## nothing else: the union may only ever consider decks that agree on it, so
+## "no oncoming traffic in your lane" stays structural (ADR 0067).
+##
+## It is NOT a deck convention and carries no side information — right-hand traffic
+## already puts each deck on its own right, so nothing has to be declared or checked
+## against a heading (ADR 0077).
+var runs_forward: bool = true
 ## Which ends carry a way on or off. A mainline has neither: it is joined and left
 ## through the ramps, which is what makes the highway continuous through a system
 ## rather than something that stops at each one (ADR 0065).
@@ -119,14 +127,6 @@ func _make_material() -> StandardMaterial3D:
 	# is a lane the player cannot learn.
 	mat.vertex_color_use_as_albedo = true
 	return mat
-
-
-## The deck convention: headings in the arc running clockwise from northwest through
-## north and east to southeast ride the UPPER deck; everything else rides the lower.
-## Bearings are 0 at -Z, counting clockwise, so that arc is 315 deg round to 135.
-static func rides_upper(bearing_deg: float) -> bool:
-	var bearing := fposmod(bearing_deg, 360.0)
-	return bearing <= 135.0 or bearing >= 315.0
 
 
 ## Lay this deck along a path, in the map's frame.
@@ -303,8 +303,8 @@ func _rings_along(span: float, spacing: float) -> PackedVector3Array:
 ##
 ## Flat colour was the thing that stopped it reading as a tunnel: the human could not
 ## say which part of the sheen was left, right, above or below, because every part of
-## it was the same. A road has a floor. This gives it one, and darkens the roof, so
-## the section has an up and a down from anywhere inside it.
+## it was the same. This gives the section a median and an outboard face, so it has a
+## left and a right from anywhere inside it.
 func _shell_along(span: float) -> ArrayMesh:
 	var count := maxi(int(span / SHELL_STATION_METRES), 1)
 	var shades := _section_shades()
@@ -341,12 +341,12 @@ func _shell_along(span: float) -> ArrayMesh:
 ## The colour of each point around the section: a GRADIENT from the deck's outer face
 ## to the face it shares with the other deck.
 ##
-## The two decks are stacked flush, so the shared face is the bottom of the upper deck
-## and the top of the lower one. Running the gradient toward it on both means the seam
-## between them is one colour from either side — a red stripe down the middle of the
-## stack, which is the lane divider a divided highway actually has. From outside it
-## marks where the two roads meet; from inside it tells you which deck you are on and
-## which way is up, because the gradient runs the opposite way on each.
+## The two decks sit flush SIDE BY SIDE, and traffic runs on the right, so the shared
+## face is each deck's own LEFT (ADR 0077). Running the gradient toward it on both
+## means the seam between them is one colour from either side — a red stripe down the
+## middle of the pair, which is the lane divider a divided highway actually has. From
+## outside it marks where the two roads meet; from inside it is the median, and it is
+## on your left because it always is.
 ##
 ## That is also the answer to why a flat tube did not read as a tunnel: with every part
 ## of the sheen identical there is no left, right, above or below to be told apart.
@@ -360,21 +360,25 @@ func _section_shades() -> PackedColorArray:
 	var bias := clampf(Tuning.num("exploration/lane_shell_divider_bias"), 0.0, 1.0)
 	var shades := PackedColorArray()
 	for s in RIB_SEGMENTS:
-		# `_lozenge` measures from +right, so this is 1 at the floor and 0 at the roof.
-		var down := (1.0 - sin(TAU * float(s) / float(RIB_SEGMENTS))) * 0.5
-		shades.append(shade(down, is_upper, outer, divider, bias))
+		# `_lozenge` measures from +right, so this is 0 on the outboard face and 1 on
+		# the median. No deck flag: the median is on the left of BOTH decks.
+		var inward := (1.0 - cos(TAU * float(s) / float(RIB_SEGMENTS))) * 0.5
+		shades.append(shade(inward, outer, divider, bias))
 	return shades
 
 
-## One point's colour, given how far DOWN the section it sits, 0 at the roof and 1 at
-## the floor. Pure and static, so the gate can check that the two decks actually meet
-## in the same colour rather than inferring it from a rendered frame.
-static func shade(down: float, upper: bool, outer: Color, divider: Color,
+## One point's colour, given how far ACROSS the section it sits toward the median: 0
+## on the outboard face, 1 on the face shared with the oncoming deck. Pure and static,
+## so the gate can check that the two decks actually meet in the same colour rather
+## than inferring it from a rendered frame.
+##
+## There is no deck argument. Right-hand traffic puts the median on the left of both
+## decks, so one function answers for both and the seam matches by construction rather
+## than by two mirrored cases agreeing (ADR 0077).
+static func shade(inward: float, outer: Color, divider: Color,
 		bias: float) -> Color:
-	# The shared face is BELOW the upper deck and ABOVE the lower one.
-	var toward := down if upper else 1.0 - down
-	var tint := outer.lerp(divider, toward)
-	tint.a = lerpf(1.0 - bias, 1.0 + bias, toward)
+	var tint := outer.lerp(divider, inward)
+	tint.a = lerpf(1.0 - bias, 1.0 + bias, inward)
 	return tint
 
 

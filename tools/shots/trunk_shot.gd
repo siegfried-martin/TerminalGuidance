@@ -33,7 +33,7 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	if _scene == null or _scene.map().road() == null:
 		return
-	var main := _scene.map().road().get_node_or_null("MainlineUpper") as RoadDeck
+	var main := _scene.map().road().get_node_or_null("MainlineForward") as RoadDeck
 	if main == null or _scene.map().links().size() < 2:
 		return
 	var trunk := _scene.map().links()[1]

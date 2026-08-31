@@ -120,16 +120,16 @@ Faction ownership of portals, reputation gating, the economy, missions, combat (
 - **B → C is a trunk leg**, ~40 km, ~6.9 min at cruise.
 - Each system is a disc **3–4 km in diameter** with the existing ceiling/floor treatment.
 - Each system has **one planet** with a docking envelope.
-- Each system has **portals at both ends** where a road connects, stacked upper/lower per the deck convention.
+- Each system has **portals at both ends** where a road connects, one per direction, each on its own carriageway's side of the road (ADR 0077; they were stacked upper/lower until 2026-08-31).
 - Roads must **curve** — at minimum the trunk leg needs sustained curvature and at least one elevation change. A straight trunk road cannot test success criterion 1.
-- The **northwest–southeast divider** is not exercised by a straight line. Author the trunk leg with enough curvature to make the deck convention visible, but do not cross the divider. The twist mechanic is out of scope for this POC.
+- ~~The **northwest–southeast divider**…~~ *Retired 2026-08-31 by ADR 0077: traffic runs on the right, the deck convention is gone, and there is no divider. What the trunk leg's curvature must now respect is a floor — no bend tighter than `deck_separation`. See `EXPLORATION_DESIGN.md`, Enforced Invariants #1.*
 
 ### In scope
 
 1. **System discs** — three, per above, with existing boundary treatment. Empty except for a planet and reference geometry.
 2. **Planet docking** — approach envelope with an abortable landing sequence, no auto-steer, per the locked decision. Docking gives a screen with: refuel cruise tank, refill missile magazine, and depart. Nothing else.
 3. **Highway tube** — rounded-lozenge cross-section, wide and flat. Soft lane boundary that slows and pushes back. Visually open — the system and surrounding space are visible from inside.
-4. **Portals** — large square structures, unmissable, shimmering material carrying the destination system name. Two stacked per site, one per direction, visibly distinguishable. **Entry is instant on contact.** No alignment sequence, no docking animation, no confirmation prompt.
+4. **Portals** — large square structures, unmissable, shimmering material carrying the destination system name. Two per site, one per direction, on opposite sides of the road, visibly distinguishable. **Entry is instant on contact.** No alignment sequence, no docking animation, no confirmation prompt.
 5. **Cruise drive** — engages automatically on portal entry, disengages on exit. Works nowhere else. Consumes cruise fuel.
 6. **Cruise camera and control** — camera fixed to road heading, player steering clamped to a maximum angle off the road axis. Throttle is still the player's.
 7. **Cruise fuel** — a tracked resource with a gauge. Empty means cruise cannot engage; normal flight is unaffected and free.
@@ -249,5 +249,5 @@ Expected scale: larger than the combat POC. Steps 3, 6, and 8 are the substantia
 - **Autopilot arc speed and enemy drift must become fractions of hull maximum**, not absolutes, before the corrected taxi speed lands. See Enforced Invariants #3 and #4. At 15.5 m/s taxi speed the existing absolute values invert the intended relationships.
 - **The tube must not become a loading screen.** Floating origin and collision-on-real-meshes-only apply inside the highway exactly as everywhere else. The lane is visually open and the surrounding space is real. See `EXPLORATION_DESIGN.md`, Enforced Invariants #6.
 - **Weapons-disabled is a rule of the zone, not NPC behaviour.** Implement it as a property of being in cruise, checked in one place.
-- **The deck convention is not exercised by this map**, but the data model should already carry a declared deck per segment rather than computing it from heading. See Enforced Invariants #1.
+- ~~**The deck convention is not exercised by this map**…~~ *Retired 2026-08-31 by ADR 0077. There is no deck to declare: right-hand traffic makes the side a consequence of the direction, and `runs_forward` is a grouping key that carries nothing else. Do not reintroduce a declared deck.*
 - **Flag, do not resolve, scope questions.** Several omissions here are deferrals rather than decisions — no faction access control, no comms chatter, no junctions. Do not write ADRs asserting these do not exist.

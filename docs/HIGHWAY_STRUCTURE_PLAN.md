@@ -196,9 +196,15 @@ not", not widening the push.
 
 One PR each, in this order, because each sits on the one before.
 
-### A — The section flips
+### A — The section flips ✅ built 2026-08-31 (ADR 0077)
 
 Side by side, right-hand traffic. No new art; the same shell, moved.
+
+*Landed as planned. Two things worth carrying into B: `shade()` lost its deck argument
+entirely, because the median is on the left of both carriageways — one function
+answers for both and the seam matches by construction. And `deck_separation` moved
+150 → 240 to stay flush against `lane_width` rather than `lane_height`, which is the
+first of the number shifts below.*
 
 - `RoadDeck.is_upper` → `runs_forward`. `rides_upper()` deleted.
 - `RoadNetwork.rebuild` / `_lifted`: lateral offset per point from `travel.cross(UP)`,

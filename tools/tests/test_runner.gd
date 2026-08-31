@@ -2477,10 +2477,10 @@ func _test_lane_geometry() -> void:
 	_expect(lane_height < lane_width,
 		"the lane is wider than it is tall — monitor aspect, and roll is locked",
 		"%.0f wide x %.0f tall" % [lane_width, lane_height])
-	_expect(Tuning.num("exploration/deck_separation") >= lane_height,
-		"the two decks are separated by more than one deck's height, so they do not intersect",
-		"separation %.0f vs height %.0f" % [
-			Tuning.num("exploration/deck_separation"), lane_height])
+	_expect(Tuning.num("exploration/deck_separation") >= lane_width,
+		"the two decks are separated by more than one deck's WIDTH, so they do not intersect",
+		"separation %.0f across vs width %.0f" % [
+			Tuning.num("exploration/deck_separation"), lane_width])
 	_expect(Tuning.num("exploration/lane_edge_softness") < lane_width * 0.5,
 		"the soft edge is a gradient, not the whole lane",
 		"softness %.0f against a half-width of %.0f" % [
@@ -2527,12 +2527,13 @@ func _test_lane_geometry() -> void:
 		"%.1f s of entry sequence" % Tuning.num("exploration/portal_entry_seconds"))
 
 	# The corridor has to hold both decks with room around them, or "the lane is
-	# visually open" is not true and the tube has become a tunnel.
-	var stack := Tuning.num("exploration/deck_separation") + lane_height
-	_expect(Tuning.num("exploration/corridor_diameter") > stack * 1.5,
-		"the bounded corridor is bigger than the road stacked inside it",
-		"corridor %.0f against a %.0f m stack" % [
-			Tuning.num("exploration/corridor_diameter"), stack])
+	# visually open" is not true and the tube has become a tunnel. The decks are side
+	# by side, so the widest the road gets is ACROSS, not up.
+	var span := Tuning.num("exploration/deck_separation") + lane_width
+	_expect(Tuning.num("exploration/corridor_diameter") > span * 1.5,
+		"the bounded corridor is bigger than the road laid inside it",
+		"corridor %.0f against a %.0f m span" % [
+			Tuning.num("exploration/corridor_diameter"), span])
 	var disc_height := Tuning.num("exploration/system_ceiling_height") \
 		+ Tuning.num("exploration/system_floor_depth")
 	_expect(disc_height < Tuning.num("exploration/system_diameter"),
@@ -2933,31 +2934,14 @@ func _test_disc_bounds() -> void:
 		"surface at %+.0f" % surface)
 
 
-## The road (POC step 6): the lane, the portals, and the deck convention. What is
+## The road (POC step 6): the lane, the portals, and the two carriageways. What is
 ## under test is that the highway is a PLACE rather than a travel mode — every
 ## property ADR 0057 asks a review to check is checkable here.
+##
+## There is no deck-convention test any more. Traffic runs on the right and each deck
+## sits on its own right, so which side a deck is on is a consequence of which way it
+## goes rather than a rule to be declared and checked against a heading (ADR 0077).
 func _test_the_road() -> void:
-	# --- the deck convention ---
-	# Headings in the arc clockwise from northwest through north and east to
-	# southeast ride the upper deck. Its value is entirely as a mistake-catcher —
-	# "I am heading east, why am I on the lower deck?" — so one exception makes it
-	# worse than no rule, and the boundary cases are the whole test.
-	_expect(RoadDeck.rides_upper(0.0) and RoadDeck.rides_upper(90.0)
-			and RoadDeck.rides_upper(135.0) and RoadDeck.rides_upper(315.0)
-			and RoadDeck.rides_upper(350.0),
-		"north, east and the arc between them ride the UPPER deck",
-		"the arc is wrong")
-	_expect(not RoadDeck.rides_upper(180.0) and not RoadDeck.rides_upper(270.0)
-			and not RoadDeck.rides_upper(136.0) and not RoadDeck.rides_upper(314.0),
-		"…and south, west and the arc between them ride the lower",
-		"the other half is wrong")
-	_expect(RoadDeck.rides_upper(90.0) != RoadDeck.rides_upper(270.0),
-		"…so a leg and its return are never on the same deck",
-		"both directions landed on one deck")
-	_expect(RoadDeck.rides_upper(-90.0) == RoadDeck.rides_upper(270.0),
-		"…and a bearing outside 0-360 wraps rather than falling off the arc",
-		"a negative bearing was not normalised")
-
 	# --- the lane's cross-section ---
 	var lane := CruiseLane.new()
 	lane.axis = Vector3.RIGHT
@@ -3139,14 +3123,14 @@ func _test_the_road() -> void:
 		"cruise outruns the fastest hull, so the road is worth the detour to it",
 		"%.1f m/s cruise vs %.1f fighter" % [Tuning.num("exploration/cruise_speed"),
 			Tuning.num("exploration/fighter_max_speed")])
-	# The decks are stacked and must not intersect, or the lanes stop being separate
-	# and "no oncoming traffic in your lane" quietly stops being structural.
+	# The decks sit side by side and must not intersect, or the lanes stop being
+	# separate and "no oncoming traffic in your lane" quietly stops being structural.
 	_expect(Tuning.num("exploration/deck_separation")
-			>= Tuning.num("exploration/lane_height"),
-		"the two decks are stacked clear of each other — one-way lanes stay separate",
+			>= Tuning.num("exploration/lane_width"),
+		"the two decks run clear of each other — one-way lanes stay separate",
 		"%.0f m apart for %.0f m of lane" % [
 			Tuning.num("exploration/deck_separation"),
-			Tuning.num("exploration/lane_height")])
+			Tuning.num("exploration/lane_width")])
 
 
 ## The exploration scene builds its nodes. Same gate the arena and sandbox get: a
@@ -3188,11 +3172,11 @@ func _test_exploration_builds() -> void:
 			"SystemRoot/SystemMap/DiscC", "SystemRoot/SystemMap/PlanetC",
 			"SystemRoot/SystemMap/LinkBC",
 			"SystemRoot/SystemMap/Road",
-			"SystemRoot/SystemMap/Road/MainlineUpper",
-			"SystemRoot/SystemMap/Road/MainlineLower",
-			"SystemRoot/SystemMap/Road/RampOnAUpper",
-			"SystemRoot/SystemMap/Road/RampOffBUpper",
-			"SystemRoot/SystemMap/Road/RampOnBLower",
+			"SystemRoot/SystemMap/Road/MainlineForward",
+			"SystemRoot/SystemMap/Road/MainlineReverse",
+			"SystemRoot/SystemMap/Road/RampOnAForward",
+			"SystemRoot/SystemMap/Road/RampOffBForward",
+			"SystemRoot/SystemMap/Road/RampOnBReverse",
 			"SystemRoot/Ship", "ChaseCamera", "DebugHud"]:
 		_expect(scene.get_node_or_null(path) != null,
 			"exploration builds " + path, "missing")
@@ -3341,9 +3325,33 @@ func _test_exploration_builds() -> void:
 	_expect(mainlines.size() == 2,
 		"there is one mainline per direction, spanning the whole map",
 		"%d mainlines" % mainlines.size())
-	_expect(mainlines[0].is_upper != mainlines[1].is_upper,
-		"…on opposite decks, so there is never oncoming traffic in the player's lane",
-		"both on the %s deck" % ("upper" if mainlines[0].is_upper else "lower"))
+	_expect(mainlines[0].runs_forward != mainlines[1].runs_forward,
+		"…running opposite ways, so there is never oncoming traffic in the player's lane",
+		"both run %s" % ("forward" if mainlines[0].runs_forward else "reversed"))
+	# …and they are laid on opposite sides of the spine, which is what right-hand
+	# traffic MEANS here. Sampled at the middle of the map, where the spine is not
+	# near either end and the answer is unambiguous.
+	var middle: Vector3 = road.spine().point_at(road.spine().length() * 0.5)
+	var forward: RoadDeck = mainlines[0] if mainlines[0].runs_forward else mainlines[1]
+	var reverse: RoadDeck = mainlines[1] if mainlines[0].runs_forward else mainlines[0]
+	var spine_across: Vector3 = road.spine().tangent_at(
+		road.spine().length() * 0.5).cross(Vector3.UP).normalized()
+	var forward_side: float = (forward.path().closest(middle)[1] - middle).dot(
+		spine_across)
+	var reverse_side: float = (reverse.path().closest(middle)[1] - middle).dot(
+		spine_across)
+	_expect(forward_side > 0.0 and reverse_side < 0.0,
+		"…each on the RIGHT of its own direction of travel — traffic runs on the right",
+		"forward deck %+.0f m across, reverse deck %+.0f m" % [
+			forward_side, reverse_side])
+	# And what that buys: the oncoming deck is on your LEFT, from either seat. This is
+	# the property that replaced the upper/lower convention, so it is the one asserted.
+	var forward_travel: Vector3 = forward.path().closest(middle)[2]
+	var toward_oncoming: Vector3 = reverse.path().closest(middle)[1] \
+		- forward.path().closest(middle)[1]
+	_expect(toward_oncoming.dot(forward_travel.cross(Vector3.UP)) < 0.0,
+		"…so the oncoming lane is on your left, with no convention to remember",
+		"the oncoming deck came out on the right")
 	# Four ramps at a system the road passes through, two at each end of the line — a
 	# ramp that serves nobody is not built, because it would be an opening onto a road
 	# with no traffic and a sign with no name on it.
@@ -3378,18 +3386,24 @@ func _test_exploration_builds() -> void:
 	# THE thing the reshape was for: the mainline passes through every system's
 	# middle. A road that stopped at each one would put every arrival a
 	# system-crossing from the only thing worth arriving for.
+	# It no longer passes through the exact centre: the carriageways sit half a
+	# separation either side of the spine, and the SPINE is what runs through the
+	# middle. So what is checked is that the mainline holds its own side of it all the
+	# way, rather than wandering across the median or drifting off the system.
 	var runs_through := true
-	var worst_offset := 0.0
+	var own_side := Tuning.num("exploration/deck_separation") * 0.5
+	var worst_drift := 0.0
 	for i in map.systems().size():
 		var lane := mainlines[0].sample(map.system_center(i))
-		worst_offset = maxf(worst_offset, absf(lane.lateral))
+		worst_drift = maxf(worst_drift, absf(absf(lane.lateral) - own_side))
 		if lane.metres_travelled <= 0.0 or lane.metres_remaining <= 0.0:
 			runs_through = false
 	_expect(runs_through,
 		"the mainline runs THROUGH every system, ending at neither of them",
 		"it stops inside one")
-	_expect(worst_offset < 1.0,
-		"…straight down the middle of each, laterally", "%.1f m off" % worst_offset)
+	_expect(worst_drift < 1.0,
+		"…holding its own carriageway past each, half a separation off the spine",
+		"%.1f m off its side" % worst_drift)
 	_expect(mainlines[0].length() > map.system_center(0).distance_to(
 			map.system_center(map.systems().size() - 1)),
 		"…and out past the far rim at each end, rather than stopping at a centre",
@@ -3441,39 +3455,44 @@ func _test_exploration_builds() -> void:
 		"…and leaves and arrives exactly on the bearing, so the mouths do not move",
 		"%.3f in, %.3f out" % [trunk_line.tangent_at(0.0).dot(on_bearing),
 			trunk_line.tangent_at(trunk_line.length()).dot(on_bearing)])
-	# The deck convention is DECLARED per segment, not derived from heading, and this
-	# map deliberately does not cross the northwest-southeast divider. A weave wide
-	# enough to cross it would put a stretch of the upper deck on a heading that says
-	# lower, and the convention's whole value is as a mistake-catcher.
-	var crosses := false
-	for point: Vector3 in trunk_line.points:
-		var heading := trunk_line.tangent_at(trunk_line.closest(point)[0])
-		if not RoadDeck.rides_upper(
-				rad_to_deg(atan2(heading.x, -heading.z))):
-			crosses = true
-	_expect(not crosses,
-		"…and never weaves across the deck divider, which this map must not cross",
-		"the trunk leg crosses from the upper arc into the lower")
+	# THE CURVE RADIUS FLOOR. The two carriageways are offset SIDEWAYS from the spine
+	# now, so the inner one is shorter than the outer through every bend — which is
+	# what a divided highway does, and is fine until the bend is tighter than the
+	# offset. At a radius below the separation the inner carriageway folds through
+	# itself and the lane stops being a lane. This replaces the northwest-southeast
+	# divider invariant, which right-hand traffic retired (ADR 0077).
+	var turn := trunk_line.max_turn_deg_per_metre()
+	var radius := INF if turn <= 0.0 else 180.0 / (PI * turn)
+	_expect(radius > Tuning.num("exploration/deck_separation"),
+		"…and never bends tighter than the two carriageways are far apart",
+		"a %.0f m radius against a %.0f m separation" % [
+			radius, Tuning.num("exploration/deck_separation")])
 	# The corridor is the space AROUND the road, so it has to still contain it once
-	# both curve. The lane's far corner on the upper deck is the worst case.
-	var stacked := Tuning.num("exploration/deck_separation") * 0.5 \
-		+ Tuning.num("exploration/lane_height") * 0.5
+	# both curve. The far top corner of the outboard lane is the worst case, and it is
+	# now a diagonal: half the separation plus half the width across, half the height up.
+	var out_across := Tuning.num("exploration/deck_separation") * 0.5 \
+		+ Tuning.num("exploration/lane_width") * 0.5
+	var up_by := Tuning.num("exploration/lane_height") * 0.5
 	var worst_escape := -INF
 	for i in 40:
 		var along := trunk_line.length() * float(i) / 39.0
-		worst_escape = maxf(worst_escape, trunk.region().depth(
-			trunk_line.point_at(along) + Vector3.UP * stacked))
+		var across := trunk_line.tangent_at(along).cross(Vector3.UP).normalized()
+		for side: float in [1.0, -1.0]:
+			worst_escape = maxf(worst_escape, trunk.region().depth(
+				trunk_line.point_at(along) + across * side * out_across
+					+ Vector3.UP * up_by))
 	_expect(worst_escape < 0.0,
-		"…and the corridor still contains the road stacked inside it, all the way",
-		"the lane's top corner is %.1f m outside the corridor" % worst_escape)
+		"…and the corridor still contains the road laid inside it, all the way",
+		"the lane's far corner is %.1f m outside the corridor" % worst_escape)
 
 	# --- where the road SITS (2026-08-30) ---
 	# High, not through the middle. Two things bound it and both are cheap to get
 	# wrong by nudging one slider: the ceiling above, and the planet's approach
 	# envelope below — which the road must never enter, or riding the highway arms a
 	# landing nobody asked for (ADR 0012).
+	# Side by side, so the roof is the lane's own half-height above the road's centre.
+	# The separation is an ACROSS measurement now and adds nothing here.
 	var stack_top := Tuning.num("exploration/road_height") \
-		+ Tuning.num("exploration/deck_separation") * 0.5 \
 		+ Tuning.num("exploration/lane_height") * 0.5
 	var head_room := Tuning.num("exploration/system_ceiling_height") - stack_top
 	_expect(head_room > Tuning.num("exploration/bounds_warning_band"),
@@ -3483,7 +3502,7 @@ func _test_exploration_builds() -> void:
 	_expect(Tuning.num("exploration/road_height")
 			> Tuning.num("exploration/lane_height"),
 		"…and rides ABOVE the combat plane rather than straddling it",
-		"stack centred at %.0f m" % Tuning.num("exploration/road_height"))
+		"the road is centred at %.0f m" % Tuning.num("exploration/road_height"))
 	var envelope := Tuning.num("exploration/approach_envelope_radius")
 	var nearest_envelope := INF
 	for deck in road.decks():
@@ -3516,7 +3535,7 @@ func _test_exploration_builds() -> void:
 			"" if mismatched.is_empty() else ", %s disagrees" % mismatched])
 	_expect(mainlines[0].is_active() and not mainlines[1].is_active(),
 		"…and never both directions at once",
-		"upper %s, lower %s" % [mainlines[0].is_active(), mainlines[1].is_active()])
+		"first %s, second %s" % [mainlines[0].is_active(), mainlines[1].is_active()])
 	map.road().set_active(null)
 
 	# --- a handover cannot hand you a lane you could not steer onto (ADR 0072) ---
@@ -3525,9 +3544,9 @@ func _test_exploration_builds() -> void:
 	# a cone around the road every frame, so thirty degrees arrived in one of them.
 	var probe := map.system_center(1) + Vector3.UP * Tuning.num("exploration/road_height")
 	var main_axis: Vector3 = mainlines[0].sample(probe).axis
-	var free_pick := road.governing(probe, mainlines[0].is_upper, null,
+	var free_pick := road.governing(probe, mainlines[0].runs_forward, null,
 		Vector2.ZERO, Vector3.ZERO)
-	var aligned_pick := road.governing(probe, mainlines[0].is_upper, null,
+	var aligned_pick := road.governing(probe, mainlines[0].runs_forward, null,
 		Vector2.ZERO, main_axis)
 	_expect(free_pick != null and aligned_pick != null,
 		"a deck governs the middle of an interchange either way", "nothing does")
@@ -3536,10 +3555,10 @@ func _test_exploration_builds() -> void:
 	# the ramp hands over because it has ended, the union hands straight back because
 	# the ramp is still the nearest thing, and the two alternate every frame until the
 	# ship falls off the road. That is the stutter at an exit ramp (ADR 0076).
-	var an_on_ramp := road.get_node_or_null("RampOnBUpper") as RoadDeck
+	var an_on_ramp := road.get_node_or_null("RampOnBForward") as RoadDeck
 	if an_on_ramp != null:
 		var at_the_top: Vector3 = an_on_ramp.path().finish()
-		var after := road.governing(at_the_top, an_on_ramp.is_upper, null,
+		var after := road.governing(at_the_top, an_on_ramp.runs_forward, null,
 			Vector2.ZERO, an_on_ramp.path().tangent_at(an_on_ramp.length()))
 		_expect(after != null and after != an_on_ramp,
 			"a ramp that has ended does not govern the point it ended at — something else does",
@@ -3587,8 +3606,8 @@ func _test_exploration_builds() -> void:
 
 	# A ramp has to MEET the mainline tangentially, or joining it is a corner the
 	# steering cone cannot turn.
-	var on_ramp := road.get_node_or_null("RampOnBUpper") as RoadDeck
-	_expect(on_ramp != null, "system B has an on-ramp on the upper deck", "missing")
+	var on_ramp := road.get_node_or_null("RampOnBForward") as RoadDeck
+	_expect(on_ramp != null, "system B has an on-ramp on the forward deck", "missing")
 	if on_ramp != null:
 		var merge := on_ramp.path().tangent_at(on_ramp.length())
 		var main := mainlines[0].sample(on_ramp.path().finish()).axis
@@ -3616,25 +3635,29 @@ func _test_exploration_builds() -> void:
 		"idle %.3f against active %.3f" % [
 			Tuning.num("exploration/lane_shell_idle_alpha"),
 			Tuning.num("exploration/lane_shell_alpha")])
-	# THE DIVIDER. The decks are stacked flush, so the upper deck's FLOOR and the lower
-	# deck's ROOF are the same surface, and the gradient has to arrive at the same
-	# colour from both sides or the stripe is only a stripe from one of them.
+	# THE MEDIAN. The decks sit flush side by side and traffic runs on the right, so
+	# the shared face is the LEFT of both of them. `shade` therefore takes no deck
+	# argument at all — one function answers for both, and the seam matches by
+	# construction rather than by two mirrored cases happening to agree (ADR 0077).
+	# What is left to check is that the gradient actually goes somewhere.
 	var outer := Tuning.color("exploration/lane_shell_outer_color")
 	var divider := Tuning.color("exploration/lane_shell_divider_color")
 	var bias := Tuning.num("exploration/lane_shell_divider_bias")
-	var upper_floor := RoadDeck.shade(1.0, true, outer, divider, bias)
-	var lower_roof := RoadDeck.shade(0.0, false, outer, divider, bias)
-	_expect(upper_floor.is_equal_approx(lower_roof),
-		"the two decks meet in one colour — the seam is a lane divider, not a join",
-		"upper floor %s against lower roof %s" % [upper_floor, lower_roof])
-	_expect(RoadDeck.shade(0.0, true, outer, divider, bias).is_equal_approx(
-			RoadDeck.shade(1.0, false, outer, divider, bias)),
-		"…and each deck's OUTER face is the other colour, so the gradient runs opposite ways",
-		"the two outer faces disagree")
-	_expect(upper_floor.a > RoadDeck.shade(0.0, true, outer, divider, bias).a,
-		"…with the divider carrying more of the alpha than the face away from it",
-		"divider %.2f against outer %.2f" % [upper_floor.a,
-			RoadDeck.shade(0.0, true, outer, divider, bias).a])
+	var median := RoadDeck.shade(1.0, outer, divider, bias)
+	var outboard := RoadDeck.shade(0.0, outer, divider, bias)
+	_expect(not median.is_equal_approx(outboard),
+		"the median and the outboard face are different colours — the section is not flat",
+		"both faces came out %s" % median)
+	_expect(median.a > outboard.a,
+		"…with the median carrying more of the alpha than the face away from it",
+		"divider %.2f against outer %.2f" % [median.a, outboard.a])
+	# And the seam is one colour from either side, which is the property the stripe
+	# depends on. Both decks reach it at inward = 1, so this is asking the geometry
+	# rather than the palette: the median face of the section is at angle PI, the
+	# outboard face at 0, on every deck.
+	_expect(RoadDeck.shade(1.0, outer, divider, bias).is_equal_approx(median),
+		"…and both decks arrive at the median through the same value, so the seam is one colour",
+		"the two sides of the seam disagree")
 	var skin := mainlines[0].get_node_or_null("Shell") as MeshInstance3D
 	var skin_mat := skin.material_override as StandardMaterial3D if skin != null else null
 	_expect(skin != null and skin.mesh != null and skin_mat != null
@@ -3710,17 +3733,18 @@ func _test_exploration_builds() -> void:
 	_expect(map.riding() == mainlines[0] or map.riding() == on_ramp,
 		"at the top of the ramp the ship is on the ramp or the mainline, not adrift",
 		"riding %s" % ("nothing" if map.riding() == null else map.riding().name))
-	scene.ship().position = mainlines[0].sample(
-		map.system_center(1)).axis * 0.0 + map.system_center(1) + Vector3.UP \
-		* Tuning.num("exploration/deck_separation") * 0.5
+	# On the mainline over system B. Asked of the deck's own path rather than built
+	# out of the separation by hand: the offset is lateral now, and a test that
+	# reconstructs it is a test that has to be rewritten every time it moves.
+	scene.ship().position = mainlines[0].path().closest(map.system_center(1))[1]
 	_step_exploration(scene, 1.0 / 60.0)
 	_expect(map.riding() == mainlines[0] and scene.ship().cruise != null,
 		"…and out on the mainline over a system's centre it is on the MAINLINE",
 		"riding %s" % ("nothing" if map.riding() == null else map.riding().name))
 
 	# Getting off, through an off-ramp's portal beside a planet.
-	var off_ramp := road.get_node_or_null("RampOffCUpper") as RoadDeck
-	_expect(off_ramp != null, "system C has an off-ramp on the upper deck", "missing")
+	var off_ramp := road.get_node_or_null("RampOffCForward") as RoadDeck
+	_expect(off_ramp != null, "system C has an off-ramp on the forward deck", "missing")
 	var exit_gate := off_ramp.end_portal()
 	var exit_travel := off_ramp.path().tangent_at(off_ramp.length())
 	scene.ship().position = exit_gate.position - exit_travel * 20.0

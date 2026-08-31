@@ -195,7 +195,7 @@ func relayout() -> void:
 	var centres: Array[Vector3] = []
 	for disc in _discs:
 		centres.append(disc.position)
-	_road.rebuild(_spine, centres, NAMES, bearing)
+	_road.rebuild(_spine, centres, NAMES)
 
 	_field.regions.clear()
 	for disc in _discs:
@@ -300,7 +300,7 @@ func _ride_the_road(ship: Mothership, here: Vector3) -> void:
 		var lane := _riding.sample(here, clearance)
 		# Candidates are limited to decks the ship could actually be steered onto, so
 		# a handover is a merge rather than a snap (ADR 0072).
-		var alternative := _road.governing(here, _riding.is_upper, _riding, clearance,
+		var alternative := _road.governing(here, _riding.runs_forward, _riding, clearance,
 			ship.road_axis())
 		if lane.metres_remaining <= 0.001:
 			# Off the end of this deck. A ramp ends on the mainline and hands over; a

@@ -182,10 +182,12 @@ func _build_hud() -> void:
 		var reference := _ship.speed() if moving else _ship.manual_max_speed()
 		var seconds := 0.0 if reference <= 0.001 else lane.metres_remaining / reference
 		var spool := _ship.cruise_spool()
-		return "CRUISE %s ·  %s deck, %s  ·  %.0f m left  ·  %.0f s %s" % [
+		# No deck side is reported. It used to say "upper" or "lower", which was the
+		# deck convention's mistake-catcher; right-hand traffic retired the convention
+		# (ADR 0077) and `deck_name` already says which road this is and where it goes.
+		return "CRUISE %s ·  %s  ·  %.0f m left  ·  %.0f s %s" % [
 			"SPOOLING %.0f%%  " % (spool * 100.0) if spool < 0.999 else " ",
-			"upper" if _map.riding().is_upper else "lower", lane.deck_name,
-			lane.metres_remaining, seconds,
+			lane.deck_name, lane.metres_remaining, seconds,
 			"at this speed" if moving else "at full throttle"]
 	)
 	# Lane position, stated as metres rather than as a bar. The lane boundary is soft

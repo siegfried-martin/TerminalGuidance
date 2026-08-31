@@ -22,8 +22,14 @@ extends Node3D
 ## mainline and the ramp contain the ship, and steering toward the ramp is what makes
 ## the ramp the answer. **No junction logic exists, and none should be written.**
 ##
-## Decks are grouped by deck rather than by leg, so the union can never hand a ship
-## the oncoming lane: only decks sharing `is_upper` are ever considered.
+## Decks are grouped by direction rather than by leg, so the union can never hand a
+## ship the oncoming lane: only decks sharing `runs_forward` are ever considered.
+##
+## **The two directions run side by side, and traffic runs on the right** (ADR 0077).
+## Each deck is offset from the spine by half `deck_separation` along the spine's own
+## rightward normal *as that deck travels*, so the offsets are opposite and the
+## oncoming lane is on your left from either seat. Nothing here needs to know a
+## bearing, and no segment declares a deck.
 
 ## How finely a ramp's curve is tessellated. Infrastructure, not feel: enough
 ## segments that the polyline reads as a curve at the scale a ramp is flown, and that
@@ -44,7 +50,7 @@ var _spine: RoadPath = RoadPath.new()
 ## move when the diameter or a leg length does, and the legs change shape when the
 ## curvature does.
 func rebuild(spine: PackedVector3Array, centres: Array[Vector3],
-		names: PackedStringArray, bearing_deg: float) -> void:
+		names: PackedStringArray) -> void:
 	for child in get_children():
 		remove_child(child)
 		child.queue_free()
@@ -57,21 +63,22 @@ func rebuild(spine: PackedVector3Array, centres: Array[Vector3],
 	# highway through the middle of a system is in the way of everything that happens
 	# there; up near the ceiling it is scenery you fly under, and an obstacle if a
 	# fight goes that way.
-	var height := Tuning.num("exploration/deck_separation") * 0.5
+	var across := Tuning.num("exploration/deck_separation") * 0.5
 	var deck_base := Vector3.UP * Tuning.num("exploration/road_height")
 
-	for upper in [true, false]:
-		# The lower deck runs the other way, is stacked under, and puts its ramps on
-		# the other side of the planet — so a divided highway reads as two roads
-		# rather than as one road drawn twice. `sense` is which way along the spine
-		# this deck's traffic moves, and every placement below is written in it.
-		var sense := 1.0 if upper == RoadDeck.rides_upper(bearing_deg) else -1.0
-		var lift := deck_base + Vector3.UP * (height if upper else -height)
-		var mainline := _make_deck("Mainline" + ("Upper" if upper else "Lower"),
-			upper, false, false)
+	for runs_forward in [true, false]:
+		# The reversed deck runs the other way, sits on the other side of the spine,
+		# and puts its ramps on the other side of the planet — so a divided highway
+		# reads as two roads rather than as one road drawn twice. `sense` is which way
+		# along the spine this deck's traffic moves, and every placement below is
+		# written in it, including which side of the spine "right" is.
+		var sense := 1.0 if runs_forward else -1.0
+		var mainline := _make_deck(
+			"Mainline" + ("Forward" if runs_forward else "Reverse"),
+			runs_forward, false, false)
 		mainline.deck_name = "%s bound mainline" % (
 			names[names.size() - 1] if sense > 0.0 else names[0])
-		mainline.follow(_lifted(lift, sense < 0.0), "", "")
+		mainline.follow(_lifted(deck_base, sense, across), "", "")
 
 		# Which neighbour a ramp serves depends on which way this deck runs. On the
 		# eastbound deck B's on-ramp leads to C and its off-ramp comes from A; on the
@@ -80,21 +87,39 @@ func rebuild(spine: PackedVector3Array, centres: Array[Vector3],
 		for i in centres.size():
 			var ahead := i + onward
 			var behind := i - onward
-			_build_ramps(centres[i], names[i], sense, lift, upper,
+			_build_ramps(centres[i], names[i], sense, deck_base, across, runs_forward,
 				names[ahead] if ahead >= 0 and ahead < names.size() else "",
 				names[behind] if behind >= 0 and behind < names.size() else "")
 
 
-## The spine, moved to a deck's height, and reversed for the deck that runs the other
-## way. A vertical lift rather than an offset along the curve's normal, because the
-## road is near-level everywhere and a normal offset would make the two decks
-## different lengths on every bend.
-func _lifted(lift: Vector3, reversed: bool) -> PackedVector3Array:
+## The spine, raised to the road's height and moved to this deck's side of it, and
+## reversed for the deck that runs the other way.
+##
+## The offset is LATERAL — along the spine's rightward normal at each point, signed by
+## which way this deck travels. It used to be vertical, chosen so that both decks came
+## out the same length on a bend; a divided highway does not have that property, and
+## the inner deck is genuinely shorter through a curve. What that costs is a floor on
+## the geometry: a bend tighter than the deck separation folds the inner lane through
+## itself, so the gate checks the spine's minimum curve radius against it (ADR 0077).
+func _lifted(base: Vector3, sense: float, across: float) -> PackedVector3Array:
 	var line := PackedVector3Array()
 	var count := _spine.points.size()
 	for i in count:
-		line.append(_spine.points[count - 1 - i if reversed else i] + lift)
+		var index := count - 1 - i if sense < 0.0 else i
+		line.append(_spine.points[index] + base
+			+ _across_at(index) * sense * across)
 	return line
+
+
+## The spine's rightward normal at one of its own points, from the segments either
+## side of it. Taken from the spine rather than from a bearing: on a weaving leg those
+## differ, and a deck placed on the bearing would drift across the median.
+func _across_at(index: int) -> Vector3:
+	var last := _spine.points.size() - 1
+	var travel: Vector3 = _spine.points[mini(index + 1, last)] \
+		- _spine.points[maxi(index - 1, 0)]
+	var side := travel.cross(Vector3.UP)
+	return Vector3.RIGHT if side.length_squared() < 0.000001 else side.normalized()
 
 
 ## An off-ramp and an on-ramp beside one system's planet, for one direction.
@@ -113,8 +138,8 @@ func _lifted(lift: Vector3, reversed: bool) -> PackedVector3Array:
 ## system has nothing arriving at it and the easternmost has nowhere to go, so those
 ## two ramps would be openings onto a road with no traffic and a sign with no name on
 ## it. An empty `ahead` or `behind` is how the caller says so.
-func _build_ramps(centre: Vector3, place: String, sense: float, lift: Vector3,
-		upper: bool, ahead: String, behind: String) -> void:
+func _build_ramps(centre: Vector3, place: String, sense: float, base: Vector3,
+		across: float, runs_forward: bool, ahead: String, behind: String) -> void:
 	var run := Tuning.num("exploration/ramp_run_length")
 	var gap := Tuning.num("exploration/portal_site_offset")
 	var out := Tuning.num("exploration/ramp_side_offset")
@@ -122,20 +147,20 @@ func _build_ramps(centre: Vector3, place: String, sense: float, lift: Vector3,
 	var tightness := Tuning.num("exploration/ramp_curve_tightness")
 	var here: float = _spine.closest(centre)[0]
 	var letter := place.substr(place.length() - 1, 1)
-	var suffix := letter + ("Upper" if upper else "Lower")
+	var suffix := letter + ("Forward" if runs_forward else "Reverse")
 
 	if not behind.is_empty():
-		var leaves := _at(here - sense * run, lift, sense)
-		var off_mouth := _mouth(here - sense * gap, out, down, sense)
-		var off_ramp := _make_deck("RampOff" + suffix, upper, false, true)
+		var leaves := _at(here - sense * run, base, sense, across)
+		var off_mouth := _mouth(here - sense * gap, out, down, sense, base, across)
+		var off_ramp := _make_deck("RampOff" + suffix, runs_forward, false, true)
 		off_ramp.deck_name = "%s off-ramp" % place
 		off_ramp.follow(RoadPath.ramp(leaves[0], leaves[1], off_mouth[0],
 			off_mouth[1], tightness, RAMP_SEGMENTS), place, behind)
 
 	if not ahead.is_empty():
-		var on_mouth := _mouth(here + sense * gap, out, down, sense)
-		var rejoins := _at(here + sense * run, lift, sense)
-		var on_ramp := _make_deck("RampOn" + suffix, upper, true, false)
+		var on_mouth := _mouth(here + sense * gap, out, down, sense, base, across)
+		var rejoins := _at(here + sense * run, base, sense, across)
+		var on_ramp := _make_deck("RampOn" + suffix, runs_forward, true, false)
 		on_ramp.deck_name = "%s to %s on-ramp" % [place, ahead]
 		# Built FORWARDS, from the mouth up to the merge. It used to be built backwards
 		# and reversed, because a quadratic could only be told one tangent and the
@@ -146,9 +171,12 @@ func _build_ramps(centre: Vector3, place: String, sense: float, lift: Vector3,
 
 
 ## A point on the mainline and the direction traffic runs there, as `[point, tangent]`.
-func _at(along: float, lift: Vector3, sense: float) -> Array:
+## On this deck's own side of the spine, so a ramp leaves the road rather than the
+## line the road was laid on.
+func _at(along: float, base: Vector3, sense: float, across: float) -> Array:
 	var clamped := clampf(along, 0.0, _spine.length())
-	return [_spine.point_at(clamped) + lift, _spine.tangent_at(clamped) * sense]
+	var travel := _spine.tangent_at(clamped) * sense
+	return [_spine.point_at(clamped) + base + _side_of(travel) * across, travel]
 
 
 ## A ramp mouth beside the planet, and the direction the road runs past it.
@@ -156,19 +184,28 @@ func _at(along: float, lift: Vector3, sense: float) -> Array:
 ## The side is taken from the spine's own tangent here rather than from the map's
 ## bearing: on a weaving leg those differ, and a mouth placed on the bearing would
 ## drift off the side of the interchange it belongs to.
-func _mouth(along: float, out: float, down: float, sense: float) -> Array:
+## `out` is measured from the DECK, not from the spine, so the shape of a ramp does not
+## change when the two carriageways are moved apart.
+func _mouth(along: float, out: float, down: float, sense: float, base: Vector3,
+		across: float) -> Array:
 	var clamped := clampf(along, 0.0, _spine.length())
 	var travel := _spine.tangent_at(clamped) * sense
+	return [_spine.point_at(clamped) + base + _side_of(travel) * (across + out)
+		+ Vector3.DOWN * down, travel]
+
+
+## Which way is right, for something travelling this way. The whole of right-hand
+## traffic is this one expression (ADR 0077).
+func _side_of(travel: Vector3) -> Vector3:
 	var side := travel.cross(Vector3.UP)
-	side = Vector3.RIGHT if side.length_squared() < 0.000001 else side.normalized()
-	return [_spine.point_at(clamped) + side * out + Vector3.DOWN * down, travel]
+	return Vector3.RIGHT if side.length_squared() < 0.000001 else side.normalized()
 
 
-func _make_deck(deck_name: String, upper: bool, start_portal: bool,
+func _make_deck(deck_name: String, runs_forward: bool, start_portal: bool,
 		end_portal: bool) -> RoadDeck:
 	var deck := RoadDeck.new()
 	deck.name = deck_name
-	deck.is_upper = upper
+	deck.runs_forward = runs_forward
 	deck.has_start_portal = start_portal
 	deck.has_end_portal = end_portal
 	add_child(deck)
@@ -205,14 +242,15 @@ func spine() -> RoadPath:
 ## mainline beside an interchange handed the ship to a ramp thirty degrees off its
 ## heading and swung the nose there in a single frame (ADR 0072). Pass a zero vector
 ## to consider every deck, which is what joining the road from outside does.
-func governing(point: Vector3, upper: bool, exclude: RoadDeck = null,
+func governing(point: Vector3, runs_forward: bool, exclude: RoadDeck = null,
 		clearance: Vector2 = Vector2.ZERO,
 		along: Vector3 = Vector3.ZERO) -> RoadDeck:
 	var best: RoadDeck = null
 	var best_depth := INF
 	var cone := cos(deg_to_rad(Tuning.num("exploration/cruise_turn_clamp_deg")))
 	for deck in _decks:
-		if deck.is_upper != upper or deck.length() <= 0.0 or deck == exclude:
+		if deck.runs_forward != runs_forward or deck.length() <= 0.0 \
+				or deck == exclude:
 			continue
 		var lane := deck.sample(point, clearance)
 		# A deck that does not REACH this point cannot govern it. `closest` clamps to

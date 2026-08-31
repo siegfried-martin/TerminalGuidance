@@ -56,6 +56,8 @@ positions and the corridor attachments are all exactly what a straight leg gave.
 - Do not express a road's curvature as an amplitude in metres.
 - Do not let a leg's weave move its endpoints or change its end tangents. If a curve
   needs the systems moved, it is the wrong curve.
-- Do not weave across the northwest–southeast deck divider. The deck is declared per
-  segment (ADR 0065's convention), and a stretch of upper deck on a lower-deck heading
-  makes the convention worse than no rule.
+- ~~Do not weave across the northwest–southeast deck divider.~~ *Retired by ADR 0077:
+  traffic runs on the right, the deck convention is gone, and there is no divider to
+  cross. What replaces it is a floor on curvature — the road may not bend tighter than
+  the two carriageways are far apart. Everything else here stands, and the rule that
+  no road out-turns the ship is untouched.*

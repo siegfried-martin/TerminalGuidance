@@ -44,7 +44,7 @@ func _process(_delta: float) -> void:
 	# now, and a camera aimed at the system's centre photographs the space under it.
 	var centre := _scene.map().system_center(1) \
 		+ Vector3.UP * Tuning.num("exploration/road_height")
-	var road := _scene.map().road().get_node_or_null("MainlineUpper") as RoadDeck
+	var road := _scene.map().road().get_node_or_null("MainlineForward") as RoadDeck
 	if road == null:
 		return
 	var along: float = road.path().closest(centre)[0]

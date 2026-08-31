@@ -123,5 +123,6 @@ The reasoning, including what the alternative was and why it lost.
 | [0074](0074-the-lane-is-a-translucent-solid.md) | The lane is a translucent solid, and "visually open" means you can see through it — its "one lane lit" clause is superseded by 0075 |
 | [0075](0075-every-lane-is-drawn-and-a-lane-has-a-floor.md) | Every lane is drawn; the one you are on is brighter, and a lane has a floor |
 | [0076](0076-a-lane-that-has-ended-cannot-govern.md) | A lane that has ended behind you cannot govern, and a ramp is drawn darker |
+| [0077](0077-traffic-runs-on-the-right.md) | Traffic runs on the right, and the deck convention is retired |
 
-*Next number: 0077.*
+*Next number: 0078.*

@@ -15,11 +15,44 @@ the human's explicit direction.
 | | |
 |---|---|
 | Branch | `feat/exploration-tuning-and-hud`, PR #14 |
-| Gate | `make check` — 1091 checks, 0 failed |
+| Gate | `make check` — 1104 checks, 0 failed |
 | Run it | `make fly` |
-| Built | Exploration POC steps 1–6 and **step 8** (ADRs 0062–0076) |
-| **Do next** | **The highway rebuild, step A** — see `docs/HIGHWAY_STRUCTURE_PLAN.md`. Lanes go side by side with right-hand traffic, and the deck convention is retired. |
+| Built | Exploration POC steps 1–6, **step 8**, and **highway rebuild step A** (ADRs 0062–0077) |
+| **Do next** | **The highway rebuild, step B** — see `docs/HIGHWAY_STRUCTURE_PLAN.md`. Split `RoadStructure` out of `RoadDeck` and build the road from modules: floor plate, ribs, glass bays, median. ADRs 0078 and 0079. |
 | **Waiting on you** | **The fourth checkpoint, and the important one**: success criterion 1, on a trunk road that now weaves and undulates. Ten minutes on it. `cruise_turn_clamp_deg` is tuned WITH `road_curve_deg` and `road_curve_period`, never against them. The third checkpoint is still open too — is a 38-second hop worth the portal, against 203 s by hand? |
+
+### What landed on 2026-08-31 — the section flips (rebuild step A)
+
+**The two carriageways run side by side, and traffic runs on the right** (ADR 0077).
+No new art: the same shell, moved. `RoadNetwork._lifted` offsets each deck laterally
+along the spine's own rightward normal instead of lifting it, and the whole of
+right-hand traffic is `travel.cross(Vector3.UP)` evaluated per point.
+
+**What that deleted is the point of the step.** `RoadDeck.rides_upper` and the
+upper/lower convention are gone, `is_upper` is `runs_forward` and is a grouping key
+carrying nothing else, and **Enforced Invariant 1** — the NW–SE divider, the physical
+twist, and the ban on ring roads — is retired. Right-hand traffic is self-orienting at
+every bearing, so the mnemonic the convention existed to be is no longer needed, and
+neither is the invariant that enforced it. Ring roads are legal now.
+
+`shade()` lost its deck argument as a side effect: the median is on the left of *both*
+carriageways, so one function answers for both and the seam is one colour by
+construction rather than by two mirrored cases agreeing.
+
+**One invariant replaced the one deleted.** A lateral offset makes the inner
+carriageway shorter through a bend, which is correct until the radius drops below the
+offset and the inner lane folds through itself. The gate now checks the spine's
+`max_turn_deg_per_metre` against `deck_separation`. That is geometry, not feel — no
+slider rescues a folded lane.
+
+**`deck_separation` moved 150 → 240**, and it is an *across* measurement now. It was
+flush against the old `lane_height`; 240 is the same flush against `lane_width`. Not a
+feel verdict — below `lane_width` the two lanes intersect.
+
+**Open, and expected:** the plan flags that the section is now a 480 × 150 letterbox
+where the concept art is roughly square, and that `lane_width` at 240 was already
+suspected of being too wide to read as a tunnel. That number is the human's, and step
+B is when it wants looking at.
 
 ### Planned on 2026-08-31 — the highway is rebuilt as a structure
 

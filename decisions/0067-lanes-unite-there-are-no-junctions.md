@@ -37,6 +37,9 @@ an exit is exactly that and costs exactly that, with no rule saying so.
 The grouping by deck is what keeps it safe: only decks sharing `is_upper` are ever
 considered, so the union can never hand a ship the oncoming lane. One-way stays
 structural rather than becoming a check.
+*(ADR 0077 renamed that field to `runs_forward` when the carriageways went side by
+side. The safety property is unchanged and so is this decision — the key is a
+direction rather than a deck now, and it still carries nothing but the grouping.)*
 
 ## What this forbids
 
