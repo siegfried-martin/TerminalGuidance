@@ -15,9 +15,9 @@ the human's explicit direction.
 | | |
 |---|---|
 | Branch | `feat/exploration-tuning-and-hud`, PR #14 |
-| Gate | `make check` — 1087 checks, 0 failed |
+| Gate | `make check` — 1091 checks, 0 failed |
 | Run it | `make fly` |
-| Built | Exploration POC steps 1–6 and **step 8** (ADRs 0062–0072) |
+| Built | Exploration POC steps 1–6 and **step 8** (ADRs 0062–0074) |
 | **Do next** | **POC step 7** — cruise fuel and the debug teleport. It is the only step left before traffic. |
 | **Waiting on you** | **The fourth checkpoint, and the important one**: success criterion 1, on a trunk road that now weaves and undulates. Ten minutes on it. `cruise_turn_clamp_deg` is tuned WITH `road_curve_deg` and `road_curve_period`, never against them. The third checkpoint is still open too — is a 38-second hop worth the portal, against 203 s by hand? |
 
@@ -86,6 +86,32 @@ see how it reads with no air between them. One slider back up and the gap return
   with twice the rails. Four decks meet at an interchange and every one of them used
   to draw a full rib every 120 m. The marker lattice went from 3310 to 339.
 - Ramp mouths are 70 m higher, the ramps are longer to suit, and the decks stay flush.
+
+### And the third session — the road got faster and became a surface
+
+- **Cruise is 250 m/s** (the human flew 400 and liked it; 250 is where it rests for
+  now) and **the fighter is 80**. `cruise_turn_rate_deg_per_sec` went 22 → 34 to keep
+  every road inside the turn-rate ceiling at the new speed — measured, the worst bend
+  on the map is 40% of the allowance.
+- **The fighter is now faster than a missile, deliberately** (ADR 0073). The old
+  global 0.95 cap would have silently made 80 into 52, which is the exact failure the
+  tuning file warns about. What the hierarchy protects is that a missile can reach the
+  classes it is *for* — the taxi and the capital — and the gate holds those. **This is
+  a combat change and wants an arena session**: a fighter can now leave a missile
+  behind in a straight line rather than having to turn.
+- **The lane is a translucent solid** (ADR 0074), with rails and widely spaced rings.
+  The wireframe road did not read as a place and made interchanges unreadable. Two
+  things learned building it: you are *inside* the surface, so its colour tints the
+  whole view — the skin is muted and a twentieth of an alpha for that reason — and the
+  geometry is built once and toggled, never rebuilt on activation, or merging hitches.
+- **The wireframe around systems and planets is off**: `bounds_grid_alpha` = 0 and
+  `approach_alpha_far` = 0. The red boundary telegraph is untouched. Flagged: with the
+  envelope invisible at range it stops being *a visible place before it is a
+  commitment*, which is the clause ADR 0012's pressure argument leans on. One number
+  back either way.
+- **The deep field is thinned hard** — 16 bodies and 420 dust across the whole map.
+  The highway carries "am I moving" wherever there is a highway, and between systems
+  there was simply too much of it.
 
 Everything under §Where the build is and below is the **combat POC's history**,
 kept for its reasoning. It is not a to-do list, and its §Next is superseded by the

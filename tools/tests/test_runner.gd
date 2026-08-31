@@ -165,6 +165,7 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/bounds_grid_spacing", "exploration/bounds_grid_alpha_scale",
 	"exploration/bounds_grid_alpha", "exploration/road_height",
 	"exploration/lane_active_color", "exploration/lane_active_alpha",
+	"exploration/lane_shell_color", "exploration/lane_shell_alpha",
 	"camera/near_plane", "camera/far_plane",
 	"exploration/deep_seed",
 	"exploration/starfield_count", "exploration/starfield_distance",
@@ -2372,18 +2373,30 @@ func _test_hull_classes() -> void:
 	_expect(capital < taxi and taxi < fighter,
 		"the speed ladder is ordered: capital < taxi < fighter",
 		"capital %.1f, taxi %.1f, fighter %.1f" % [capital, taxi, fighter])
-	_expect(fighter < missile_speed,
-		"…and the fastest hull is still slower than a missile (CLAUDE.md hierarchy)",
-		"fighter %.1f vs missile %.1f" % [fighter, missile_speed])
-	_expect(fighter > missile_speed * 0.6,
-		"…while the fighter clears the old global 0.6 ceiling that could not fit it",
-		"fighter %.1f is %.2f of missile speed" % [fighter, fighter / missile_speed])
+	# THE CLAUSE IS "a missile outruns its INTENDED targets" (ADR 0059), and the
+	# fighter is not one of them (ADR 0073). What has to hold is that the classes a
+	# missile is FOR — the taxi and the capital — stay under it, and that the fighter
+	# stays the fastest thing in the roster.
+	_expect(taxi < missile_speed and capital < missile_speed,
+		"a missile outruns the classes it is meant to kill: the taxi and the capital",
+		"taxi %.1f, capital %.1f against a missile at %.1f" % [
+			taxi, capital, missile_speed])
+	_expect(fighter > taxi,
+		"…and the fighter is the fastest hull there is, whichever side of a missile",
+		"fighter %.1f, taxi %.1f" % [fighter, taxi])
 
-	# The ceiling is a clamp, not a suggestion, for EVERY class — a tuning session
-	# must not be able to produce a ship that matches a missile by accident.
+	# The ceiling is a clamp, not a suggestion, for every class a missile is meant to
+	# kill — a tuning session must not be able to produce one that matches a missile
+	# by accident. The fighter declares its own and is checked against that instead.
 	for kind in HullClass.all():
 		var key := "exploration/%s_max_speed" % HullClass.name_of(kind)
 		Tuning.set_value(key, missile_speed * 10.0)
+		if not HullClass.outrun_by_missile(kind):
+			_expect(HullClass.max_speed(kind) <= missile_speed
+					* HullClass.MAX_CEILING_FRACTION,
+				"%s is still clamped by its class's own declared ceiling" % key,
+				"clamp let %.1f m/s through" % HullClass.max_speed(kind))
+			continue
 		_expect(HullClass.max_speed(kind) < missile_speed,
 			"%s speed is clamped below a missile however high it is tuned" % key,
 			"clamp let %.1f m/s through" % HullClass.max_speed(kind))
@@ -3546,12 +3559,23 @@ func _test_exploration_builds() -> void:
 			"…and it merges inside the steering cone, so joining is a steer not a turn",
 			"%.1f deg off the mainline" % rad_to_deg(merge.angle_to(main)))
 
-	# ADR 0057: the lane is VISUALLY OPEN. Ribs and rails, not a surface — the system
-	# and the war outside it are what the road is not allowed to hide.
+	# ADR 0057: the lane is VISUALLY OPEN, and what that MEANS is that the surrounding
+	# space stays rendered — not that the lane is drawn as lines. It is a translucent
+	# shell now, because wireframe alone did not read as a road. So what is checked is
+	# the thing the ADR actually protects: you can see through it.
+	var skin := mainlines[0].get_node_or_null("Shell") as MeshInstance3D
+	var skin_mat := skin.material_override as StandardMaterial3D if skin != null else null
+	_expect(skin != null and skin.mesh != null and skin_mat != null
+			and skin_mat.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED,
+		"the lane is a TRANSLUCENT surface, never an opaque tunnel (ADR 0057)",
+		"the lane's shell is missing or opaque")
+	_expect(Tuning.num("exploration/lane_shell_alpha") <= 0.35,
+		"…and its alpha is low enough that the system beyond it is still there",
+		"alpha %.2f" % Tuning.num("exploration/lane_shell_alpha"))
 	var structure := mainlines[0].get_node_or_null("Rails") as MeshInstance3D
 	_expect(structure != null and structure.mesh != null
 			and structure.mesh.surface_get_primitive_type(0) == Mesh.PRIMITIVE_LINES,
-		"the lane is drawn as LINES — visually open, never a tunnel (ADR 0057)",
+		"…and its rails are still lines running the length of it",
 		"the lane is a surface")
 	# The aperture has to clear the hull with room to fly through rather than to aim.
 	# Measured axis by axis, not against the bounding sphere: the sphere of a

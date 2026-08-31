@@ -73,6 +73,17 @@ static func flag(kind: Kind, suffix: String, shared_key: String) -> bool:
 	return Tuning.flag(shared_key)
 
 
+## The most a class's ceiling fraction may be. Not 1: the hierarchy's guarantee is
+## *"a missile outruns its intended targets"* (ADR 0059), and a fighter is explicitly
+## not one of them — ADR 0059's own reasoning is that a missile cannot run down a
+## fighter that turns well, which is *why* missiles are anti-capital and fighter
+## versus fighter resolves to guns. So the fraction is allowed above 1, per class,
+## and the gate asserts that the classes a missile IS meant to kill stay under it
+## (ADR 0073). This bound is only here so a typo cannot produce a ship faster than
+## the game.
+const MAX_CEILING_FRACTION := 2.0
+
+
 ## The top speed this class may reach, clamped by the speed hierarchy.
 ##
 ## CLAUDE.md's hierarchy (lasers > missiles > ships) is structural, and this is
@@ -82,13 +93,21 @@ static func flag(kind: Kind, suffix: String, shared_key: String) -> bool:
 ## intended targets"**, and each class declares its own headroom.
 ##
 ## Still a clamp and not a suggestion: no edit to a class's own speed can produce a
-## ship that matches a missile, because the ceiling is applied here rather than
-## trusted to a tuning session.
+## ship faster than the fraction its class declares, because the ceiling is applied
+## here rather than trusted to a tuning session. What the fraction is allowed to BE
+## is the class's own business and the gate's.
 static func max_speed(kind: Kind) -> float:
 	var ceiling := Tuning.num("missile/base_speed") * clampf(
 		num(kind, "speed_ceiling_fraction", "ship/manual_speed_ceiling_fraction"),
-		0.0, 0.95)
+		0.0, MAX_CEILING_FRACTION)
 	return minf(num(kind, "max_speed", "ship/manual_max_speed"), ceiling)
+
+
+## Is a missile meant to be able to run this class down? The taxi and the capital are
+## what missiles are for; the fighter is what guns are for. The gate holds the first
+## two under missile speed and leaves the third to its own declaration (ADR 0073).
+static func outrun_by_missile(kind: Kind) -> bool:
+	return kind != Kind.FIGHTER
 
 
 ## Whether this hull carries the cruise engine — and therefore whether a portal
