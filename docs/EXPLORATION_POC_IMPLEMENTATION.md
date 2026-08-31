@@ -73,9 +73,11 @@ Where this section and the body below disagree, this section wins.
   ship hang through the rails unreported, and a lane a capital cannot sit in is a lane
   it is permanently outside of. The gate asserts every hull in the roster clears every
   part of the road.
-- **The two decks are stacked FLUSH**, `deck_separation` equal to `lane_height`, at
-  the human's request to see how it reads with no air between them. The gate forbids
-  going below, not to equal. One slider restores the gap.
+- **The two carriageways run FLUSH side by side**, `deck_separation` equal to
+  `lane_width`, with a pane of glass down the middle. The gate forbids going below,
+  not to equal. One slider opens a gap between them. *(Was stacked flush against
+  `lane_height` until 2026-08-31; ADR 0077 turned the section, ADR 0078 made the road
+  a building.)*
 - **`tuning.cfg` is the source of truth for every number below.** The block in
   §Starting Tuning Values is v1's proposal, kept for its reasoning; read the values
   from the file.

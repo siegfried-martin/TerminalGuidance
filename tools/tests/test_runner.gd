@@ -158,18 +158,17 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/bounds_rim_alpha_scale",
 	"exploration/aperture_mouth_diameter", "exploration/aperture_funnel_length",
 	"exploration/aperture_bearing_deg",
-	"exploration/lane_corner_roundness", "exploration/lane_rib_spacing",
+	"exploration/lane_corner_roundness",
 	"exploration/lane_hull_clearance_cap", "exploration/ramp_curve_tightness",
 	"exploration/road_curve_deg", "exploration/road_curve_period",
 	"exploration/road_rise_deg", "exploration/road_rise_period",
 	"exploration/bounds_grid_spacing", "exploration/bounds_grid_alpha_scale",
 	"exploration/bounds_grid_alpha", "exploration/road_height",
 	"exploration/lane_active_color", "exploration/lane_active_alpha",
-	"exploration/lane_shell_alpha", "exploration/lane_handover_margin",
-	"exploration/lane_ramp_shade",
-	"exploration/lane_shell_outer_color", "exploration/lane_shell_divider_color",
-	"exploration/lane_shell_divider_bias",
-	"exploration/lane_shell_idle_alpha",
+	"exploration/lane_handover_margin", "exploration/lane_ramp_shade",
+	"exploration/structure_module_length", "exploration/structure_rib_thickness",
+	"exploration/structure_glass_alpha", "exploration/structure_metal_color",
+	"exploration/structure_glass_color",
 	"camera/near_plane", "camera/far_plane",
 	"exploration/deep_seed",
 	"exploration/starfield_count", "exploration/starfield_distance",
@@ -3518,20 +3517,29 @@ func _test_exploration_builds() -> void:
 			nearest_envelope, envelope])
 
 	# --- one lane is lit, and it is the one being flown ---
-	# Four decks meet at an interchange. The player has to be able to see which of them
-	# is theirs, and the answer is the only one drawing ribs.
+	# Four carriageways cross the view at an interchange. The player has to be able to
+	# see which of them is theirs, and the answer is the only one painted bright.
+	# Checked on the MATERIAL rather than on visibility: every carriageway is drawn now
+	# (ADR 0075), so what says "yours" is the colour and nothing else.
 	map.road().set_active(mainlines[0])
-	var ribbed := 0
+	var lit := 0
 	var mismatched := ""
+	var bright := Tuning.num("exploration/lane_active_alpha")
 	for deck in road.decks():
-		var ribs := deck.get_node_or_null("Ribs") as MeshInstance3D
-		if ribs == null or ribs.visible != deck.is_active():
+		var paint := deck.get_node_or_null("Lines") as MeshInstance3D
+		var paint_mat := paint.material_override as StandardMaterial3D \
+			if paint != null else null
+		if paint_mat == null:
 			mismatched = deck.name
-		if ribs != null and ribs.visible:
-			ribbed += 1
-	_expect(mismatched.is_empty() and ribbed == 1,
-		"exactly one deck draws its ribs, and it is the one being ridden",
-		"%d decks ribbed%s" % [ribbed,
+			continue
+		var is_lit := is_equal_approx(paint_mat.albedo_color.a, bright)
+		if is_lit != deck.is_active():
+			mismatched = deck.name
+		if is_lit:
+			lit += 1
+	_expect(mismatched.is_empty() and lit == 1,
+		"exactly one carriageway is painted bright, and it is the one being ridden",
+		"%d lit%s" % [lit,
 			"" if mismatched.is_empty() else ", %s disagrees" % mismatched])
 	_expect(mainlines[0].is_active() and not mainlines[1].is_active(),
 		"…and never both directions at once",
@@ -3616,67 +3624,123 @@ func _test_exploration_builds() -> void:
 			"…and it merges inside the steering cone, so joining is a steer not a turn",
 			"%.1f deg off the mainline" % rad_to_deg(merge.angle_to(main)))
 
-	# ADR 0057: the lane is VISUALLY OPEN, and what that MEANS is that the surrounding
-	# space stays rendered — not that the lane is drawn as lines. It is a translucent
-	# shell now, because wireframe alone did not read as a road. So what is checked is
-	# the thing the ADR actually protects: you can see through it.
-	# Every deck carries one, so a road is visible before you are on it.
-	var shell_count := 0
+	# --- the road is a BUILDING, and it is built from modules (ADR 0078) ---
+	# One structure for the mainline pair, and one per ramp. The pair sharing a
+	# building is the whole reason the deck and the structure had to be split: a deck
+	# cannot own a building that also belongs to the deck coming the other way.
+	var built := road.structures()
+	var pair_structures := 0
+	var ramp_structures := 0
+	for one: RoadStructure in built:
+		if one.is_ramp:
+			ramp_structures += 1
+		else:
+			pair_structures += 1
+	_expect(pair_structures == 1,
+		"the two carriageways share ONE building — a deck is the lane, not the road",
+		"%d mainline structures" % pair_structures)
+	_expect(ramp_structures == ramps.size(),
+		"…and every ramp is a building of its own, with one lane in it",
+		"%d structures for %d ramps" % [ramp_structures, ramps.size()])
+	var median_count := 0
+	for one: RoadStructure in built:
+		if one.has_median:
+			median_count += 1
+	_expect(median_count == 1,
+		"…and only the shared one carries a median, because only it divides two directions",
+		"%d structures carry a median" % median_count)
+
+	# MODULES, not an extrusion. Four layers of them, each a MultiMesh: this is what
+	# makes real art a mesh swap rather than a rewrite (ADR 0030), and it is what the
+	# old swept ArrayMesh could never be.
+	var pair_built: RoadStructure = null
+	for one: RoadStructure in built:
+		if not one.is_ramp:
+			pair_built = one
+	var layered := true
+	var instances := 0
+	for layer_name: String in ["Ribs", "Bays", "Plates", "Panes"]:
+		var layer := pair_built.get_node_or_null(layer_name) as MultiMeshInstance3D
+		if layer == null or layer.multimesh == null or layer.multimesh.mesh == null \
+				or layer.multimesh.instance_count <= 0:
+			layered = false
+		else:
+			instances += layer.multimesh.instance_count
+	_expect(layered,
+		"the mainline is built from collars, bays, roadway and median — four layers of modules",
+		"a layer is missing, empty, or has no mesh")
+	_expect(instances > 0 and instances < 20000,
+		"…and the whole highway is a handful of meshes and a transform list",
+		"%d module instances" % instances)
+	# There is one more collar than there are bays: a collar sits on every joint,
+	# including both ends, which is what makes the road read as a chain of segments
+	# rather than as a striped tube.
+	var collars := (pair_built.get_node_or_null("Ribs") as MultiMeshInstance3D)
+	var glazing := (pair_built.get_node_or_null("Bays") as MultiMeshInstance3D)
+	_expect(collars.multimesh.instance_count == glazing.multimesh.instance_count + 1,
+		"…with a collar on every joint, both ends included",
+		"%d collars for %d bays" % [collars.multimesh.instance_count,
+			glazing.multimesh.instance_count])
+
+	# THE BUILDING CONTAINS THE LANES. The pair's interior spans both carriageways and
+	# the gap between them, so the outermost lane edge is exactly its inside face. If
+	# this ever goes the other way a ship flying its own lane is inside a wall.
+	var interior := pair_built.extents_at(pair_built.length() * 0.5)
+	var lane_reach := Tuning.num("exploration/deck_separation") * 0.5 \
+		+ Tuning.num("exploration/lane_width") * 0.5
+	_expect(interior.x >= lane_reach - 0.01
+			and interior.y >= Tuning.num("exploration/lane_height") * 0.5 - 0.01,
+		"the building contains both lanes — the far lane edge is its inside face",
+		"%.0f x %.0f interior against a %.0f x %.0f reach" % [interior.x, interior.y,
+			lane_reach, Tuning.num("exploration/lane_height") * 0.5])
+
+	# ADR 0057 says the lane is VISUALLY OPEN, and ADR 0079 says what that MEANS: not
+	# an alpha below a threshold — that cannot tell a window from a tinted wall — but
+	# that the outward-facing envelope is mostly glass. Around the section the walls
+	# and roof are glazed and only the roadway is solid; along the road, every metre
+	# that is not a collar is a bay. So the number is the collars' share of the run.
+	var open_area := RoadStructure.open_fraction(
+		Tuning.num("exploration/structure_module_length"),
+		Tuning.num("exploration/structure_rib_thickness"))
+	_expect(open_area > 0.5,
+		"most of the road's outward-facing envelope is GLASS, so the space beyond it stays witnessed",
+		"only %.0f%% of the run is glazed" % (open_area * 100.0))
+	_expect(RoadStructure.open_fraction(100.0, 100.0) == 0.0
+			and RoadStructure.open_fraction(100.0, 0.0) == 1.0,
+		"…and the measure is honest at both ends: all collar is closed, no collar is open",
+		"the ratio does not reach its own bounds")
+	# The glass is deliberately MORE opaque than the shell it replaced — it is a
+	# diffuser, and that is what lets a rough render behind it read as a ship. It
+	# still may not reach opacity: a pane you cannot see the stars through is the
+	# tunnel ADR 0057 forbids.
+	_expect(Tuning.num("exploration/structure_glass_alpha") < 0.85,
+		"…and the glass never reaches opacity, so it stays a window rather than a wall",
+		"glass at %.2f" % Tuning.num("exploration/structure_glass_alpha"))
+	var glass_mat := glazing.material_override as StandardMaterial3D
+	_expect(glass_mat != null
+			and glass_mat.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED,
+		"…and it is actually a transparent material, not merely a pale colour",
+		"the glazing is opaque")
+
+	# EVERY CARRIAGEWAY IS MARKED, and the one being ridden is brighter (ADR 0075).
+	# The structure carries the tunnel now, so a deck's own drawing is paint on the
+	# road — but "every lane is drawn" is the clause that matters and it still holds.
+	var marked := 0
 	for deck in road.decks():
-		var sk := deck.get_node_or_null("Shell") as MeshInstance3D
-		if sk != null and sk.mesh != null and sk.visible:
-			shell_count += 1
-	_expect(shell_count == road.decks().size(),
-		"every deck draws its shell, ridden or not — a road you cannot see is not a choice",
-		"%d shells for %d decks" % [shell_count, road.decks().size()])
-	_expect(Tuning.num("exploration/lane_shell_idle_alpha")
-			< Tuning.num("exploration/lane_shell_alpha"),
+		var paint := deck.get_node_or_null("Lines") as MeshInstance3D
+		if paint != null and paint.mesh != null and paint.visible \
+				and paint.mesh.surface_get_primitive_type(0) == Mesh.PRIMITIVE_LINES:
+			marked += 1
+	_expect(marked == road.decks().size(),
+		"every carriageway is marked, ridden or not — a road you cannot see is not a choice",
+		"%d marked for %d carriageways" % [marked, road.decks().size()])
+	_expect(Tuning.num("exploration/lane_line_alpha")
+			< Tuning.num("exploration/lane_active_alpha"),
 		"…and the one you are on is the brighter of them",
-		"idle %.3f against active %.3f" % [
-			Tuning.num("exploration/lane_shell_idle_alpha"),
-			Tuning.num("exploration/lane_shell_alpha")])
-	# THE MEDIAN. The decks sit flush side by side and traffic runs on the right, so
-	# the shared face is the LEFT of both of them. `shade` therefore takes no deck
-	# argument at all — one function answers for both, and the seam matches by
-	# construction rather than by two mirrored cases happening to agree (ADR 0077).
-	# What is left to check is that the gradient actually goes somewhere.
-	var outer := Tuning.color("exploration/lane_shell_outer_color")
-	var divider := Tuning.color("exploration/lane_shell_divider_color")
-	var bias := Tuning.num("exploration/lane_shell_divider_bias")
-	var median := RoadDeck.shade(1.0, outer, divider, bias)
-	var outboard := RoadDeck.shade(0.0, outer, divider, bias)
-	_expect(not median.is_equal_approx(outboard),
-		"the median and the outboard face are different colours — the section is not flat",
-		"both faces came out %s" % median)
-	_expect(median.a > outboard.a,
-		"…with the median carrying more of the alpha than the face away from it",
-		"divider %.2f against outer %.2f" % [median.a, outboard.a])
-	# And the seam is one colour from either side, which is the property the stripe
-	# depends on. Both decks reach it at inward = 1, so this is asking the geometry
-	# rather than the palette: the median face of the section is at angle PI, the
-	# outboard face at 0, on every deck.
-	_expect(RoadDeck.shade(1.0, outer, divider, bias).is_equal_approx(median),
-		"…and both decks arrive at the median through the same value, so the seam is one colour",
-		"the two sides of the seam disagree")
-	var skin := mainlines[0].get_node_or_null("Shell") as MeshInstance3D
-	var skin_mat := skin.material_override as StandardMaterial3D if skin != null else null
-	_expect(skin != null and skin.mesh != null and skin_mat != null
-			and skin_mat.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED,
-		"the lane is a TRANSLUCENT surface, never an opaque tunnel (ADR 0057)",
-		"the lane's shell is missing or opaque")
-	# The clause is that the surrounding space stays RENDERED, so what is guarded is
-	# opacity itself rather than a number someone picked. A tube you cannot see the
-	# stars through is the tunnel ADR 0057 forbids; one you can is a road.
-	_expect(Tuning.num("exploration/lane_shell_alpha") < 0.85
-			and Tuning.num("exploration/lane_shell_idle_alpha") < 0.85,
-		"…and neither alpha reaches opacity, so the system beyond it is still there",
-		"active %.2f, idle %.2f" % [Tuning.num("exploration/lane_shell_alpha"),
-			Tuning.num("exploration/lane_shell_idle_alpha")])
-	var structure := mainlines[0].get_node_or_null("Rails") as MeshInstance3D
-	_expect(structure != null and structure.mesh != null
-			and structure.mesh.surface_get_primitive_type(0) == Mesh.PRIMITIVE_LINES,
-		"…and its rails are still lines running the length of it",
-		"the lane is a surface")
+		"idle %.2f against active %.2f" % [
+			Tuning.num("exploration/lane_line_alpha"),
+			Tuning.num("exploration/lane_active_alpha")])
+
 	# The aperture has to clear the hull with room to fly through rather than to aim.
 	# Measured axis by axis, not against the bounding sphere: the sphere of a
 	# 44 x 24 x 48 m gunboat is 72 m across and would condemn an opening the ship

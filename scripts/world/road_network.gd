@@ -41,6 +41,10 @@ const RAMP_SEGMENTS := 24
 const END_TOLERANCE := 0.5
 
 var _decks: Array[RoadDeck] = []
+## The buildings. **One structure per pair of decks** — the mainline pair share a
+## single building straddling the spine, and every ramp is a building of its own with
+## one lane in it (ADR 0078). A deck is the lane you fly in; this is what it is inside.
+var _structures: Array[RoadStructure] = []
 ## The line the whole highway is laid on, in the map's frame. Not a road itself — the
 ## mainlines are this lifted to each deck, and the ramps branch off it.
 var _spine: RoadPath = RoadPath.new()
@@ -55,6 +59,7 @@ func rebuild(spine: PackedVector3Array, centres: Array[Vector3],
 		remove_child(child)
 		child.queue_free()
 	_decks.clear()
+	_structures.clear()
 	_spine.set_points(spine)
 	if centres.size() < 2 or _spine.is_empty():
 		return
@@ -65,6 +70,16 @@ func rebuild(spine: PackedVector3Array, centres: Array[Vector3],
 	# fight goes that way.
 	var across := Tuning.num("exploration/deck_separation") * 0.5
 	var deck_base := Vector3.UP * Tuning.num("exploration/road_height")
+
+	# ONE building for both carriageways. It straddles the spine, a carriageway either
+	# side of the median, and it is the reason the deck and the structure had to be
+	# split: a deck cannot own a building that also belongs to the deck coming the
+	# other way. Its interior spans the two lanes and the gap between them, so the
+	# outermost lane edge is exactly its inside face.
+	var pair := Vector2(across * 2.0 + Tuning.num("exploration/lane_width"),
+		Tuning.num("exploration/lane_height")) * 0.5
+	_make_structure("StructureMainline", false, true).follow(
+		_lifted(deck_base, 1.0, 0.0), pair, pair, false, false)
 
 	for runs_forward in [true, false]:
 		# The reversed deck runs the other way, sits on the other side of the spine,
@@ -154,8 +169,13 @@ func _build_ramps(centre: Vector3, place: String, sense: float, base: Vector3,
 		var off_mouth := _mouth(here - sense * gap, out, down, sense, base, across)
 		var off_ramp := _make_deck("RampOff" + suffix, runs_forward, false, true)
 		off_ramp.deck_name = "%s off-ramp" % place
-		off_ramp.follow(RoadPath.ramp(leaves[0], leaves[1], off_mouth[0],
-			off_mouth[1], tightness, RAMP_SEGMENTS), place, behind)
+		var off_curve := RoadPath.ramp(leaves[0], leaves[1], off_mouth[0],
+			off_mouth[1], tightness, RAMP_SEGMENTS)
+		off_ramp.follow(off_curve, place, behind)
+		# A ramp is a building with one lane in it and no median, narrowing to its
+		# portal at the end it meets the planet.
+		_make_structure("StructureRampOff" + suffix, true, false).follow(
+			off_curve, _lane_section(), _mouth_section(), false, true)
 
 	if not ahead.is_empty():
 		var on_mouth := _mouth(here + sense * gap, out, down, sense, base, across)
@@ -166,8 +186,11 @@ func _build_ramps(centre: Vector3, place: String, sense: float, base: Vector3,
 		# and reversed, because a quadratic could only be told one tangent and the
 		# merge was the end that had to be right; a cubic is told both, so the trick is
 		# gone and the mouth is as deliberate as the merge.
-		on_ramp.follow(RoadPath.ramp(on_mouth[0], on_mouth[1], rejoins[0],
-			rejoins[1], tightness, RAMP_SEGMENTS), ahead, place)
+		var on_curve := RoadPath.ramp(on_mouth[0], on_mouth[1], rejoins[0],
+			rejoins[1], tightness, RAMP_SEGMENTS)
+		on_ramp.follow(on_curve, ahead, place)
+		_make_structure("StructureRampOn" + suffix, true, false).follow(
+			on_curve, _lane_section(), _mouth_section(), true, false)
 
 
 ## A point on the mainline and the direction traffic runs there, as `[point, tangent]`.
@@ -201,6 +224,31 @@ func _side_of(travel: Vector3) -> Vector3:
 	return Vector3.RIGHT if side.length_squared() < 0.000001 else side.normalized()
 
 
+## One carriageway's own half-section, and the narrower one at a portal mouth. Read
+## here rather than inside the structure so a ramp's building and a ramp's lane are
+## handed the same two numbers.
+func _lane_section() -> Vector2:
+	return Vector2(Tuning.num("exploration/lane_width"),
+		Tuning.num("exploration/lane_height")) * 0.5
+
+
+func _mouth_section() -> Vector2:
+	return Vector2(Tuning.num("exploration/portal_width"),
+		Tuning.num("exploration/portal_height")) * 0.5
+
+
+func _make_structure(structure_name: String, ramp: bool,
+		median: bool) -> RoadStructure:
+	var built := RoadStructure.new()
+	built.name = structure_name
+	built.structure_name = structure_name
+	built.is_ramp = ramp
+	built.has_median = median
+	add_child(built)
+	_structures.append(built)
+	return built
+
+
 func _make_deck(deck_name: String, runs_forward: bool, start_portal: bool,
 		end_portal: bool) -> RoadDeck:
 	var deck := RoadDeck.new()
@@ -215,6 +263,11 @@ func _make_deck(deck_name: String, runs_forward: bool, start_portal: bool,
 
 func decks() -> Array[RoadDeck]:
 	return _decks
+
+
+## Every building on the network: one for the mainline pair, one per ramp.
+func structures() -> Array[RoadStructure]:
+	return _structures
 
 
 ## The line the whole highway is laid on. For the map and for tests; nothing steers
@@ -299,3 +352,5 @@ func set_active(riding: RoadDeck) -> void:
 func repaint() -> void:
 	for deck in _decks:
 		deck.repaint()
+	for built in _structures:
+		built.repaint()

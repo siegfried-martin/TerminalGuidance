@@ -2,7 +2,12 @@
 
 *Status: accepted · 2026-08-30 · from the human flying the wireframe road*
 *The "one lane lit" clause is superseded by ADR 0075 — every deck draws its shell, and
-the ridden one is brighter. Everything else here stands.*
+the ridden one is brighter.*
+**Superseded by ADR 0079.** The lane is not a translucent shell at all now: it is a
+building with windows in it, and "visually open" is measured as glazed AREA rather
+than as an alpha below a threshold — a test this ADR's check could not tell from a
+tinted wall. The reasoning below is why the wireframe had to go and is still worth
+reading; the mechanism and the alpha check are retired.
 
 ## Decision
 

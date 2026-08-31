@@ -120,9 +120,11 @@ The reasoning, including what the alternative was and why it lost.
 | [0071](0071-a-ceiling-that-drops-does-not-drop-the-ship.md) | A ceiling that drops does not drop the ship with it |
 | [0072](0072-the-road-axis-is-followed-not-adopted.md) | The road's direction is followed at a bounded rate, and a handover cannot hand you a lane you could not steer onto |
 | [0073](0073-the-fighter-may-outrun-a-missile.md) | The fighter may outrun a missile; the classes a missile is *for* may not |
-| [0074](0074-the-lane-is-a-translucent-solid.md) | The lane is a translucent solid, and "visually open" means you can see through it — its "one lane lit" clause is superseded by 0075 |
-| [0075](0075-every-lane-is-drawn-and-a-lane-has-a-floor.md) | Every lane is drawn; the one you are on is brighter, and a lane has a floor |
+| [0074](0074-the-lane-is-a-translucent-solid.md) | ~~The lane is a translucent solid~~ — superseded by 0079; the road is a building with windows |
+| [0075](0075-every-lane-is-drawn-and-a-lane-has-a-floor.md) | Every lane is drawn and the one you are on is brighter — the shell mechanism is superseded by 0078 |
 | [0076](0076-a-lane-that-has-ended-cannot-govern.md) | A lane that has ended behind you cannot govern, and a ramp is drawn darker |
 | [0077](0077-traffic-runs-on-the-right.md) | Traffic runs on the right, and the deck convention is retired |
+| [0078](0078-the-road-is-built-from-modules.md) | The road is built from modules, and a deck is the lane rather than the building |
+| [0079](0079-glass-is-a-diffuser.md) | The glass is a diffuser, and "visually open" is measured as area |
 
-*Next number: 0078.*
+*Next number: 0080.*

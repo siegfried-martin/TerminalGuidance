@@ -218,7 +218,17 @@ first of the number shifts below.*
   curve radius > deck separation**.
 - **ADR 0077** — traffic runs on the right; the deck convention is retired.
 
-### B — The structure is modules
+### B — The structure is modules ✅ built 2026-08-31 (ADRs 0078, 0079)
+
+*Landed as planned. Three things worth carrying into C. The split of `RoadStructure`
+out of `RoadDeck` was load-bearing, not tidying — a deck cannot own a building that
+also belongs to the deck coming the other way, and after A there is exactly one
+building over both carriageways; C's rings and D's roadway dock both attach to it.
+The flare arithmetic moved to `LaneProfile` so the lane and the building around it
+cannot disagree about where the road pinches. And **the area check is not sufficient
+on its own**: panes stack, the first glass alpha tried (0.7, the honest reading of "a
+little more opaque") produced a solid tube with the area check passing happily, and
+only a frame caught it. See ADR 0079.*
 
 - Split `RoadStructure` out of `RoadDeck`. **A deck is the lane you fly in; the
   structure is the building around it.** These are currently conflated, and the split

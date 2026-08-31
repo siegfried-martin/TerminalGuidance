@@ -32,6 +32,14 @@ ADR 0074's *"Do not draw the shell on every deck"* is superseded. Everything els
 > sides, so the seam matches by construction instead of by two mirrored cases
 > agreeing. The mechanism is otherwise untouched.
 
+> **Superseded in mechanism by ADRs 0078 and 0079, and the decision still stands.**
+> There is no shell. The road is a building of modules and the lane inside it is
+> drawn as MARKINGS painted on its own carriageway — every carriageway is marked, and
+> the ridden one is painted bright. That is this ADR's clause word for word, carried
+> by paint instead of by a tube. The vertex gradient and its three colour keys are
+> gone: the median is a pane of glass now, which is a better answer to "which side am
+> I on" than a colour ramp was.
+
 ## Why
 
 **One lane lit produced a bug that reads as a rendering fault.** Taking a ramp hands
