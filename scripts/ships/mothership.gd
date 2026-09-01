@@ -75,6 +75,15 @@ var cruise: CruiseLane = null
 ## entered. It is left the way it was entered: by pressing the key again.
 var berth: BerthHold = null
 
+## The cruise drive's tank (POC step 7, ADR 0017). It is the SHIP's rather than the
+## map's because it is a fitting on this hull, and because the arena — which has no
+## highway — must be able to build a Mothership without a road existing.
+##
+## Nothing in the arena touches it. Metres are burned by whatever is carrying the
+## ship along a highway, which is `SystemMap`, and it is spent per metre so that a
+## change to any speed cannot silently reprice a route.
+var cruise_tank: CruiseTank = CruiseTank.new()
+
 ## 0 to 1: how far the cruise drive has wound up. The ceiling is blended across it,
 ## so joining the road accelerates and leaving it decelerates instead of the speed
 ## snapping between hull and cruise in one frame.
@@ -159,6 +168,10 @@ func _ready() -> void:
 	adopt_tuned_hull_class()
 	_reticle.reset(basis)
 	_apply_tuning()
+	# After `_apply_tuning`, which is what gives the tank its capacity. Only here:
+	# a hot reload reconfigures the tank and must never refill it, or every edit to
+	# the tuning file would be a free tankful.
+	cruise_tank.fill_to(Tuning.num("exploration/cruise_fuel_start_fraction"))
 	Tuning.reloaded.connect(_on_tuning_reloaded)
 
 
@@ -182,6 +195,8 @@ func _apply_tuning() -> void:
 	mat.albedo_color = Tuning.color("ship/hull_tint")
 	mat.metallic = Tuning.num("ship/metallic")
 	mat.roughness = Tuning.num("ship/roughness")
+	cruise_tank.configure(Tuning.num("exploration/cruise_fuel_capacity"),
+		Tuning.num("exploration/cruise_fuel_per_km") / 1000.0)
 
 
 func _process(delta: float) -> void:
@@ -335,8 +350,15 @@ static func brake_limited(from: float, wanted: float, ceiling: float,
 
 ## Wind the drive up or down. Runs every frame whatever is flying, because the
 ## spool-down has to keep going after `cruise` is already null.
+## **A dry tank winds the drive down; it does not take the ship off the road.**
+## Running dry mid-leg has to be slow rather than stranding (ADR 0017), and the road
+## is a place rather than a mode (ADR 0057) — so an empty tank spools the ceiling
+## back to the hull's and leaves the player in the lane, still steering, still able
+## to reach the next system under their own engine. Ejecting them into open space
+## would be a condition imposed on them mid-transit, which is the thing the target
+## experience forbids.
 func _spool(delta: float) -> void:
-	if cruise != null:
+	if cruise != null and not cruise_tank.is_dry():
 		_cruise_ceiling = cruise.top_speed()
 		var up := maxf(Tuning.num("exploration/cruise_spool_seconds"), 0.001)
 		_cruise_spool = minf(_cruise_spool + delta / up, 1.0)
@@ -356,6 +378,13 @@ func cruise_spool() -> float:
 ## Is the cruise drive running right now?
 func is_cruising() -> bool:
 	return cruise != null
+
+
+## On a highway with an empty tank: still in the lane, no longer being carried by
+## the drive. The HUD says so, because the speed falling with nothing else changing
+## reads as a bug rather than as a fuel state.
+func is_coasting_dry() -> bool:
+	return cruise != null and cruise_tank.is_dry()
 
 
 ## The road direction the nose is held against, and the one the camera frames. Zero

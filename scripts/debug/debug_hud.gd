@@ -67,6 +67,17 @@ func add_row(title: String, getter: Callable) -> void:
 	_rows.append({"title": title, "getter": getter, "label": label})
 
 
+## What a row currently reads. For the gate: a readout whose whole job is to SAY
+## something — the debug teleport's contamination warning is the case — can only be
+## checked if its text can be asked for. It calls the getter rather than reading the
+## label back, so the answer is right whether or not the HUD is visible.
+func row_text(title: String) -> String:
+	for row in _rows:
+		if row["title"] == title:
+			return str((row["getter"] as Callable).call())
+	return ""
+
+
 func _process(_delta: float) -> void:
 	if not visible:
 		return

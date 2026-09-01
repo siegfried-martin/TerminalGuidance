@@ -280,6 +280,10 @@ func observe(ship: Mothership, delta: float) -> void:
 	if ship == null or not is_instance_valid(ship) or delta <= 0.0:
 		return
 	var here := to_local(ship.global_position)
+	# Taken BEFORE the road runs, because `_ride_the_road` moves `_previous` on its
+	# berthed path. Metres, not seconds: fuel is priced by the route (ADR 0017), so
+	# nothing that changes a speed may change what a leg costs.
+	var travelled := here.distance_to(_previous) if _has_previous else 0.0
 
 	_warning = _field.warning(here)
 	for disc in _discs:
@@ -302,6 +306,13 @@ func observe(ship: Mothership, delta: float) -> void:
 	# what decides which one that is. Reading the key here rather than inside the
 	# berth keeps `RoadBerth` drivable by the gate, which has no input device.
 	_berth.observe(ship, _riding, Input.is_action_just_pressed("dock"), delta)
+	# HIGHWAY METRES, whoever is doing the steering. A berth is carried by the road at
+	# a fraction of cruise (ADR 0082), and a berth that also travelled free would be
+	# the range-optimal way to cross the map — which is exactly the "automation is
+	# never optimal" clause it was built to satisfy. So it costs the same per metre
+	# and buys comfort rather than range (ADR 0086).
+	if ship.is_cruising():
+		ship.cruise_tank.burn(travelled)
 	_aim_signs(ship, Input.is_action_just_pressed("fire_primary"))
 	for gate in _road.gates():
 		gate.repaint(delta)
@@ -338,6 +349,11 @@ func observe(ship: Mothership, delta: float) -> void:
 ## colour rather than a second rule about who may use a portal.
 func _ride_the_road(ship: Mothership, here: Vector3) -> void:
 	var allowed := ship.has_cruise_drive()
+	# ENGAGING needs fuel; STAYING does not. A portal is refused on an empty tank —
+	# it opens for a drive that can run, and a dry one cannot (ADR 0060) — but a tank
+	# that empties mid-leg leaves the ship on the road at hull speed rather than
+	# putting it out in open space, which would be the road dropping the player.
+	var can_engage := allowed and not ship.cruise_tank.is_dry()
 	# A BERTHED SHIP DOES NOT CHANGE ROADS. The berth is bound to one carriageway and
 	# follows its centre-line; letting the union hand it to a ramp on proximity would
 	# be the berth choosing a route, which is the one thing it must never do (ADR
@@ -361,7 +377,7 @@ func _ride_the_road(ship: Mothership, here: Vector3) -> void:
 	# against a point, and every sample below has to be taken with the SAME clearance
 	# or the union would compare a hull-measured depth against a point-measured one.
 	var clearance := ship.lane_clearance()
-	_road.set_permitted(allowed)
+	_road.set_permitted(can_engage)
 	if not _has_previous:
 		return
 
@@ -410,7 +426,7 @@ func _ride_the_road(ship: Mothership, here: Vector3) -> void:
 		ship.cruise = _riding.sample(here, clearance)
 		return
 
-	if not allowed:
+	if not can_engage:
 		return
 	for deck in _road.decks():
 		if deck.start_portal() != null \
@@ -608,6 +624,51 @@ func system_center(index: int) -> Vector3:
 
 func system_name(index: int) -> String:
 	return "—" if index < 0 or index >= NAMES.size() else NAMES[index]
+
+
+## Put a ship in a system, back from one of its apertures and facing out along it.
+##
+## One placement rule, used by the spawn and by the debug teleport, so a teleport
+## lands the ship exactly where a fresh run would put it — anywhere else and the two
+## would slowly diverge into "it behaves differently after a jump". The offset keeps
+## the ship well clear of the planet's approach envelope, which sits on the centre:
+## arriving already inside a landing sequence nobody asked for is the thing ADR 0012
+## exists to prevent.
+func place_ship(ship: Node3D, index: int) -> void:
+	if ship == null or index < 0 or index >= _discs.size():
+		return
+	var disc := _discs[index]
+	var home := disc.position
+	var mouth := disc.aperture_mouth(disc.aperture_count() - 1)
+	var out := (mouth - home).normalized()
+	ship.global_position = to_global(home - out * disc.radius() * 0.45)
+	ship.look_at(to_global(mouth), Vector3.UP)
+
+
+## THE DEBUG TELEPORT (POC step 7). It exists so fuel and route choices can be tested
+## without flying every leg, and it is a debug tool rather than a mechanic: nothing in
+## the game may call it, and the HUD says loudly that it was used, because a silent
+## teleport contaminates the travel-time verdict this POC is measuring.
+##
+## The ship is taken off the road first. Being moved several kilometres while a lane
+## sample from the old road is still attached would hand the ship a road that is no
+## longer under it, and the ship's own memory of where the road went — the slewed axis
+## and the wound-up spool — would arrive at the far end as an engine running in open
+## space.
+func warp_to_system(ship: Mothership, index: int) -> void:
+	if ship == null or index < 0 or index >= _discs.size():
+		return
+	_berth.release(ship)
+	_riding = null
+	ship.cruise = null
+	ship.leave_road()
+	ship.reset_reticle()
+	place_ship(ship, index)
+	# The previous position is a system away now, and the segment between the two
+	# crosses whatever happens to lie on the line. Forgetting it is what keeps the
+	# portal-crossing test from reading a jump as a trip through a portal.
+	_has_previous = false
+	_previous = to_local(ship.global_position)
 
 
 ## Whichever approach sequence is doing something, or the nearest one when none is.

@@ -133,4 +133,6 @@ The reasoning, including what the alternative was and why it lost.
 | [0084](0084-a-road-may-refuse-to-let-you-off-it.md) | A road may refuse to let you off it, and it refuses by not being a candidate |
 | [0085](0085-the-map-is-a-network-of-routes.md) | The map is a network of routes, and an interchange swings out before it changes height |
 
-*Next number: 0086.*
+| [0086](0086-a-dry-tank-is-slow-not-stranded.md) | A dry tank is slow, never stranded, and the road spends fuel by the metre |
+
+*Next number: 0087.*

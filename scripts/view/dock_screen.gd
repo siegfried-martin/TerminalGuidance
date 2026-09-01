@@ -55,12 +55,19 @@ func _ready() -> void:
 
 ## Add a service. Step 7's "refuel cruise tank" and the magazine refill are each one
 ## of these, not a change to this file.
-func add_service(label: String, action: Callable) -> Button:
+##
+## `at_top` puts it above `Depart`, which is where a service belongs: `open` focuses
+## the first row, and a screen that lands the focus on the way out is a screen whose
+## default answer is "leave". Depart is built first only because it is the one thing
+## every place offers.
+func add_service(label: String, action: Callable, at_top: bool = false) -> Button:
 	var button := Button.new()
 	button.name = label
 	button.text = label
 	button.pressed.connect(action)
 	_rows.add_child(button)
+	if at_top:
+		_rows.move_child(button, 0)
 	return button
 
 

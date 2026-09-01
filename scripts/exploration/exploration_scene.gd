@@ -38,6 +38,15 @@ var _dock: DockScreen
 ## precision is not yet a problem — the invariant is kept because retrofitting it
 ## once systems assume a fixed origin is what costs.
 var _root: Node3D
+## The dock screen's refuel row. Held so its label can say what a fill would cost
+## before it is pressed — a service that reports nothing back is one the player has
+## to press to find out whether it did anything.
+var _refuel: Button
+## How many times the debug teleport has been used this session, and where the last
+## one went. Kept so the HUD can say so permanently: a jump makes every travel figure
+## on the screen untrue, and this POC exists to read travel figures.
+var _teleports: int = 0
+var _last_teleport: String = ""
 
 
 func _ready() -> void:
@@ -98,6 +107,10 @@ func _build_world() -> void:
 	_dock.name = "DockScreen"
 	add_child(_dock)
 	_dock.departed.connect(func() -> void: _map.depart())
+	# POC step 7's row on the screen step 4 built as a list for exactly this. Free,
+	# because an economy is explicitly out of this POC's scope — what is under test is
+	# whether the gauge gets CHECKED before a route, not what a tankful is worth.
+	_refuel = _dock.add_service("Refuel cruise tank", _do_refuel, true)
 
 
 func _build_ship() -> void:
@@ -110,12 +123,9 @@ func _build_ship() -> void:
 	_ship.piloted = true
 	# Started in system A, on the combat plane, back from the aperture and facing
 	# down the leg — so the first thing on screen is the way out of the system and
-	# the trip that is being measured.
-	var home := _map.system_center(0)
-	var mouth := _map.systems()[0].aperture_mouth(
-		_map.systems()[0].aperture_count() - 1)
-	_ship.position = home - (mouth - home).normalized() * _map.systems()[0].radius() * 0.45
-	_ship.look_at(mouth, Vector3.UP)
+	# the trip that is being measured. The map owns the rule, because the debug
+	# teleport has to land the ship the same way a fresh run does.
+	_map.place_ship(_ship, 0)
 
 	_camera = ChaseCamera.new()
 	_camera.name = "ChaseCamera"
@@ -146,6 +156,16 @@ func _build_hud() -> void:
 		return null if _map.is_docked() else _ship
 	overlay_layer.add_child(_overlay)
 
+	# THE DEBUG TELEPORT, and it is the FIRST row on purpose. Every travel figure
+	# below it stops being a reading the moment a jump is made, and this POC exists to
+	# read travel figures — so the warning sits above them rather than under them.
+	_hud.add_row("teleport", func() -> String:
+		if not Tuning.flag("exploration/debug_teleport_enabled"):
+			return "disabled  ·  travel times this session are a reading"
+		if _teleports == 0:
+			return "J jumps to the next system  ·  unused, travel times are a reading"
+		return "USED %d ×  ·  last: %s  ·  TRAVEL TIMES THIS SESSION ARE NOT A READING" % [
+			_teleports, _last_teleport])
 	_hud.add_row("class", func() -> String:
 		return "%s  ·  %.0f m/s top  ·  cruise drive %s" % [
 			HullClass.name_of(_ship.hull_class).to_upper(),
@@ -158,6 +178,20 @@ func _build_hud() -> void:
 	_hud.add_row("flight", func() -> String:
 		return "throttle %3.0f%%  ·  %.0f m/s of %.0f" % [
 			_ship.throttle() * 100.0, _ship.speed(), _ship.manual_max_speed()])
+	# THE CRUISE TANK (POC step 7). Level, and the thing the level is actually for —
+	# how much highway is left in it. ADR 0017 asks for the cost of a route to be
+	# legible while the route is being chosen, and metres of road are what a player
+	# compares against a map; units are only what they are counted in.
+	_hud.add_row("fuel", func() -> String:
+		var tank := _ship.cruise_tank
+		if tank.is_dry():
+			return "TANK DRY  ·  every portal is red  ·  on the road you coast at " \
+				+ "hull speed  ·  refuel at any planet"
+		var left := tank.range_metres()
+		return "%.1f / %.0f units  ·  %.0f%%  ·  %s of highway  ·  %.2f per km" % [
+			tank.units, tank.capacity, tank.fraction() * 100.0,
+			"unlimited" if is_inf(left) else "%.1f km" % (left / 1000.0),
+			Tuning.num("exploration/cruise_fuel_per_km")])
 	# Where the player is, in the map's own words. This is the step-5 row: the whole
 	# question is what four kilometres of hand-flown corridor feels like, and that
 	# starts with knowing whether you have left yet.
@@ -176,6 +210,13 @@ func _build_hud() -> void:
 			if not _ship.has_cruise_drive():
 				return "no cruise drive — every portal is red (ADR 0060)"
 			return "off the road  ·  fly a portal to engage"
+		# DRY, AND STILL ON THE ROAD. The road does not drop you when the tank empties
+		# (ADR 0086), so this state has to be said out loud — a speed that falls with
+		# nothing else on the HUD changing reads as a bug rather than as a fuel state.
+		if _ship.is_coasting_dry():
+			return "DRY ON THE ROAD  ·  %s  ·  %.0f m left  ·  drive winding down, " % [
+				lane.deck_name, lane.metres_remaining] \
+				+ "coasting at hull speed"
 		# Stopped on the road there is no "at this speed", so the row quotes the
 		# ceiling instead. An ETA of `inf` is not a reading, it is a division.
 		var moving := _ship.speed() > 0.1
@@ -253,10 +294,12 @@ func _build_hud() -> void:
 		if nearest == null:
 			return "—"
 		# The label already says TO or FROM. Prefixing it again reads "to TO SYSTEM B".
+		var refused := "REFUSED — no cruise drive" if not _ship.has_cruise_drive() \
+			else "REFUSED — cruise tank dry"
 		return "%s  ·  %.0f m  ·  %s" % [
 			nearest.destination if not nearest.destination.is_empty() else "portal",
 			here.distance_to(nearest.position),
-			"OPEN" if nearest.permitted else "REFUSED — no cruise drive"]
+			"OPEN" if nearest.permitted else refused]
 	)
 	# THE step-5 number. The leg at this hull's top speed is the baseline the
 	# highway has to beat in step 6, and it is worth reading before flying it as well
@@ -278,9 +321,15 @@ func _build_hud() -> void:
 		var span := _map.system_center(next).distance_to(_map.system_center(onward))
 		if by_road <= 0.0 or by_hand <= 0.0:
 			return "—"
-		return "%s to %s: %.0f m  ·  %.0f s by road, %.0f s by hand" % [
+		# AND WHAT IT COSTS. ADR 0017's forbid is that travel time and fuel cost must
+		# be visible "at the moment the player would point the ship" — this row is that
+		# moment, so the price of the leg ahead belongs on it rather than being worked
+		# out from the gauge and a distance.
+		var tank := _ship.cruise_tank
+		return "%s to %s: %.0f m  ·  %.0f s by road, %.0f s by hand  ·  %.1f fuel, %s" % [
 			_map.system_name(next), _map.system_name(onward), span,
-			span / by_road, span / by_hand]
+			span / by_road, span / by_hand, tank.cost_for(span),
+			"tank covers it" if tank.covers(span) else "TANK IS SHORT"]
 	)
 	# How far there is left to go, either way. Off-road travel with no map is the
 	# control condition, not a puzzle — the POC is testing whether the crossing is
@@ -339,7 +388,8 @@ func _build_hud() -> void:
 	_hud.add_row("markers", func() -> String:
 		return "%d across the map" % _map.marker_count())
 	_hud.add_row("keys", func() -> String:
-		return "W/S throttle · A/D thrusters · mouse steers · H cycles hull · F1 hud · F2 tune")
+		return "W/S throttle · A/D thrusters · mouse steers · C berth · H hull · " \
+			+ "J teleport · F1 hud · F2 tune")
 
 
 func _apply_tuning() -> void:
@@ -385,7 +435,25 @@ func _process(delta: float) -> void:
 ## happens after the countdown the player watched, not before it.
 func _on_arrived(place: String) -> void:
 	_ship.piloted = false
+	_label_refuel()
 	_dock.open(place)
+
+
+## What a fill would do, said before it is pressed and again after. A service button
+## whose label never changes is one the player has to press to find out whether it
+## did anything, which is the same failure as a screen that lies.
+func _label_refuel() -> void:
+	if _refuel == null or _ship == null:
+		return
+	var tank := _ship.cruise_tank
+	_refuel.text = "Cruise tank full (%.0f units)" % tank.capacity \
+		if tank.fraction() >= 0.999 \
+		else "Refuel cruise tank (%.0f → %.0f units)" % [tank.units, tank.capacity]
+
+
+func _do_refuel() -> void:
+	_ship.cruise_tank.fill()
+	_label_refuel()
 
 
 ## Leaving takes off rather than releasing the controls where they were. The ship
@@ -422,6 +490,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		Tuning.reload()
 	elif event.is_action_pressed("debug_cycle_hull"):
 		cycle_hull()
+	elif event.is_action_pressed("debug_teleport"):
+		teleport_onward()
 
 
 ## The debug roster (POC step 3). Instant, because the whole point is feeling the
@@ -437,6 +507,38 @@ func _unhandled_input(event: InputEvent) -> void:
 func cycle_hull() -> void:
 	_ship.set_hull_class(HullClass.next(_ship.hull_class))
 	_camera.boom_scale = _ship.hull_scale()
+
+
+## THE DEBUG TELEPORT (POC step 7, item 13). It exists so fuel limits and route
+## choices can be tested without flying every leg — the trunk is eighteen kilometres
+## and testing it twice by hand is a nine-minute round trip.
+##
+## It jumps to the NEXT system rather than to the nearest, which the POC doc's wording
+## asks for: the nearest system is almost always the one the ship is standing in, and
+## a key that usually does nothing is a key that gets pressed twice. Cycling reaches
+## every system on the map, including the two on the crossing highway.
+##
+## Every use is counted, printed, and carried on the HUD's first row for the rest of
+## the session. A silent teleport contaminates a travel-time verdict, and this POC's
+## first success criterion is a travel-time verdict.
+func teleport_onward() -> void:
+	if not Tuning.flag("exploration/debug_teleport_enabled"):
+		return
+	var count := _map.systems().size()
+	if count <= 1:
+		return
+	var next := (maxi(_map.nearest_system(_ship_in_map()), 0) + 1) % count
+	_map.warp_to_system(_ship, next)
+	_teleports += 1
+	_last_teleport = "%s at %.0f s" % [_map.system_name(next),
+		Time.get_ticks_msec() / 1000.0]
+	print("[debug] teleport %d — to %s" % [_teleports, _last_teleport])
+
+
+## How many jumps have been made this session. For the gate, which asserts that the
+## teleport is loud rather than that it moved the ship.
+func teleport_count() -> int:
+	return _teleports
 
 
 func map() -> SystemMap:

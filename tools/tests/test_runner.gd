@@ -229,7 +229,7 @@ const REQUIRED_ACTIONS: Array[String] = [
 	"cam_forward", "cam_back", "cam_left", "cam_right", "cam_up", "cam_down",
 	"cam_boost", "cam_look",
 	"debug_toggle_hud", "debug_toggle_panel", "debug_reload_tuning",
-	"debug_reverse_arc", "debug_cycle_hull", "quit",
+	"debug_reverse_arc", "debug_cycle_hull", "debug_teleport", "quit",
 ]
 
 var _failures: PackedStringArray = []
@@ -252,6 +252,7 @@ func _ready() -> void:
 	_test_manual_flight()
 	_test_hull_classes()
 	_test_lane_geometry()
+	_test_cruise_tank()
 	_test_deep_field()
 	_test_envelope_meter()
 	_test_disc_bounds()
@@ -2348,6 +2349,81 @@ func _test_sandbox_builds() -> void:
 	scene.queue_free()
 
 
+## THE CRUISE TANK (POC step 7, ADR 0017 and ADR 0086). Pure arithmetic here; what
+## it does to the ship and to the road is checked in the exploration scene.
+##
+## The property worth naming: fuel is priced per METRE. A budget in seconds would be
+## repriced by every change to a speed, and the resource exists to be planned around
+## a MAP.
+func _test_cruise_tank() -> void:
+	var tank := CruiseTank.new()
+	tank.configure(100.0, 0.001)
+	tank.fill()
+	_expect(is_equal_approx(tank.units, 100.0) and is_equal_approx(tank.fraction(), 1.0),
+		"a filled tank is full", "%.2f units" % tank.units)
+	_expect(is_equal_approx(tank.range_metres(), 100000.0),
+		"…and its range is what it holds divided by the price, in metres",
+		"%.0f m" % tank.range_metres())
+
+	var burned := tank.burn(2600.0)
+	_expect(is_equal_approx(burned, 2.6) and is_equal_approx(tank.units, 97.4),
+		"burning the local leg costs its LENGTH times the price, not its duration",
+		"%.3f units for 2600 m" % burned)
+	_expect(is_equal_approx(tank.cost_for(18000.0), 18.0) and tank.covers(18000.0),
+		"…and the price of a route ahead can be asked for before flying it",
+		"%.2f units for the trunk leg" % tank.cost_for(18000.0))
+	_expect(not tank.covers(200000.0),
+		"…including when the answer is no", "it claimed to cover 200 km")
+
+	# Running out. The last frame burns what is left rather than going negative, and
+	# an empty tank is empty rather than owing.
+	var over := tank.burn(1.0e9)
+	_expect(is_equal_approx(over, 97.4) and is_equal_approx(tank.units, 0.0)
+			and tank.is_dry(),
+		"a tank cannot burn what it does not hold, and empty is empty",
+		"%.3f burned, %.3f left" % [over, tank.units])
+	_expect(is_equal_approx(tank.burn(5000.0), 0.0),
+		"…and a dry tank burns nothing at all", "it burned from empty")
+
+	# Hot reload. Shrinking the capacity under a full tank must not leave it holding
+	# more than it can, and it must not be a free refill either.
+	tank.fill()
+	tank.configure(40.0, 0.001)
+	_expect(is_equal_approx(tank.units, 40.0),
+		"shrinking the capacity on a hot reload clamps what is in the tank",
+		"%.2f units in a %.0f tank" % [tank.units, tank.capacity])
+	tank.units = 10.0
+	tank.configure(100.0, 0.001)
+	_expect(is_equal_approx(tank.units, 10.0),
+		"…and growing it is not a refill", "%.2f units" % tank.units)
+
+	# A price of nothing is unlimited range, not none. The most harmless setting must
+	# not put the most alarming reading on the HUD.
+	tank.configure(100.0, 0.0)
+	tank.fill()
+	_expect(is_inf(tank.range_metres()) and not tank.is_dry(),
+		"free fuel reads as unlimited range rather than as zero",
+		"%.1f m" % tank.range_metres())
+
+	# The tuned numbers, against the map they are tuned for. Not a feel verdict — what
+	# is asserted is that a full tank crosses the map, because a POC in which the very
+	# first leg strands you is testing the wrong thing.
+	var map_metres := Tuning.num("exploration/local_leg_length") \
+		+ Tuning.num("exploration/trunk_leg_length") \
+		+ Tuning.num("exploration/cross_inbound_leg_length") \
+		+ Tuning.num("exploration/cross_outbound_leg_length")
+	var tuned := CruiseTank.new()
+	tuned.configure(Tuning.num("exploration/cruise_fuel_capacity"),
+		Tuning.num("exploration/cruise_fuel_per_km") / 1000.0)
+	tuned.fill()
+	_expect(tuned.covers(map_metres),
+		"a full tank at the tuned price crosses every leg on the map",
+		"%.1f units for %.1f km, tank holds %.0f" % [tuned.cost_for(map_metres),
+			map_metres / 1000.0, tuned.capacity])
+	_expect(Tuning.num("exploration/cruise_fuel_start_fraction") > 0.0,
+		"…and the ship does not spawn dry", "it spawns with an empty tank")
+
+
 # --- helpers -----------------------------------------------------------------
 
 func _gd_files() -> PackedStringArray:
@@ -4396,6 +4472,146 @@ func _test_exploration_builds() -> void:
 		"…already moving, with the THROTTLE set to match so it is not a shove",
 		"%.1f m/s at %.0f%% throttle" % [scene.ship().speed(),
 			scene.ship().throttle() * 100.0])
+
+	# --- CRUISE FUEL ON THE ROAD (POC step 7, ADR 0086) ---
+	# The arithmetic is checked in `_test_cruise_tank`; what is checked here is what
+	# the resource DOES — that it is spent by the road, that it closes a portal when
+	# it runs out, and above all that running out does not strand anybody.
+	var tank := scene.ship().cruise_tank
+	scene.ship().set_hull_class(HullClass.Kind.TAXI)
+	tank.fill()
+	var ramp_mouth := on_ramp.start_portal()
+	var inbound := on_ramp.path().tangent_at(0.0)
+	scene.ship().position = ramp_mouth.position - inbound * 20.0
+	_step_exploration(scene, 1.0 / 60.0)
+	scene.ship().position = ramp_mouth.position + inbound * 20.0
+	_step_exploration(scene, 1.0 / 60.0)
+	_expect(scene.ship().cruise != null,
+		"a fuelled ship engages cruise at the portal", "it did not engage")
+
+	# The burn is exactly the metres of highway between two frames. The ship is placed
+	# rather than flown so the distance is known: `SystemMap` measures from where the
+	# ship was at the previous observation, which is the position set before it.
+	var from_point := on_ramp.path().point_at(on_ramp.length() * 0.2)
+	var to_point := on_ramp.path().point_at(on_ramp.length() * 0.6)
+	scene.ship().position = from_point
+	_step_exploration(scene, 1.0 / 60.0)
+	var before_burn := tank.units
+	scene.ship().position = to_point
+	_step_exploration(scene, 1.0 / 60.0)
+	var spent := before_burn - tank.units
+	var owed := from_point.distance_to(to_point) \
+		* Tuning.num("exploration/cruise_fuel_per_km") / 1000.0
+	_expect(absf(spent - owed) < 0.0001,
+		"the road spends fuel per METRE travelled, not per second on it",
+		"%.4f units for %.0f m, expected %.4f" % [spent,
+			from_point.distance_to(to_point), owed])
+
+	# RUNNING DRY MID-LEG DOES NOT STRAND YOU. The drive winds down, the ceiling comes
+	# back to the hull's, and the ship stays in the lane still steering — it is slow,
+	# never stuck (ADR 0017), and it is never put out into open space by something it
+	# did not do (the target-experience rule).
+	tank.units = 0.0
+	_step_exploration(scene, 1.0 / 60.0)
+	_expect(scene.ship().is_coasting_dry() and map.riding() != null,
+		"an empty tank leaves the ship ON the road, not beside it",
+		"riding %s" % ("nothing" if map.riding() == null else map.riding().name))
+	for _i in int(Tuning.num("exploration/cruise_spool_down_seconds") * 60.0) + 30:
+		scene.ship().position = to_point
+		_step_exploration(scene, 1.0 / 60.0)
+	_expect(scene.ship().cruise_spool() < 0.001 and map.riding() != null,
+		"…and the drive winds DOWN rather than the road dropping the ship",
+		"spool %.3f, riding %s" % [scene.ship().cruise_spool(),
+			"nothing" if map.riding() == null else map.riding().name])
+	_expect(scene.ship().manual_max_speed()
+			< Tuning.num("exploration/cruise_speed") * 0.5,
+		"…so what is left is the hull's own top speed, which is the recovery",
+		"%.1f m/s" % scene.ship().manual_max_speed())
+	_expect(not ramp_mouth.permitted,
+		"a dry tank closes every portal — one opens for a drive that can RUN",
+		"the portal stayed open on an empty tank")
+
+	# And it cannot be re-engaged until it is refuelled. Off the road first, because
+	# the question is about entry rather than about staying — and note that getting
+	# off is not a matter of being far from the lane: a road is left through a portal
+	# or off its end and nowhere else, so the ship is put elsewhere on the map rather
+	# than flown sideways out of the tube.
+	map.warp_to_system(scene.ship(), 1)
+	_step_exploration(scene, 1.0 / 60.0)
+	scene.ship().position = ramp_mouth.position - inbound * 20.0
+	_step_exploration(scene, 1.0 / 60.0)
+	scene.ship().position = ramp_mouth.position + inbound * 20.0
+	_step_exploration(scene, 1.0 / 60.0)
+	_expect(scene.ship().cruise == null,
+		"…and a dry ship cannot get back ON the road until it refuels",
+		"it engaged with an empty tank")
+	tank.fill()
+	scene.ship().position = ramp_mouth.position - inbound * 20.0
+	_step_exploration(scene, 1.0 / 60.0)
+	scene.ship().position = ramp_mouth.position + inbound * 20.0
+	_step_exploration(scene, 1.0 / 60.0)
+	_expect(scene.ship().cruise != null and ramp_mouth.permitted,
+		"refuelling opens the portal again, with nothing else to undo",
+		"it stayed shut after a fill")
+
+	# THE REFUEL SERVICE. Step 4 built the dock screen as a LIST so step 7 could add a
+	# row rather than rework a layout, and this is that row. It goes ABOVE Depart,
+	# because `open` focuses the first row and a screen whose default answer is "leave"
+	# is a screen with nothing on it.
+	scene._on_arrived("SYSTEM A")
+	var services := scene.dock_screen().get_node("Centre/Panel/Column/Services")
+	var first := services.get_child(0) as Button
+	_expect(first != null and first.text.findn("tank") >= 0,
+		"the docking screen's first service is the cruise tank, above Depart",
+		"first row is %s" % ("nothing" if first == null else first.text))
+	_expect(first.text.findn("full") >= 0,
+		"…and it says what a fill would do rather than being a button that lies",
+		first.text)
+	tank.units = tank.capacity * 0.25
+	scene._on_arrived("SYSTEM A")
+	_expect(first.text.findn("→") >= 0,
+		"…including the numbers, on a tank that is not full", first.text)
+	first.pressed.emit()
+	_expect(is_equal_approx(tank.units, tank.capacity),
+		"…and pressing it fills the tank", "%.1f units" % tank.units)
+	scene.dock_screen().close()
+	scene.ship().piloted = true
+
+	# --- THE DEBUG TELEPORT (POC step 7, item 13) ---
+	# It is a debug tool with one requirement beyond working: it must be LOUD, because
+	# every travel figure this POC exists to read is untrue once a jump has been made.
+	var hud := scene.get_node("DebugHud") as DebugHud
+	_expect(not hud.row_text("teleport").is_empty()
+			and hud.row_text("teleport").findn("NOT A READING") < 0,
+		"before any jump the HUD says travel times ARE a reading",
+		hud.row_text("teleport"))
+	var origin_system := map.nearest_system(map.to_local(scene.ship().global_position))
+	scene.teleport_onward()
+	var now_at := map.nearest_system(map.to_local(scene.ship().global_position))
+	_expect(scene.teleport_count() == 1
+			and now_at == (origin_system + 1) % map.systems().size(),
+		"the teleport moves the ship to the NEXT system, not the one it is in",
+		"went from %d to %d" % [origin_system, now_at])
+	_expect(scene.ship().cruise == null and map.riding() == null
+			and scene.ship().road_axis() == Vector3.ZERO,
+		"…and it takes the ship off the road first, engine and axis included",
+		"it arrived still attached to a road a system away")
+	_expect(map.active_approach(map.to_local(scene.ship().global_position)) == null
+			or map.active_approach(map.to_local(scene.ship().global_position))
+				.state() == ApproachEnvelope.State.CLEAR,
+		"…and lands clear of the planet's envelope rather than inside a landing",
+		"it arrived inside an approach sequence")
+	_expect(hud.row_text("teleport").findn("NOT A READING") >= 0,
+		"…and the HUD says so for the rest of the session: a silent teleport "
+			+ "contaminates the travel-time verdict",
+		hud.row_text("teleport"))
+	# A jump must not be a free tankful either — the resource under test would stop
+	# being testable if the tool used to test it kept topping it up.
+	var carried_fuel := tank.units
+	scene.teleport_onward()
+	_expect(is_equal_approx(tank.units, carried_fuel) and scene.teleport_count() == 2,
+		"…and it does not refuel: the tool must not undo the thing it tests",
+		"%.2f units became %.2f" % [carried_fuel, tank.units])
 
 	scene.queue_free()
 	await get_tree().process_frame

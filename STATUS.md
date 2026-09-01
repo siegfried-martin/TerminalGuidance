@@ -1,6 +1,6 @@
 # STATUS
 
-*Updated 2026-08-31.*
+*Updated 2026-09-01.*
 
 ---
 
@@ -14,12 +14,59 @@ the human's explicit direction.
 
 | | |
 |---|---|
-| Branch | `feat/exploration-tuning-and-hud`, PR #14 |
-| Gate | `make check` — 1207 checks, 0 failed |
+| Branch | `feat/highway-section-flips`, pushed |
+| Gate | `make check` — 1240 checks, 0 failed |
 | Run it | `make fly` |
-| Built | Exploration POC steps 1–6, **step 8**, and **highway rebuild steps A–D** plus a play-session pass (ADRs 0062–0085) |
-| **Do next** | **A drive on the five-system map.** Then the "over the top" left turn — `RoadPath.sweep` now exists and may be most of what it needed — or POC step 7, cruise fuel. Step E is traffic, deferred to POC steps 9–10. |
+| Built | Exploration POC steps 1–8 and **highway rebuild steps A–D**, plus a play-session pass (ADRs 0062–0086) |
+| **Do next** | **A drive on the five-system map, with the tank now worth watching.** Then the "over the top" left turn — `RoadPath.sweep` now exists and may be most of what it needed. Steps 9–10 are traffic, and rebuild step E folds into them. |
 | **Waiting on you** | **The fourth checkpoint, and the important one**: success criterion 1, on a trunk road that now weaves and undulates. Ten minutes on it. `cruise_turn_clamp_deg` is tuned WITH `road_curve_deg` and `road_curve_period`, never against them. The third checkpoint is still open too — is a 38-second hop worth the portal, against 203 s by hand? |
+
+### What landed on 2026-09-01 — cruise fuel and the teleport (POC step 7)
+
+**Fuel is spent per METRE of highway** (ADR 0086), by whatever is carrying the ship
+along it. `CruiseTank` is a pure fitting on the hull; `SystemMap` burns the distance
+between one observation and the next. A budget in seconds would be repriced by every
+change to a speed — the cruise number has moved three times in four sessions — and the
+whole point of the resource is that a route's price can be read off the map *before*
+the ship is pointed at it, which is the clause ADR 0017 forbids leaving out. The HUD's
+`leg` row quotes it: *"SYSTEM B to SYSTEM C: 21500 m · 86 s by road, 717 s by hand ·
+17.8 fuel, tank covers it"*.
+
+**An empty tank refuses a portal. It never takes the ship off the road.** Getting *on*
+needs fuel — a portal opens for a drive that can run (ADR 0060). Running dry *mid-leg*
+winds the drive down over the normal spool and leaves the player in the lane at hull
+speed, still steering, free to drive to the next system under their own engine. The
+obvious alternative — the road drops you — fails the target-experience rule twice: a
+condition imposed mid-transit, arriving while you are doing something else. Winding
+down costs the player exactly what running out of fuel should cost, which is time, and
+it needed no new mechanism: ADR 0066's spool-down is what a dry tank triggers.
+
+**A berth burns the same fuel as flying, and that is the decision worth remembering.**
+A berth is carried at 75% of cruise; a berth that also travelled free would be slower
+per second and cheaper per metre, which makes it the correct way to make any long
+crossing you are not in a hurry for. "The automation is the right answer" is exactly
+what ADR 0058 and ADR 0082's third property exist to prevent.
+
+**Refuel is a row on the docking screen**, above `Depart` — step 4 built that screen as
+a list so step 7 could add a row rather than rework a layout, and it did. Free: an
+economy is out of this POC's scope, and what is under test is whether the gauge gets
+*checked* before a route.
+
+**The debug teleport is `J`, and it is loud.** It jumps to the NEXT system rather than
+the nearest, which is almost always the one you are standing in. It takes the ship off
+the road first, it does **not** refuel — a tool that quietly undid the resource it
+exists to test would be worse than not having it — and every use is counted, printed,
+and carried on the **first** row of the HUD for the rest of the session, above every
+travel figure it invalidates. A silent teleport contaminates a travel-time verdict, and
+success criterion 1 is a travel-time verdict.
+
+**Yours to judge:** `cruise_fuel_capacity` (100), `cruise_fuel_per_km` (0.83) and
+`cruise_fuel_start_fraction` (1.0) are untouched from the POC doc's own starting
+values. At them a full tank is 120 km — the whole map is 36.8 km of road, so it is
+about three crossings and the trunk leg alone is 15 units. That is deliberately
+generous: criterion 3 asks whether the gauge gets *checked*, which needs empty to be
+plausibly reachable without being the point. If it never gets looked at, the price is
+too low.
 
 ### What landed on 2026-08-31 — the first play session's feedback
 
