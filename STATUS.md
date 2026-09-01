@@ -21,6 +21,22 @@ the human's explicit direction.
 | **Do next** | **A drive on the five-system map, with the tank now worth watching.** Then the "over the top" left turn — `RoadPath.sweep` now exists and may be most of what it needed. Steps 9–10 are traffic, and rebuild step E folds into them. |
 | **Waiting on you** | **The fourth checkpoint, and the important one**: success criterion 1, on a trunk road that now weaves and undulates. Ten minutes on it. `cruise_turn_clamp_deg` is tuned WITH `road_curve_deg` and `road_curve_period`, never against them. The third checkpoint is still open too — is a 38-second hop worth the portal, against 203 s by hand? |
 
+### Also on 2026-09-01 — you can steer and accelerate at the same time
+
+**You could not, on the trackpad, and it was not the game.** GNOME mutes the touchpad
+for a short window after every key event so a resting wrist cannot click while you
+type — and *holding* a key auto-repeats, which keeps that window open for as long as it
+is held. W is the throttle and the trackpad is the stick, so it was one or the other.
+Worth keeping everywhere else, and there is no per-application override.
+
+`make run`, `make fly` and `make sandbox` go through **`tools/play.sh`**, which turns
+`disable-while-typing` off for exactly the lifetime of the game and restores it on the
+way out — on a clean exit, on Ctrl-C, and on a crash. It says out loud that it is
+touching a system setting, and it is a no-op anywhere the setting does not exist.
+`check` and `shot` do not use it: the gate reads no devices, and the harnesses now take
+their own controls. The one gap is a hard kill, which skips the trap; the next clean
+run puts it back.
+
 ### Also on 2026-09-01 — a capture harness takes the controls
 
 **Your suggestion, and it was a real defect rather than a convenience.** `make shot`
