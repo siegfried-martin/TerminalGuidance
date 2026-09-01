@@ -16,6 +16,10 @@ func _ready() -> void:
 	_scene = (load("res://scenes/exploration.tscn") as PackedScene).instantiate() \
 		as ExplorationScene
 	add_child(_scene)
+	# The window this renders into is a real one: without this a hand on the mouse
+	# flies the ship and breaks approach locks mid-run (ADR 0031 wants a frame that is
+	# the same every time it is asked for).
+	_scene.set_reads_input(false)
 	# Placed just outside the envelope, aimed down at the planet, rather than flown
 	# in: a taxi covers the 900 m at 15.5 m/s in a minute, and this needs one frame.
 	var planet: Node3D = _scene.map().planets()[0]

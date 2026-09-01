@@ -4613,6 +4613,45 @@ func _test_exploration_builds() -> void:
 		"…and it does not refuel: the tool must not undo the thing it tests",
 		"%.2f units became %.2f" % [carried_fuel, tank.units])
 
+	# --- THE HARNESS CONTROLS (ADR 0031) ---
+	# `make shot` renders into a real window, so the capture harnesses used to be
+	# steered by whatever the human's hand was doing — which made a rendered frame a
+	# coin flip rather than a verification. A harness takes the controls instead, and
+	# the flight code underneath is the same code.
+	scene.set_reads_input(false)
+	_expect(not scene.reads_input() and not scene.ship().reads_input
+			and not scene.map().reads_input,
+		"a harness takes the controls of the scene, the ship and the map together",
+		"one of the three kept reading the devices")
+	var wave := InputEventMouseMotion.new()
+	wave.relative = Vector2(600.0, 0.0)
+	scene._unhandled_input(wave)
+	_step_exploration(scene, 1.0 / 60.0)
+	_expect(is_zero_approx(scene.ship().mouse_speed()),
+		"…so a hand on the mouse no longer steers the ship or breaks an approach",
+		"%.0f px/s of mouse motion got through" % scene.ship().mouse_speed())
+
+	# And it can FLY: the harness holds the lever the keys would have held.
+	scene.ship().piloted = true
+	scene.ship().input_throttle = 1.0
+	var from_throttle := scene.ship().throttle()
+	for _i in 30:
+		_step_exploration(scene, 1.0 / 60.0)
+	_expect(scene.ship().throttle() > from_throttle + 0.1,
+		"…and the throttle it holds travels at the hull's own rate, not instantly",
+		"%.2f became %.2f" % [from_throttle, scene.ship().throttle()])
+	# …and it is a FAITHFUL stand-in, which is the part that could have gone wrong
+	# quietly: the approach envelope aborts on any flight input (ADR 0012), and it asks
+	# the ship rather than the devices — so a harness holding the throttle is refused
+	# exactly as a player holding W is, instead of sailing through a sequence no human
+	# could have completed.
+	_expect(map.approaches()[0]._has_flight_input(scene.ship()),
+		"a harness holding the throttle counts as flight input, as a player does",
+		"the envelope could not see the harness flying")
+	scene.ship().input_throttle = 0.0
+	_expect(not map.approaches()[0]._has_flight_input(scene.ship()),
+		"…and letting go of it stops counting", "it stayed aborted")
+
 	scene.queue_free()
 	await get_tree().process_frame
 

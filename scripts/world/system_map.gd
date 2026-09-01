@@ -96,6 +96,15 @@ var _riding: RoadDeck = null
 ## The berth on the roadway. One per map rather than one per road: it is a thing the
 ## player does, not a thing a stretch of road has (ADR 0082).
 var _berth: RoadBerth = null
+
+## Whether the map reads the real input devices, or is told what was pressed. See
+## `Mothership.reads_input`: a capture harness renders into a real window, and a map
+## that polls the keyboard in one is not reproducible. Harness switch only.
+var reads_input: bool = true
+## One-shot presses a harness queues instead. Consumed by the next observation, so a
+## harness sets one the way a player taps a key rather than holding a flag down.
+var pressed_dock: bool = false
+var pressed_click: bool = false
 ## Last frame's position, for the SWEPT portal test. At 96.7 m/s a ship covers 1.6 m
 ## in a frame, and a portal tested against a position rather than a segment is one
 ## that intermittently does not exist.
@@ -284,6 +293,14 @@ func observe(ship: Mothership, delta: float) -> void:
 	# berthed path. Metres, not seconds: fuel is priced by the route (ADR 0017), so
 	# nothing that changes a speed may change what a leg costs.
 	var travelled := here.distance_to(_previous) if _has_previous else 0.0
+	# Both keys are read once, up front, and the harness's are consumed here — so the
+	# two consumers below cannot disagree about what was pressed this frame.
+	var took_dock := Input.is_action_just_pressed("dock") if reads_input \
+		else pressed_dock
+	var took_click := Input.is_action_just_pressed("fire_primary") if reads_input \
+		else pressed_click
+	pressed_dock = false
+	pressed_click = false
 
 	_warning = _field.warning(here)
 	for disc in _discs:
@@ -305,7 +322,7 @@ func observe(ship: Mothership, delta: float) -> void:
 	# AFTER the road, because a berth binds to the deck the ship is on and the road is
 	# what decides which one that is. Reading the key here rather than inside the
 	# berth keeps `RoadBerth` drivable by the gate, which has no input device.
-	_berth.observe(ship, _riding, Input.is_action_just_pressed("dock"), delta)
+	_berth.observe(ship, _riding, took_dock, delta)
 	# HIGHWAY METRES, whoever is doing the steering. A berth is carried by the road at
 	# a fraction of cruise (ADR 0082), and a berth that also travelled free would be
 	# the range-optimal way to cross the map — which is exactly the "automation is
@@ -313,7 +330,7 @@ func observe(ship: Mothership, delta: float) -> void:
 	# and buys comfort rather than range (ADR 0086).
 	if ship.is_cruising():
 		ship.cruise_tank.burn(travelled)
-	_aim_signs(ship, Input.is_action_just_pressed("fire_primary"))
+	_aim_signs(ship, took_click)
 	for gate in _road.gates():
 		gate.repaint(delta)
 	_road.set_active(_riding)

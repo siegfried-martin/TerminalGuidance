@@ -15,11 +15,34 @@ the human's explicit direction.
 | | |
 |---|---|
 | Branch | `feat/highway-section-flips`, pushed |
-| Gate | `make check` — 1240 checks, 0 failed |
+| Gate | `make check` — 1245 checks, 0 failed |
 | Run it | `make fly` |
 | Built | Exploration POC steps 1–8 and **highway rebuild steps A–D**, plus a play-session pass (ADRs 0062–0086) |
 | **Do next** | **A drive on the five-system map, with the tank now worth watching.** Then the "over the top" left turn — `RoadPath.sweep` now exists and may be most of what it needed. Steps 9–10 are traffic, and rebuild step E folds into them. |
 | **Waiting on you** | **The fourth checkpoint, and the important one**: success criterion 1, on a trunk road that now weaves and undulates. Ten minutes on it. `cruise_turn_clamp_deg` is tuned WITH `road_curve_deg` and `road_curve_period`, never against them. The third checkpoint is still open too — is a 38-second hop worth the portal, against 203 s by hand? |
+
+### Also on 2026-09-01 — a capture harness takes the controls
+
+**Your suggestion, and it was a real defect rather than a convenience.** `make shot`
+renders into a *real window*, so a hand resting on the mouse was steering the ship and
+breaking approach locks halfway through runs that were supposed to be reproducible —
+which makes a rendered frame a coin flip rather than a verification, and verification
+is the whole of what ADR 0031 is for. It cost me a detour today: a docking harness sat
+stuck in RELOCKING and I went looking for a bug in the envelope that was not there.
+
+`ExplorationScene.set_reads_input(false)` hands the scene, the ship and the map to the
+harness *together* — half-deterministic would be worse than neither — and a harness
+flies through `input_throttle`, `input_stick`, `input_strafe` and `map().pressed_dock`.
+The flight code underneath is unchanged; it is *given* the stick rather than asking for
+it. All eleven exploration harnesses set it.
+
+**And it is a faithful stand-in, which is the part that could have gone wrong quietly.**
+The approach envelope aborts on any flight input (ADR 0012), and it now asks the SHIP
+whether it is being flown rather than asking the devices — so a harness holding the
+throttle is refused exactly as a player holding W is, instead of sailing through a
+sequence no human could have completed. That is the same correction the mouse-rate
+reading needed on 2026-08-31, applied to the other half. ADR 0031 is amended, not
+superseded.
 
 ### What landed on 2026-09-01 — cruise fuel and the teleport (POC step 7)
 

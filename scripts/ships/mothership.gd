@@ -84,6 +84,25 @@ var berth: BerthHold = null
 ## change to any speed cannot silently reprice a route.
 var cruise_tank: CruiseTank = CruiseTank.new()
 
+## Whether this ship reads the real input devices, or is handed the controls.
+##
+## `make shot` renders into a REAL WINDOW, so a hand resting on the mouse steers the
+## ship and breaks approach locks in the middle of a run that was supposed to be
+## reproducible — which is how a capture harness stops being verification and becomes
+## a coin flip (ADR 0031 leans on it not being one).
+##
+## With this false the flight code is unchanged and is simply *given* the stick
+## through the three fields below, rather than asking the devices for it. It is a
+## harness switch and nothing in the game may set it: a ship the player is flying
+## always reads the player.
+var reads_input: bool = true
+## The controls, when `reads_input` is false. Throttle is a lever held up (+1), held
+## down (-1) or let go (0), exactly as the two keys are; the stick and the strafe are
+## the axes they replace.
+var input_throttle: float = 0.0
+var input_stick: Vector2 = Vector2.ZERO
+var input_strafe: float = 0.0
+
 ## 0 to 1: how far the cruise drive has wound up. The ceiling is blended across it,
 ## so joining the road accelerates and leaving it decelerates instead of the speed
 ## snapping between hull and cruise in one frame.
@@ -328,6 +347,60 @@ func manual_max_speed() -> float:
 		* clampf(speed_ceiling_scale, 0.0, 1.0)
 
 
+## The controls, from the devices or from the harness. One place each, so a flight
+## path cannot read the stick one way and the throttle another.
+##
+## The two throttle halves stay separate rather than becoming one axis because they
+## travel at DIFFERENT rates — up over `accel_seconds`, down over `brake_seconds` —
+## and holding both is a real, if odd, thing a player can do.
+func _throttle_up_held() -> bool:
+	if not reads_input:
+		return input_throttle > 0.0
+	return Input.is_action_pressed("throttle_up")
+
+
+func _throttle_down_held() -> bool:
+	if not reads_input:
+		return input_throttle < 0.0
+	return Input.is_action_pressed("throttle_down")
+
+
+func _stick_input() -> Vector2:
+	var raw := input_stick if not reads_input else Vector2(
+		Input.get_axis("aim_left", "aim_right"),
+		Input.get_axis("aim_up", "aim_down"))
+	return ReticleSteering.apply_deadzone(raw, Tuning.num("controls/deadzone"))
+
+
+func _strafe_input() -> float:
+	if not reads_input:
+		return input_strafe
+	return Input.get_axis("strafe_left", "strafe_right")
+
+
+## Is anything flying this ship right now? Asked by the approach envelope, which
+## hands the ship back on any flight input at all (ADR 0012).
+##
+## It lives here for the same reason `mouse_speed` does: the envelope has to ask what
+## is flying THIS SHIP rather than what the devices are doing. Asking the devices was
+## already once a bug — `get_last_mouse_velocity` never decays — and it would make the
+## abort rule true only for humans, so a harness holding the throttle would sail
+## through a sequence a player could not.
+##
+## The mouse is deliberately NOT part of this: its threshold is a tuned feel value and
+## belongs to the caller that owns it.
+func has_flight_input() -> bool:
+	if not reads_input:
+		return not is_zero_approx(input_throttle) \
+			or not is_zero_approx(input_strafe) \
+			or input_stick.length_squared() > 0.0
+	for action in ["throttle_up", "throttle_down", "strafe_left", "strafe_right",
+			"aim_left", "aim_right", "aim_up", "aim_down", "boost", "brake"]:
+		if InputMap.has_action(action) and Input.is_action_pressed(action):
+			return true
+	return false
+
+
 ## The most speed a hull may lose in one frame: what its own brakes can take off it.
 ##
 ## Pure and static, so the rule lives in one named place and can be checked without
@@ -470,15 +543,12 @@ func _fly_manual(delta: float) -> void:
 		HullClass.num(hull_class, "accel_seconds", "ship/manual_accel_seconds"), 0.01)
 	var brake_seconds := maxf(
 		HullClass.num(hull_class, "brake_seconds", "ship/manual_brake_seconds"), 0.01)
-	if Input.is_action_pressed("throttle_up"):
+	if _throttle_up_held():
 		_throttle = minf(_throttle + delta / accel_seconds, 1.0)
-	if Input.is_action_pressed("throttle_down"):
+	if _throttle_down_held():
 		_throttle = maxf(_throttle - delta / brake_seconds, 0.0)
 
-	var stick := ReticleSteering.apply_deadzone(Vector2(
-		Input.get_axis("aim_left", "aim_right"),
-		Input.get_axis("aim_up", "aim_down"),
-	), Tuning.num("controls/deadzone"))
+	var stick := _stick_input()
 
 	basis = _reticle.update(basis, stick, delta,
 		Tuning.num("controls/stick_reticle_speed_deg_per_sec"),
@@ -491,7 +561,7 @@ func _fly_manual(delta: float) -> void:
 	# 0039 rejected a held slide for the *missile*, where it flattened every
 	# approach into a lane change; a ship is not flying a terminal approach and
 	# has no such geometry to flatten.
-	var strafe := Input.get_axis("strafe_left", "strafe_right") * strafe_speed()
+	var strafe := _strafe_input() * strafe_speed()
 
 	# The clamp is on the WHOLE velocity, not on the throttle alone. Thrusting
 	# sideways at full throttle otherwise sums to more than the top speed — 34 m/s
@@ -522,15 +592,12 @@ func _fly_cruise(delta: float) -> void:
 		HullClass.num(hull_class, "accel_seconds", "ship/manual_accel_seconds"), 0.01)
 	var brake_seconds := maxf(
 		HullClass.num(hull_class, "brake_seconds", "ship/manual_brake_seconds"), 0.01)
-	if Input.is_action_pressed("throttle_up"):
+	if _throttle_up_held():
 		_throttle = minf(_throttle + delta / accel_seconds, 1.0)
-	if Input.is_action_pressed("throttle_down"):
+	if _throttle_down_held():
 		_throttle = maxf(_throttle - delta / brake_seconds, 0.0)
 
-	var stick := ReticleSteering.apply_deadzone(Vector2(
-		Input.get_axis("aim_left", "aim_right"),
-		Input.get_axis("aim_up", "aim_down"),
-	), Tuning.num("controls/deadzone"))
+	var stick := _stick_input()
 
 	# The reticle's own cone is opened right out here, because the road's cone below
 	# replaces it. Two nested cones would compound into something neither value
@@ -557,7 +624,7 @@ func _fly_cruise(delta: float) -> void:
 	_reticle.aim_basis = FlightGeometry.basis_from_forward(
 		FlightGeometry.clamp_to_cone(-_reticle.aim_basis.z, axis, cone))
 
-	var strafe := Input.get_axis("strafe_left", "strafe_right") * strafe_speed()
+	var strafe := _strafe_input() * strafe_speed()
 	var top := manual_max_speed()
 	# Rate-limited on the way down, and this is where it matters most: `top` here is
 	# the cruise drive's ceiling, and the lane's edge halves it over `edge_softness`
@@ -616,10 +683,7 @@ func _fly_berthed(delta: float) -> void:
 	# stick and the mouse are LOOKING — which is what a berth is for, and what makes
 	# the reticle the cursor the exit signs are picked with (ADR 0083). The turn rate
 	# is passed as zero because the returned nose is deliberately thrown away.
-	var stick := ReticleSteering.apply_deadzone(Vector2(
-		Input.get_axis("aim_left", "aim_right"),
-		Input.get_axis("aim_up", "aim_down"),
-	), Tuning.num("controls/deadzone"))
+	var stick := _stick_input()
 	_reticle.update(basis, stick, delta,
 		Tuning.num("controls/stick_reticle_speed_deg_per_sec"),
 		Tuning.num("controls/mouse_sensitivity"), 0.0,

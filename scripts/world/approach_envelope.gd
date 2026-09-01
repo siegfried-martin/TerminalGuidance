@@ -135,18 +135,17 @@ func observe(ship: Mothership, delta: float) -> void:
 ## threshold — a hand resting on a desk must not abort an approach, and a hand that
 ## has decided to fly somewhere else must.
 ##
-## The mouse rate is asked of the SHIP rather than of `Input`. The engine's
-## `get_last_mouse_velocity()` is the velocity of the last motion event and does not
-## decay: once the mouse has been moved briskly — opening the dock screen does it —
-## the reading stays high for ever, so every approach after the first was aborted on
-## its first frame and the planet stopped accepting a landing at all. The ship totals
-## the motion events it is fed and the total falls to zero on its own.
+## BOTH halves are asked of the SHIP rather than of `Input`, and for the same reason.
+## The engine's `get_last_mouse_velocity()` is the velocity of the last motion event
+## and does not decay: once the mouse has been moved briskly — opening the dock screen
+## does it — the reading stays high for ever, so every approach after the first was
+## aborted on its first frame and the planet stopped accepting a landing at all. The
+## ship totals the motion it is actually fed, and it also knows whether a capture
+## harness is holding its controls, which polling the devices could never see.
+##
+## The threshold stays here because it is this envelope's tuned value.
 func _has_flight_input(ship: Mothership) -> bool:
-	for action in ["throttle_up", "throttle_down", "strafe_left", "strafe_right",
-			"aim_left", "aim_right", "aim_up", "aim_down", "boost", "brake"]:
-		if InputMap.has_action(action) and Input.is_action_pressed(action):
-			return true
-	return ship.mouse_speed() \
+	return ship.has_flight_input() or ship.mouse_speed() \
 		> Tuning.num("exploration/approach_abort_mouse_speed")
 
 

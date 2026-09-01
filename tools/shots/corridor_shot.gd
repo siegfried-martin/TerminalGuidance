@@ -19,6 +19,10 @@ func _ready() -> void:
 	_scene = (load("res://scenes/exploration.tscn") as PackedScene).instantiate() \
 		as ExplorationScene
 	add_child(_scene)
+	# The window this renders into is a real one: without this a hand on the mouse
+	# flies the ship and breaks approach locks mid-run (ADR 0031 wants a frame that is
+	# the same every time it is asked for).
+	_scene.set_reads_input(false)
 
 
 func _process(_delta: float) -> void:

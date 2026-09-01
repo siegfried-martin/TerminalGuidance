@@ -47,6 +47,11 @@ var _refuel: Button
 ## on the screen untrue, and this POC exists to read travel figures.
 var _teleports: int = 0
 var _last_teleport: String = ""
+## Whether this scene reads the real input devices. See `Mothership.reads_input`:
+## `make shot` renders into a real window, so a hand on the mouse steers the ship and
+## breaks approach locks in a run meant to be reproducible. Set through
+## `set_reads_input`, by a capture harness and by nothing else.
+var _reads_input: bool = true
 
 
 func _ready() -> void:
@@ -470,14 +475,17 @@ func _on_departed() -> void:
 ## The pointer steers the ship, and is released only for the tuning panel. With one
 ## station there is nothing else it could be doing.
 func _apply_mouse_mode() -> void:
-	if DebugPanel.is_open() or (_map != null and _map.is_docked()):
+	# A harness leaves the pointer alone entirely. Capturing it in a windowed capture
+	# run is what lets a hand resting on the desk fly the ship.
+	if not _reads_input or DebugPanel.is_open() \
+			or (_map != null and _map.is_docked()):
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		return
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if DebugPanel.is_open() or _map.is_docked():
+	if not _reads_input or DebugPanel.is_open() or _map.is_docked():
 		return
 	if event is InputEventMouseMotion:
 		_ship.add_mouse_steer((event as InputEventMouseMotion).relative)
@@ -539,6 +547,28 @@ func teleport_onward() -> void:
 ## teleport is loud rather than that it moved the ship.
 func teleport_count() -> int:
 	return _teleports
+
+
+## Hand the controls to a harness instead of to the devices (ADR 0031). One call
+## covers the scene, the ship and the map, because a scene that stopped reading the
+## mouse while the ship kept reading the stick would be half-deterministic, which is
+## worse than neither.
+##
+## Nothing in the game calls this. It exists so `make shot` renders the same frames
+## whatever the human's hand is doing, and so a harness can *fly* — set
+## `ship().input_throttle` and `input_stick`, or `map().pressed_dock`, and the same
+## flight code runs against them.
+func set_reads_input(on: bool) -> void:
+	_reads_input = on
+	if _ship != null:
+		_ship.reads_input = on
+	if _map != null:
+		_map.reads_input = on
+	_apply_mouse_mode()
+
+
+func reads_input() -> bool:
+	return _reads_input
 
 
 func map() -> SystemMap:
