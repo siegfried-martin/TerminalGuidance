@@ -15,11 +15,37 @@ the human's explicit direction.
 | | |
 |---|---|
 | Branch | `feat/highway-section-flips`, pushed |
-| Gate | `make check` — 1309 checks, 0 failed |
+| Gate | `make check` — 1311 checks, 0 failed |
 | Run it | `make fly` |
-| Built | Exploration POC steps 1–8 and **highway rebuild steps A–D**, plus five play-session passes (ADRs 0062–0093) |
+| Built | Exploration POC steps 1–8 and **highway rebuild steps A–D**, plus six play-session passes (ADRs 0062–0094) |
 | **Do next** | **Another drive, against the 2026-09-05 fixes below.** Then the "over the top" left turn — `RoadPath.sweep` now exists and may be most of what it needed. Steps 9–10 are traffic, and rebuild step E folds into them. |
 | **Waiting on you** | **Two feel calls.** `ship/max_pitch_deg` (78) and `camera/ship_pitch_ceiling_deg` (42) are the pitch pair — how steeply the nose may point, and how far the boom follows it there. They are tuned together and they are yours. Also `exploration/junction_wall_opening_metres` (500), which is how much wall an exit opens. Still not diagnosed: the undock on the far highway that put the ship in the other lane. Then the fourth checkpoint: success criterion 1, ten minutes on the trunk road. |
+
+### The seams and the flicker — and the case for authored tiles
+
+**ADR 0094.** Two authoring bugs, and the second one is the evidence for a bigger
+question you asked.
+
+**The median stands on a kerb now.** Floor to roof, the pane's underside was coplanar
+with the roadway's top face, and two coplanar faces are a depth fight — the bright line
+flickering along the bottom of the divider for the whole length of the road.
+
+**Every span module is lengthened by its own curvature.** A module is a straight box
+placed at the middle of its stretch with the tangent *there*, so on a bend its ends fall
+short of where the path is — by the sagitta, `length × turn / 8` at each end. At the
+tuned 400 m module on a ~3 km radius that is about seven metres a side, **thirteen metres
+of misalignment at every joint, the whole length of the road**. From the seat it is a
+black wedge between every bay and the collar beside it. Each module is now scaled by
+`1 + turn/2`, measured off the path's own tangents, so it tucks under the opaque collar.
+Measured rather than tuned, so it is right for a straight, a weave and a ramp's tightest
+bend with no number to maintain.
+
+> **The honest limit, and it is the argument for tiles:** one affine transform has
+> parallel end faces, and two consecutive joints on a curve are not parallel. **No
+> placement of a rigid box can make both ends meet exactly.** The error falls as
+> `length²`, so the bleed and shorter modules both hide it; neither removes it. A tile
+> authored *with its curvature baked in* is the only thing that does. See the note under
+> "Do next".
 
 ### The pitch pair — your camera proposal, built
 

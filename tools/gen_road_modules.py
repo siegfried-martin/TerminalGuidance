@@ -172,12 +172,22 @@ def open_bay_parts(missing):
 
 
 def pane_parts():
-    """The median: one pane of glass down the middle, floor to roof.
+    """The median: one pane of glass down the middle, standing on its own kerb.
 
     Only the mainline pair carries one — it is the thing that separates the two
     directions, and a ramp has only one direction on it.
+
+    IT STANDS ON A KERB rather than reaching the floor, and that is a fix rather than
+    a flourish: floor to roof, the pane's underside was coplanar with the roadway's
+    top face, and two coplanar faces are a depth fight — a bright line flickering
+    along the bottom of the divider for the whole length of the road (ADR 0094). A
+    kerb is also what a real median has.
     """
-    return [box((0.0, 0.0, 0.0), (PANE, 1.0, 1.0))]
+    lift = KERB
+    return [
+        box((0.0, -(0.5 - lift * 0.5), 0.0), (KERB, lift, 1.0)),
+        box((0.0, (lift * 0.5), 0.0), (PANE, 1.0 - lift, 1.0)),
+    ]
 
 
 def main():

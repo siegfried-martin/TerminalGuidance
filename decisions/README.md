@@ -141,5 +141,6 @@ The reasoning, including what the alternative was and why it lost.
 | [0091](0091-a-junction-is-two-buildings-meeting.md) | A junction is two buildings meeting; the road is playable space; an exit is a button on a strip |
 | [0092](0092-a-hoop-marks-a-mouth-not-a-junction.md) | A hoop marks a mouth, not a junction; an exit's building starts where it clears the highway; a ramp hands the berth back |
 | [0093](0093-the-nose-never-reaches-the-vertical.md) | The nose never reaches the vertical and the boom follows it less and less; a wall opens where a ramp goes through it |
+| [0094](0094-a-straight-box-on-a-curve-does-not-meet-its-neighbour.md) | A straight box on a curve does not meet its neighbour, and coplanar faces flicker |
 
-*Next number: 0094.*
+*Next number: 0095.*

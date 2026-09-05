@@ -263,6 +263,7 @@ func _ready() -> void:
 	_test_hull_classes()
 	_test_lane_geometry()
 	_test_pitch_limits()
+	_test_module_bleed()
 	_test_hull_barrier()
 	_test_cruise_tank()
 	_test_deep_field()
@@ -2654,6 +2655,40 @@ func _test_pitch_limits() -> void:
 	_expect(climbing,
 		"…rising all the way and never past the ceiling, however hard it is pushed",
 		"the boom went backwards or overshot")
+
+
+## THE MODULE CONTRACT (ADR 0094). A module is a straight box, and a straight box
+## centred on a curved stretch does not reach its neighbours — the error is the sagitta,
+## `length x turn / 8` at each end, which at the tuned module length is metres. It is
+## closed by lengthening each module by its own curvature, and this is the arithmetic
+## that says the bleed is enough.
+func _test_module_bleed() -> void:
+	var line := RoadPath.new()
+	# A quarter circle of radius 1000, walked finely enough that the polyline is the
+	# curve rather than an approximation of it.
+	var points := PackedVector3Array()
+	for i in 200:
+		var t := PI * 0.5 * float(i) / 199.0
+		points.append(Vector3(cos(t) * 1000.0, 0.0, sin(t) * 1000.0))
+	line.set_points(points)
+	var module := 200.0
+	var worst_gap := 0.0
+	var worst_shortfall := 0.0
+	for i in int(line.length() / module) - 1:
+		var here := (float(i) + 0.5) * module
+		var reach := module * 0.5
+		# Where a bare module's leading end lands, against where the path actually is.
+		var bare: Vector3 = line.point_at(here) + line.tangent_at(here) * reach
+		var gap := bare.distance_to(line.point_at(here + reach))
+		var turn := line.tangent_at(here - reach).angle_to(line.tangent_at(here + reach))
+		worst_gap = maxf(worst_gap, gap)
+		worst_shortfall = maxf(worst_shortfall, gap - module * turn * 0.25)
+	_expect(worst_gap > 1.0,
+		"a straight module really does fall short of a curve — there is a gap to close",
+		"the worst end landed %.2f m off, which is nothing to fix" % worst_gap)
+	_expect(worst_shortfall <= 0.01,
+		"…and the bleed measured off the path's own turn covers it, everywhere on the curve",
+		"%.2f m of gap the bleed does not reach" % worst_shortfall)
 
 
 func _test_hull_barrier() -> void:

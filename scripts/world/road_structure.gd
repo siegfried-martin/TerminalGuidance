@@ -320,14 +320,28 @@ func _open_layer(face: int) -> String:
 
 
 ## One module centred at `along`, `length` long.
+##
+## **Lengthened by its own curvature** (ADR 0094). A module is a straight box placed at
+## the middle of its stretch with the tangent THERE, so on a bend its ends fall short of
+## where the path actually is — by the sagitta, which is length x turn / 8 at each end.
+## At a 400 m module on a three-kilometre radius that is seven metres a side, and what
+## it looks like is a black wedge between every bay and the collar next to it, the whole
+## length of the road. Overlapping is invisible where a gap is not: a bay tucks under
+## the opaque collar beside it, and at the one place two bays meet — the edge of a
+## junction opening — a few metres of doubled glass is nothing.
+##
+## Measured off the path rather than tuned, so it is right for a straight (nothing), a
+## weave, and a ramp's tightest bend without anyone maintaining a number.
 func _module(along: float, length: float) -> Transform3D:
 	var at := clampf(along, 0.0, _path.length())
 	var forward := _path.tangent_at(at)
 	var frame := CruiseLane.frame_for(forward)
 	var extents := extents_at(at)
+	var half := maxf(length, 0.01) * 0.5
+	var spread := _path.tangent_at(at - half).angle_to(_path.tangent_at(at + half))
 	return Transform3D(
 		Basis(frame[0] * extents.x * 2.0, frame[1] * extents.y * 2.0,
-			-forward * maxf(length, 0.01)),
+			-forward * (maxf(length, 0.01) * (1.0 + spread * 0.5))),
 		_path.point_at(at))
 
 
