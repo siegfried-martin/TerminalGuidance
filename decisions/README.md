@@ -140,5 +140,6 @@ The reasoning, including what the alternative was and why it lost.
 | [0090](0090-the-road-bounces.md) | The road bounces, and a bounce costs the throttle — supersedes 0087's "never bumps" |
 | [0091](0091-a-junction-is-two-buildings-meeting.md) | A junction is two buildings meeting; the road is playable space; an exit is a button on a strip |
 | [0092](0092-a-hoop-marks-a-mouth-not-a-junction.md) | A hoop marks a mouth, not a junction; an exit's building starts where it clears the highway; a ramp hands the berth back |
+| [0093](0093-the-nose-never-reaches-the-vertical.md) | The nose never reaches the vertical and the boom follows it less and less; a wall opens where a ramp goes through it |
 
-*Next number: 0093.*
+*Next number: 0094.*

@@ -19,7 +19,7 @@ const GODOT3_DENYLIST := "res://tools/tests/godot3_denylist.json"
 ## missing. That happened, and this is the tripwire: adding tests never breaks it, and
 ## the only way it fails is a suite that stopped early or one deliberately deleted.
 ## Lower it on purpose, never to make a run go green.
-const MINIMUM_CHECKS := 1285
+const MINIMUM_CHECKS := 1300
 
 ## Tuning keys the sandbox needs. Keeping the list here means a rename in
 ## tuning.cfg fails the build instead of silently zeroing a feel value.
@@ -43,7 +43,8 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"ship/manual_max_speed", "ship/manual_speed_ceiling_fraction", "ship/hull_class",
 	"ship/manual_turn_rate_deg_per_sec", "ship/manual_reticle_max_angle_deg",
 	"ship/autopilot_turn_rate_deg_per_sec",
-	"ship/manual_strafe_speed", "ship/missile_cooldown_seconds",
+	"ship/manual_strafe_speed", "ship/missile_cooldown_seconds", "ship/max_pitch_deg",
+	"camera/ship_pitch_ceiling_deg",
 	"ship/invulnerable", "ship/hp", "ship/hit_radius_scale",
 	"turret/mount_offset", "turret/muzzle_offset", "turret/muzzle_mount_offset",
 	"turret/convergence_distance", "turret/traverse_deg_per_sec",
@@ -184,7 +185,7 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"hud/nav_panel_alpha", "hud/nav_text_color", "hud/nav_exit_color",
 	"hud/nav_taken_color", "hud/nav_shut_color", "hud/nav_bottom_margin",
 	"exploration/structure_glass_color", "exploration/ramp_ring_diameter",
-	"exploration/ramp_ring_depth", "exploration/ramp_ring_color",
+	"exploration/ramp_ring_depth", "exploration/junction_wall_opening_metres", "exploration/ramp_ring_color",
 	"exploration/crossing_bearing_deg", "exploration/crossing_road_height",
 	"exploration/cross_inbound_leg_length",
 	"exploration/cross_outbound_leg_length",
@@ -261,6 +262,7 @@ func _ready() -> void:
 	_test_manual_flight()
 	_test_hull_classes()
 	_test_lane_geometry()
+	_test_pitch_limits()
 	_test_hull_barrier()
 	_test_cruise_tank()
 	_test_deep_field()
@@ -2602,6 +2604,58 @@ func _test_hull_classes() -> void:
 ## The property that matters most is the one that makes it a barrier rather than a
 ## collision: motion ALONG the surface survives untouched. If that ever stops being
 ## true, a ship held against the roadway stops dead on it and the road becomes a wall.
+## THE PITCH PAIR (ADR 0093). The world has an absolute up, so everything near vertical
+## is a special case; rather than handle that everywhere it turns up, the nose is
+## clamped short of it and the camera's boom is compressed so it gets nearer still.
+## Pure: two directions in, two out.
+func _test_pitch_limits() -> void:
+	# STRAIGHT UP comes back at the limit, on the bearing it had.
+	var steep := FlightGeometry.clamp_pitch(Vector3(0.0, 1.0, 0.0), 78.0,
+		Vector3(0.0, 0.2, -1.0))
+	_expect(is_equal_approx(rad_to_deg(asin(steep.y)), 78.0),
+		"a nose pushed at the vertical stops at the limit",
+		"%.1f deg" % rad_to_deg(asin(steep.y)))
+	_expect(steep.z < 0.0,
+		"…leaning back the way it came rather than snapping to a compass point",
+		"bearing %s" % steep)
+	# A SHALLOW ONE IS UNTOUCHED, which is nearly all of flying.
+	var shallow := Vector3(0.3, 0.2, -0.9).normalized()
+	_expect(FlightGeometry.clamp_pitch(shallow, 78.0).is_equal_approx(shallow),
+		"…and anything short of the limit is left exactly alone",
+		"a shallow heading was moved")
+
+	# THE BOOM keeps the bearing and takes less and less of the climb.
+	var level := FlightGeometry.compress_pitch(Vector3(0.0, 0.0, -1.0), 78.0, 42.0)
+	_expect(is_zero_approx(level.y),
+		"level is level — the boom adds no pitch of its own", "%s" % level)
+	var topped := FlightGeometry.compress_pitch(
+		Vector3(0.0, sin(deg_to_rad(78.0)), -cos(deg_to_rad(78.0))), 78.0, 42.0)
+	_expect(is_equal_approx(rad_to_deg(asin(topped.y)), 42.0),
+		"…at the nose's own limit the boom is at its ceiling and no further",
+		"%.1f deg" % rad_to_deg(asin(topped.y)))
+	var half := FlightGeometry.compress_pitch(
+		Vector3(0.0, sin(deg_to_rad(39.0)), -cos(deg_to_rad(39.0))), 78.0, 42.0)
+	var followed := rad_to_deg(asin(half.y))
+	_expect(followed > 25.0 and followed < 39.0,
+		"…and in between it follows, but always less than the nose does",
+		"%.1f deg of boom for 39 deg of nose" % followed)
+	# MONOTONIC, and never past the ceiling however hard it is pushed. A boom that ever
+	# went backwards would read as the camera flinching.
+	var climbing := true
+	var last := -1.0
+	for i in 40:
+		var deg := 90.0 * float(i) / 39.0
+		var at := FlightGeometry.compress_pitch(
+			Vector3(0.0, sin(deg_to_rad(deg)), -cos(deg_to_rad(deg))), 78.0, 42.0)
+		var got := rad_to_deg(asin(clampf(at.y, -1.0, 1.0)))
+		if got < last - 0.001 or got > 42.01:
+			climbing = false
+		last = got
+	_expect(climbing,
+		"…rising all the way and never past the ceiling, however hard it is pushed",
+		"the boom went backwards or overshot")
+
+
 func _test_hull_barrier() -> void:
 	var shell := HullBarrier.new()
 	shell.centre = Vector3.ZERO
@@ -5120,6 +5174,44 @@ func _test_exploration_builds() -> void:
 	scene.ship().input_throttle = 0.0
 	_expect(not scene.ship().has_flight_input(),
 		"…and letting go of both stops counting", "it stayed aborted")
+
+	# --- THE NOSE AND THE BOOM (ADR 0093) ---
+	# Flown hard up and hard down, off the road, through the real nodes: the nose stops
+	# short of the vertical and the camera's boom stops well short of that. Driven
+	# through the scene rather than the pure library because what could break is the
+	# WIRING — a view that forgets to set its two keys is a rigid boom again, and rigid
+	# is the behaviour with the singularity in it.
+	var was_reading_pitch := scene.reads_input()
+	scene.set_reads_input(false)
+	map.warp_to_system(scene.ship(), 0)
+	_step_exploration(scene, 1.0 / 60.0)
+	var nose_peak := 0.0
+	var boom_peak := 0.0
+	for direction: float in [-1.0, 1.0]:
+		scene.ship().input_stick = Vector2(0.0, direction)
+		for _i in 240:
+			_step_exploration(scene, 1.0 / 60.0)
+			nose_peak = maxf(nose_peak, absf(rad_to_deg(asin(clampf(
+				(-scene.ship().global_transform.basis.z).y, -1.0, 1.0)))))
+			var boom := scene.camera().global_transform.basis.z
+			boom_peak = maxf(boom_peak,
+				absf(rad_to_deg(asin(clampf(-boom.y, -1.0, 1.0)))))
+	scene.ship().input_stick = Vector2.ZERO
+	scene.set_reads_input(was_reading_pitch)
+	_expect(nose_peak > Tuning.num("ship/max_pitch_deg") - 6.0,
+		"the stick really does push the nose to its limit — there is something to clamp",
+		"only reached %.0f deg" % nose_peak)
+	_expect(nose_peak <= Tuning.num("ship/max_pitch_deg") + 0.5,
+		"…and the nose never goes past it, so nothing near the vertical is ever a case",
+		"%.1f deg against a %.0f deg limit" % [nose_peak,
+			Tuning.num("ship/max_pitch_deg")])
+	_expect(boom_peak <= Tuning.num("camera/ship_pitch_ceiling_deg") + 0.5,
+		"…and the camera's boom stops at its own, much lower ceiling",
+		"%.1f deg of boom against a %.0f deg ceiling" % [boom_peak,
+			Tuning.num("camera/ship_pitch_ceiling_deg")])
+	_expect(boom_peak < nose_peak - 5.0,
+		"…so a steep climb is the SHIP pitching in the frame, not the world rolling",
+		"boom %.0f deg for a nose at %.0f" % [boom_peak, nose_peak])
 
 	# --- THE JUNCTION HOLDS YOU IN (ADR 0091) ---
 	# "There is a gap in the on ramp before it connects to the highway… the game will

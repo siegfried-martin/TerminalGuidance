@@ -22,6 +22,19 @@ var tuning_prefix: String = "camera/ship"
 ## like anyway. Empty means the boom is rigid, which is the behaviour every other
 ## view has always had; that is not a feel constant, it is the absence of this.
 var pitch_share_key: String = ""
+## Optional tuning keys turning a COMPRESSED boom on: how steeply the subject may ever
+## point, and how far the boom will tilt when it does (ADR 0093).
+##
+## Near the horizon the boom follows the nose all but exactly; the steeper the nose the
+## less it follows, stopping at the ceiling. So the camera never gets near the vertical
+## — where an absolute up makes every frame a special case — and a steep climb reads as
+## the SHIP pitching inside the frame rather than the world rolling round it.
+##
+## Empty means a rigid boom, which is what the missile and turret views have always had.
+## The human's own proposal, and it is better than either half alone: a fixed vertical
+## camera needs a punishing pitch limit, and a rigid one has the singularity in it.
+var pitch_limit_key: String = ""
+var pitch_ceiling_key: String = ""
 ## Multiplies the boom's length, height and look-ahead. The camera is tuned against
 ## one hull size; a roster that swaps a 48 m gunboat for a 13 m fighter at the same
 ## boom puts the player a hull-length behind a speck. Scaling the boom with the hull
@@ -86,8 +99,17 @@ func _process(delta: float) -> void:
 	if heading_override.length_squared() > 0.000001:
 		subject_basis = FlightGeometry.basis_from_forward(
 			heading_override.normalized())
-	var back := subject_basis.z
-	var up := subject_basis.y
+	# THE FRAME the camera sits in and aims along. Rigid unless this view compresses its
+	# pitch, in which case the boom keeps the subject's bearing and takes less and less
+	# of its climb — see `pitch_limit_key`. Both the boom AND the look direction use it,
+	# so the subject stays centred and pitches within the frame.
+	var framing := subject_basis
+	if not pitch_limit_key.is_empty() and not pitch_ceiling_key.is_empty():
+		framing = FlightGeometry.basis_from_forward(FlightGeometry.compress_pitch(
+			-subject_basis.z, Tuning.num(pitch_limit_key),
+			Tuning.num(pitch_ceiling_key)))
+	var back := framing.z
+	var up := framing.y
 	if not pitch_share_key.is_empty():
 		var share := clampf(Tuning.num(pitch_share_key), 0.0, 1.0)
 		var level_back := Vector3(back.x, 0.0, back.z)
@@ -114,12 +136,15 @@ func _process(delta: float) -> void:
 		global_position = ideal
 		_initialised = true
 
-	# The look point always uses the subject's true forward, even when the boom
-	# has been levelled: the camera may sit level, but it must never aim somewhere
-	# other than where the thing it is following is pointed. The roll reference
-	# stays the subject's own up for the same reason `up` above cannot be used —
-	# a levelled up goes parallel to the view axis as the aim approaches vertical,
-	# and `look_at` has no answer for that.
+	# The look point uses the FRAMING forward, which is the subject's own unless this
+	# view compresses its pitch. A levelled boom (the turret's) still aims along the
+	# true forward: the camera may sit level, but it must never aim somewhere other than
+	# where the thing it is following is pointed.
+	var aim := subject_basis.z if not pitch_share_key.is_empty() else framing.z
 	var look_point := subject.global_position \
-		- subject_basis.z * Tuning.num(tuning_prefix + "_look_ahead") * boom
-	look_at(look_point, subject_basis.y)
+		- aim * Tuning.num(tuning_prefix + "_look_ahead") * boom
+	# The roll reference is the FRAMING's up, which is never near the view axis by
+	# construction once the pitch is compressed — and is the subject's own otherwise,
+	# for the reason `up` above cannot be used: a levelled up goes parallel to the view
+	# axis as the aim approaches vertical, and `look_at` has no answer for that.
+	look_at(look_point, subject_basis.y if pitch_limit_key.is_empty() else framing.y)

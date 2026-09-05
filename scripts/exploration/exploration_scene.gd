@@ -143,6 +143,11 @@ func _build_ship() -> void:
 	_camera.name = "ChaseCamera"
 	_camera.subject = _ship
 	_camera.tuning_prefix = "camera/ship"
+	# THE BOOM'S PITCH IS COMPRESSED (ADR 0093). The nose is clamped short of the
+	# vertical and the camera takes less and less of its climb, so neither ever reaches
+	# the place an absolute up makes into a special case.
+	_camera.pitch_limit_key = "ship/max_pitch_deg"
+	_camera.pitch_ceiling_key = "camera/ship_pitch_ceiling_deg"
 	_camera.boom_scale = _ship.hull_scale()
 	add_child(_camera)
 	_camera.snap()
@@ -649,3 +654,9 @@ func dock_screen() -> DockScreen:
 
 func ship() -> Mothership:
 	return _ship
+
+
+## The chase camera. For the gate, which checks that the boom's pitch is compressed
+## (ADR 0093) — a view that forgets its two keys is a rigid boom again.
+func camera() -> ChaseCamera:
+	return _camera

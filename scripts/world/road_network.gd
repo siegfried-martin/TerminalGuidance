@@ -399,7 +399,7 @@ func _side_of(travel: Vector3) -> Vector3:
 ## ramp"*. So an exit's building simply **starts where it clears the highway**, and what
 ## surrounds you until then is the highway's own building, which is the truth.
 func _open_for(built: RoadStructure, ramp: RoadDeck, leaving: bool,
-		measured_entry: bool = false) -> Array:
+		measured_entry: bool = false, cut_from: float = 0.0) -> Array:
 	if built == null or ramp.length() <= 0.0:
 		return []
 	var line := ramp.path()
@@ -408,16 +408,48 @@ func _open_for(built: RoadStructure, ramp: RoadDeck, leaving: bool,
 		return []
 	var through: int = found[1] if leaving or measured_entry \
 		else int(RoadStructure.Face.BELOW)
-	var span := overlap(built, line, _lane_section())
+	var span := overlap(built, line, _lane_section(), through)
 	if span.is_empty():
 		built.pierce(found[0], found[0], through as RoadStructure.Face, found[0])
 		return [found[0], through, found[2], 0.0, 0.0]
-	built.pierce(span[0], span[1], through as RoadStructure.Face, found[0])
+	# A WALL OPENS WHERE THE RAMP GOES THROUGH IT; THE ROADWAY OPENS FOR THE WHOLE
+	# MERGE (ADR 0093). They are not the same length and they should not be.
+	#
+	# A ramp leaves along the road it is on (ADR 0070), so its OUTER EDGE is flush with
+	# the wall from the divergence and only gets clear of it a kilometre later. Opening
+	# the wall for all of that takes a kilometre of glass with it — which is the
+	# highway losing a side, and what the human kept seeing. What has to be open is
+	# where the ship goes through, so a wall opens a fixed length centred on the
+	# crossing and the ramp's own outer wall passes behind the glass for the rest, at a
+	# separation of nothing, invisibly.
+	#
+	# A roadway is the opposite case: the ramp really is rising through it for the whole
+	# merge, the floor is metal rather than glass, and a long slot reads as the merging
+	# lane it is.
+	var opens := span
+	if through == int(RoadStructure.Face.LEFT) \
+			or through == int(RoadStructure.Face.RIGHT):
+		var half := Tuning.num("exploration/junction_wall_opening_metres") * 0.5
+		opens = [maxf(float(found[0]) - half, float(span[0])),
+			minf(float(found[0]) + half, float(span[1])), span[2], span[3]]
+	built.pierce(opens[0], opens[1], through as RoadStructure.Face, found[0])
 	if not leaving:
 		var shell := _shell_for(ramp)
 		if shell != null:
-			shell.pierce(span[2], span[3],
-				_facing(line, built, (span[2] + span[3]) * 0.5))
+			# THE RAMP OPENS THE FACE OPPOSITE THE ONE THE BUILDING OPENED, over the same
+			# stretch: the two are looking at the same hole from either side of it, and
+			# a ramp coming up through a roadway needs its ROOF out. It used to be asked
+			# geometrically — which way the building's centre-line lies — and that is the
+			# spine, which for a ramp beside a carriageway is mostly SIDEWAYS: every
+			# on-ramp opened a side wall and kept the roof it had to come through
+			# (ADR 0093). A ramp is tangential where it joins (ADR 0070), so the two
+			# frames agree and "opposite" needs no measurement.
+			#
+			# SHIFTED BY THE CUT. An interchange ramp's building starts where it clears
+			# the road it left, so its own along is the deck's less that — measured
+			# against the deck, the arrival's opening landed past the end of the shell.
+			shell.pierce(float(span[2]) - cut_from, float(span[3]) - cut_from,
+				_opposite(through))
 	return [found[0], through, found[2], span[2], span[3]]
 
 
@@ -445,29 +477,36 @@ func _shell_for(ramp: RoadDeck) -> RoadStructure:
 	return null
 
 
-## Which face of a ramp points at the building it is inside. Measured rather than
-## authored: an entry comes up through a floor and looks UP, an exit leaves through a
-## wall and looks back across it, and an interchange does one at each end.
-static func _facing(ramp: RoadPath, built: RoadStructure,
-		along: float) -> RoadStructure.Face:
-	var at := ramp.point_at(along)
-	var frame := CruiseLane.frame_for(ramp.tangent_at(along))
-	var toward: Vector3 = (built.path().closest(at)[1] as Vector3) - at
-	var across := toward.dot(frame[0])
-	var up := toward.dot(frame[1])
-	if absf(across) >= absf(up):
-		return RoadStructure.Face.RIGHT if across > 0.0 else RoadStructure.Face.LEFT
-	return RoadStructure.Face.ABOVE if up > 0.0 else RoadStructure.Face.BELOW
+## The face on the other side of the same hole. A ramp comes up through a building's
+## FLOOR, so what it needs open is its own ROOF.
+static func _opposite(face: int) -> RoadStructure.Face:
+	match face:
+		int(RoadStructure.Face.RIGHT):
+			return RoadStructure.Face.LEFT
+		int(RoadStructure.Face.LEFT):
+			return RoadStructure.Face.RIGHT
+		int(RoadStructure.Face.ABOVE):
+			return RoadStructure.Face.BELOW
+		_:
+			return RoadStructure.Face.ABOVE
 
 
-## The stretch over which a ramp's TUBE is inside a building, as
-## `[from_on_building, to_on_building, from_on_ramp, to_on_ramp]`. Empty if it never is.
+## The stretch over which a ramp's TUBE crosses one FACE of a building, as
+## `[from_on_building, to_on_building, from_on_ramp, to_on_ramp]`. Empty if it never
+## does.
 ##
-## Measured with the ramp's SECTION rather than its centre-line, because what has to be
-## opened is where the ramp is in the way, and a 150 m tube is in the way well before
-## its centre-line crosses a wall.
-static func overlap(built: RoadStructure, ramp: RoadPath,
-		section: Vector2) -> Array:
+## **Where it STRADDLES the face, not where it is inside the building** (ADR 0093). An
+## exit ramp starts on the carriageway and moves out, so "inside the building at all"
+## is true from the moment it leaves — measured that way the opening ran nine hundred
+## to nineteen hundred metres and took the highway's wall with it, which is the glass
+## the human watched disappear. What has to be open is the part of the wall the ramp
+## actually goes through: from where its tube first pokes out to where the last of it
+## is clear.
+##
+## Measured with the ramp's SECTION rather than its centre-line, because a 150 m tube
+## is through a wall well before its centre-line is.
+static func overlap(built: RoadStructure, ramp: RoadPath, section: Vector2,
+		face: int) -> Array:
 	var line := built.path()
 	var first := INF
 	var last := -INF
@@ -481,8 +520,27 @@ static func overlap(built: RoadStructure, ramp: RoadPath,
 		var frame := CruiseLane.frame_for(found[2] as Vector3)
 		var offset: Vector3 = point - (found[1] as Vector3)
 		var extents := built.extents_at(here)
-		if absf(offset.dot(frame[0])) - section.x >= extents.x \
-				or absf(offset.dot(frame[1])) - section.y >= extents.y:
+		# How far the tube reaches past this face, and how far it still falls short of
+		# it. Straddling means both are true at once.
+		var toward := 0.0
+		var wall := 0.0
+		match face:
+			int(RoadStructure.Face.LEFT):
+				toward = -offset.dot(frame[0])
+				wall = extents.x
+			int(RoadStructure.Face.ABOVE):
+				toward = offset.dot(frame[1])
+				wall = extents.y
+			int(RoadStructure.Face.BELOW):
+				toward = -offset.dot(frame[1])
+				wall = extents.y
+			_:
+				toward = offset.dot(frame[0])
+				wall = extents.x
+		# The tube spans `toward ± half` and the face is at `wall`. Skip it where the
+		# tube is entirely past the face, or entirely short of it.
+		var half := section_of(face, section)
+		if toward - wall >= half or wall - toward >= half:
 			continue
 		first = minf(first, here)
 		last = maxf(last, here)
@@ -491,6 +549,13 @@ static func overlap(built: RoadStructure, ramp: RoadPath,
 	if first > last:
 		return []
 	return [first, last, ramp_first, ramp_last]
+
+
+## The ramp's own half-section ACROSS the face in question: its half-width for a side
+## wall, its half-height for the floor or the roof.
+static func section_of(face: int, section: Vector2) -> float:
+	return section.y if face == int(RoadStructure.Face.ABOVE) \
+		or face == int(RoadStructure.Face.BELOW) else section.x
 
 
 ## Where a ramp first leaves the building it is inside, walking from the end that
@@ -601,7 +666,9 @@ func _build_interchange(from_route: int, to_route: int, leaving: RoadDeck,
 	var hole := _open_for(built, ramp, true)
 	# Its building starts where it clears the road it leaves, for the reason `_open_for`
 	# gives, and is then pierced where it ARRIVES — that end is an entry and gets the
-	# trough (ADR 0092).
+	# trough (ADR 0092). The cut is passed on, because from here the shell's own zero is
+	# the deck's `cut` and the two disagree by exactly that.
+	var cut: float = hole[4] if not hole.is_empty() else 0.0
 	_make_structure("Structure" + ramp.name, true, false).follow(
 		_clear_of(curve, hole, true), _lane_section(), _lane_section(), false, false)
 	# AND AN ENTRANCE AT THE FAR END. It arrives inside the OTHER road's building, so
@@ -609,7 +676,7 @@ func _build_interchange(from_route: int, to_route: int, leaving: RoadDeck,
 	# authored BELOW a planet on-ramp gets: a ramp climbing to a road above enters
 	# through its floor and one dropping to a road below enters through its roof, and
 	# both are entries (ADR 0088).
-	_open_for(_route_buildings[to_route], ramp, false, true)
+	_open_for(_route_buildings[to_route], ramp, false, true, cut)
 	_sign_for(built, ramp, onto.route_name, leaving, hole)
 	_gate_for(built, ramp, hole)
 

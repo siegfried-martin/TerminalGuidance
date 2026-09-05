@@ -15,11 +15,55 @@ the human's explicit direction.
 | | |
 |---|---|
 | Branch | `feat/highway-section-flips`, pushed |
-| Gate | `make check` — 1295 checks, 0 failed |
+| Gate | `make check` — 1309 checks, 0 failed |
 | Run it | `make fly` |
-| Built | Exploration POC steps 1–8 and **highway rebuild steps A–D**, plus four play-session passes (ADRs 0062–0092) |
+| Built | Exploration POC steps 1–8 and **highway rebuild steps A–D**, plus five play-session passes (ADRs 0062–0093) |
 | **Do next** | **Another drive, against the 2026-09-05 fixes below.** Then the "over the top" left turn — `RoadPath.sweep` now exists and may be most of what it needed. Steps 9–10 are traffic, and rebuild step E folds into them. |
-| **Waiting on you** | **Fly it again, and open F2.** The junction is rebuilt (no hoops, no ribs in the way, exits cut clear), a ramp hands the berth back so you fly it, and the tuning panel is grouped everywhere with a filter that works — the glass is under `exploration · The highway structure`, and typing "glass" now finds it. Still not diagnosed: the undock on the far highway that put the ship in the other lane. Then the fourth checkpoint: success criterion 1, ten minutes on the trunk road. |
+| **Waiting on you** | **Two feel calls.** `ship/max_pitch_deg` (78) and `camera/ship_pitch_ceiling_deg` (42) are the pitch pair — how steeply the nose may point, and how far the boom follows it there. They are tuned together and they are yours. Also `exploration/junction_wall_opening_metres` (500), which is how much wall an exit opens. Still not diagnosed: the undock on the far highway that put the ship in the other lane. Then the fourth checkpoint: success criterion 1, ten minutes on the trunk road. |
+
+### The pitch pair — your camera proposal, built
+
+**It makes sense, and it is better than either half alone.** ADR 0093.
+
+Near the vertical, `up` stops being a usable reference: the basis builder has to swap
+its reference axis, yaw collapses into roll, and a boom on a near-vertical nose swings
+through the horizon. Both obvious single answers are worse — a **fixed** vertical camera
+needs a punishing pitch limit to stay legible, and a **rigid** boom has the singularity
+in it at any limit. Your combination gives a steep, usable nose *and* a camera that
+never goes near the place the problem lives.
+
+- **`ship/max_pitch_deg` = 78.** The nose stops there, and **the reticle is clamped with
+  it** — a control that can be parked where the ship may not go is a control that lies.
+- **`camera/ship_pitch_ceiling_deg` = 42.** The boom keeps the ship's bearing and takes
+  a compressed share of its climb: near the horizon it follows all but exactly, and at
+  78 it has stopped at 42. So a steep climb is the **ship pitching inside the frame**
+  rather than the world rolling round it.
+
+The curve is a quarter-sine and needs no third knob: it leaves the horizon at 42/78 of
+one-to-one and arrives at the ceiling with zero slope. Missile and turret views are
+unchanged — rigid, as they were.
+
+It is the same bargain the road already makes, incidentally. `cruise_turn_clamp_deg`
+bounds the nose to 18° off the road and nobody feels that as a restriction, because what
+it buys is worth more than what it costs.
+
+### And the glass, again
+
+**A ramp leaves ALONG the road it is on** (ADR 0070 makes every ramp tangential where it
+diverges), so its outer edge is flush with the highway's wall from the divergence and
+only gets clear a kilometre later. Measured as "where the ramp is in the way", the
+opening ran **900 to 1900 metres** — two to five bays of missing glass at every exit,
+which from the seat is the highway having lost a side. A wall now opens
+`junction_wall_opening_metres` (500) centred on where the ramp actually crosses; the
+rest of it passes behind the glass, at a separation of nothing. A **roadway** still opens
+for the whole merge, because a ramp really is rising through the floor for all of it.
+
+**And a second bug of ADR 0091's kind.** A ramp's own opening was asked geometrically —
+which way the building's centre-line lies — and a building's centre-line is the *spine*,
+while a ramp sits beside a *carriageway* 120 m off it. The answer came back sideways:
+**every on-ramp opened a side wall and kept the roof it had to come up through.** The two
+faces are opposite sides of one hole, and a ramp is tangential where it joins, so
+"opposite" needs no measurement.
 
 ### What landed on 2026-09-05 — the fourth play session's feedback
 

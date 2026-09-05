@@ -148,6 +148,64 @@ static func basis_from_forward(forward: Vector3) -> Basis:
 	return Basis(right, up, -f)
 
 
+## A direction with its ELEVATION held below a limit, keeping its bearing.
+##
+## **The world has an absolute up, so everything near vertical is a special case**
+## (ADR 0093): `basis_from_forward` has to swap its reference axis, yaw collapses into
+## roll, and a camera boom on a near-vertical nose swings through the horizon. Rather
+## than handle the singularity everywhere it appears, the nose never reaches it — the
+## player can point steeply and not straight up, which is the same bargain the steering
+## cone makes on the road.
+##
+## Straight up or down has no bearing to keep, so `fallback` supplies one; pass the
+## direction the vehicle is already facing and a nose pushed to the vertical leans back
+## the way it came rather than snapping to an arbitrary compass point.
+static func clamp_pitch(direction: Vector3, max_degrees: float,
+		fallback: Vector3 = Vector3.FORWARD) -> Vector3:
+	var f := direction.normalized()
+	if f.length_squared() < 0.5:
+		return direction
+	var limit := sin(deg_to_rad(clampf(max_degrees, 0.0, 89.9)))
+	if absf(f.y) <= limit:
+		return f
+	var flat := Vector3(f.x, 0.0, f.z)
+	if flat.length_squared() < 0.000001:
+		flat = Vector3(fallback.x, 0.0, fallback.z)
+	if flat.length_squared() < 0.000001:
+		return f
+	return (flat.normalized() * sqrt(maxf(1.0 - limit * limit, 0.0))
+		+ Vector3.UP * (limit * signf(f.y))).normalized()
+
+
+## The same bearing with its elevation COMPRESSED: full response near the horizon,
+## tapering to `ceiling_degrees` at `at_degrees` and never past it.
+##
+## This is the camera's half of ADR 0093. The nose is clamped so it never reaches the
+## vertical; the boom is compressed so it never gets near it — near level it follows
+## the nose all but exactly, and at the nose's limit it has stopped moving altogether,
+## so the ship visibly pitches inside the frame instead of the world rolling round it.
+##
+## A quarter-sine, which is the whole shape and needs no second knob: it leaves the
+## horizon at `ceiling / at` of one-to-one and arrives at the ceiling with zero slope.
+static func compress_pitch(direction: Vector3, at_degrees: float,
+		ceiling_degrees: float) -> Vector3:
+	var f := direction.normalized()
+	if f.length_squared() < 0.5 or at_degrees <= 0.0:
+		return direction
+	var flat := Vector3(f.x, 0.0, f.z)
+	# Straight up has no bearing to keep. The nose is clamped short of it so a caller
+	# cannot produce this, but the ceiling is a promise rather than a usual case: an
+	# arbitrary bearing at the ceiling keeps it, where returning the input would break
+	# it at exactly the angle the whole thing exists to avoid.
+	if flat.length_squared() < 0.000001:
+		flat = Vector3.FORWARD
+	var pitch := rad_to_deg(asin(clampf(f.y, -1.0, 1.0)))
+	var travelled := clampf(absf(pitch) / at_degrees, 0.0, 1.0)
+	var wanted := deg_to_rad(clampf(ceiling_degrees, 0.0, 89.9)
+		* sin(travelled * PI * 0.5)) * signf(pitch)
+	return (flat.normalized() * cos(wanted) + Vector3.UP * sin(wanted)).normalized()
+
+
 ## Turn `from` towards `to` by at most `max_radians`.
 static func turn_towards(from: Vector3, to: Vector3, max_radians: float) -> Vector3:
 	var a := from.normalized()

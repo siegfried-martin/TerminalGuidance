@@ -589,6 +589,17 @@ func _fly_manual(delta: float) -> void:
 		turn_rate_deg_per_sec(),
 		HullClass.num(hull_class, "reticle_max_angle_deg",
 			"ship/manual_reticle_max_angle_deg"))
+	# THE NOSE NEVER REACHES THE VERTICAL (ADR 0093). The world has an absolute up, so
+	# everything near it is a special case — yaw collapses into roll and the camera's
+	# reference axis has to swap — and rather than handle that everywhere it appears,
+	# the nose stops short of it. The RETICLE is clamped to the same limit, for the same
+	# reason the road's cone clamps it: a control that can be parked somewhere the ship
+	# may not go is a control that lies (ADR 0035).
+	var ceiling := Tuning.num("ship/max_pitch_deg")
+	basis = FlightGeometry.basis_from_forward(
+		FlightGeometry.clamp_pitch(-basis.z, ceiling, -basis.z))
+	_reticle.aim_basis = FlightGeometry.basis_from_forward(
+		FlightGeometry.clamp_pitch(-_reticle.aim_basis.z, ceiling, -basis.z))
 
 	# Lateral thrusters are held here, unlike the missile's one-press dodge. ADR
 	# 0039 rejected a held slide for the *missile*, where it flattened every
