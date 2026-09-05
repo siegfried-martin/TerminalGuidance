@@ -129,14 +129,15 @@ The reasoning, including what the alternative was and why it lost.
 | [0080](0080-a-ring-marks-every-way-through.md) | A steel ring marks every way through, and which face a ramp uses is authored |
 | [0081](0081-the-map-carries-more-than-one-road.md) | The map carries more than one road, so the union's guard is geometric and a ramp is declared |
 | [0082](0082-the-road-is-a-dock-host.md) | The road is a dock host, and a berth is left on purpose |
-| [0083](0083-a-sign-is-clicked-not-planned.md) | An exit is a sign you click, and taking it is a rail rebind |
+| [0083](0083-a-sign-is-clicked-not-planned.md) | An exit is chosen where it can be seen, and taking it is a rail rebind — the *sign* is superseded by 0091 |
 | [0084](0084-a-road-may-refuse-to-let-you-off-it.md) | A road may refuse to let you off it, and it refuses by not being a candidate |
 | [0085](0085-the-map-is-a-network-of-routes.md) | The map is a network of routes, and an interchange swings out before it changes height |
 
 | [0086](0086-a-dry-tank-is-slow-not-stranded.md) | A dry tank is slow, never stranded, and the road spends fuel by the metre |
 | [0087](0087-the-lane-is-soft-the-shell-is-not.md) | The lane is soft; the shell is not — a hull does not pass through the road's structure. The "never bumps" clause is superseded by 0090 |
-| [0088](0088-a-ramp-is-an-opening-inside-the-highway.md) | Inside the highway a ramp is an opening, not a tube; and a sign belongs to a carriageway |
+| [0088](0088-a-ramp-is-an-opening-inside-the-highway.md) | Inside the highway a ramp is an opening, not a tube; and a sign belongs to a carriageway — the *cut* is superseded by 0091 |
 | [0089](0089-the-throttle-does-not-abort-an-approach.md) | The throttle does not abort an approach; steering does |
 | [0090](0090-the-road-bounces.md) | The road bounces, and a bounce costs the throttle — supersedes 0087's "never bumps" |
+| [0091](0091-a-junction-is-two-buildings-meeting.md) | A junction is two buildings meeting; the road is playable space; an exit is a button on a strip |
 
-*Next number: 0091.*
+*Next number: 0092.*

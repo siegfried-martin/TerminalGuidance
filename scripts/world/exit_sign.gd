@@ -7,9 +7,13 @@ extends Node3D
 ## a piloting act. The player chooses at the moment they can see the choice; nothing
 ## plans, nothing routes, and there is no list of destinations anywhere.
 ##
-## It is **clickable only while berthed**. Flying, a click that changed which road you
-## were on would be autopilot growth (ADR 0013); berthed, the ship is not being flown
-## and the reticle is free, so it is a cursor.
+## **It is no longer clicked, and by default it is not drawn** (ADR 0091). An exit is
+## read and taken on the strip along the bottom of the screen, because picking a sign
+## with the reticle could not be made to work: the reticle is a direction from the SHIP
+## and it is drawn projected from a camera behind and above it, so what the player aims
+## at and what the pick measured were two different rays. What is left here is the sign
+## as scenery, behind `exit_signs_visible`, and the record of which exit belongs to
+## which carriageway — which the strip reads.
 ##
 ## Drawn the way a `Portal` draws its destination — a billboard label with a panel
 ## behind it — because they are the same kind of object to the player: text on the
@@ -33,14 +37,9 @@ var label_text: String = ""
 
 var _label: Label3D
 var _panel: MeshInstance3D
-## Whether the reticle is on this sign right now, and whether it is the exit the berth
-## has been told to take. Both are SET by the map each frame; the sign does not look
-## for the player.
-##
-## Three states rather than two, because "I am pointing at this" and "this is the one
-## that will happen" are different facts and the second is the one a player in a hurry
-## needs at a glance (ADR 0083).
-var _aimed: bool = false
+## Whether this is the exit the berth has been told to take. SET by the map each frame;
+## the sign does not look for the player. The "the reticle is on this one" state went
+## with the pick (ADR 0091) — the strip along the bottom carries it now.
 var _selected: bool = false
 ## Whether this exit is one the player could take from where they are. A sign for a
 ## road going somewhere else is not drawn at all: the two carriageways share one
@@ -68,7 +67,7 @@ func _ready() -> void:
 	_label.no_depth_test = true
 	_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(_label)
-	visible = _relevant
+	visible = false
 	rebuild()
 
 
@@ -81,8 +80,6 @@ func rebuild() -> void:
 	# is going to happen grows as well as brightens.
 	if _selected:
 		size *= Tuning.num("exploration/exit_sign_selected_scale")
-	elif _aimed:
-		size *= Tuning.num("exploration/exit_sign_aimed_scale")
 	(_panel.mesh as QuadMesh).size = Vector2(size * 2.6, size)
 	_label.text = label_text
 	_label.pixel_size = size / 64.0
@@ -95,8 +92,6 @@ func repaint() -> void:
 	var key := "exploration/exit_sign_color"
 	if _selected:
 		key = "exploration/exit_sign_selected_color"
-	elif _aimed:
-		key = "exploration/exit_sign_aimed_color"
 	var color := Tuning.color(key)
 	_label.modulate = color
 	_label.outline_modulate = Color(0.0, 0.0, 0.0, 0.6)
@@ -109,23 +104,12 @@ func repaint() -> void:
 ## Is this exit takeable from where the player is? Told, not asked, exactly as `aimed`
 ## is — the map knows which road the ship is on and the sign does not go looking.
 func set_relevant(on: bool) -> void:
-	if on == _relevant:
-		return
 	_relevant = on
-	visible = on
+	visible = on and Tuning.flag("exploration/exit_signs_visible")
 
 
 func is_relevant() -> bool:
 	return _relevant
-
-
-## Is the reticle on this sign? Told, not asked: the map knows where the player is
-## looking and the sign does not go hunting for them.
-func set_aimed(on: bool) -> void:
-	if on == _aimed:
-		return
-	_aimed = on
-	rebuild()
 
 
 ## Is this the exit that is actually going to happen? The one state a player in a
@@ -137,18 +121,6 @@ func set_selected(on: bool) -> void:
 	rebuild()
 
 
-func is_aimed() -> bool:
-	return _aimed
-
-
 func is_selected() -> bool:
 	return _selected
 
-
-## How far off the reticle this sign is, in degrees, from a point looking a way.
-## Negative when it is behind the viewer, which is never a pick.
-func offset_degrees(from: Vector3, looking: Vector3) -> float:
-	var toward := position - from
-	if toward.length_squared() < 0.001 or toward.dot(looking) <= 0.0:
-		return -1.0
-	return rad_to_deg(toward.normalized().angle_to(looking))

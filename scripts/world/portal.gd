@@ -21,6 +21,15 @@ var destination: String = ""
 ## Set from the hull the player is currently flying. It is the colour that carries
 ## the answer, and it has to be readable before the approach rather than on contact.
 var permitted: bool = true
+## Whether this mouth is a way the player could take FROM WHERE THEY ARE — a way on
+## while off the road, the way off the road being ridden. An exit's mouth is not an
+## entrance, and it used to be painted the same permitted blue as one; flying into it
+## did nothing, which reads as the road being broken rather than as a wrong turn
+## (ADR 0091).
+##
+## Combined with `permitted` in the colour rather than replacing it: both are "may I
+## use this, now", which is the single question ADR 0060 says the colour answers.
+var reachable: bool = true
 ## Whether this way on or off is one the player could actually use from where they
 ## are. The APERTURE is always drawn — it is a built thing and it does not come and go
 ## — but its NAME is not: a system with two highways through it carries eight mouths,
@@ -120,8 +129,12 @@ func _make_frame(half_width: float, half_height: float) -> ArrayMesh:
 ## Blue or red, and shimmering. The colour is decided per portal against the hull the
 ## player is flying right now, so switching class in the debug roster changes every
 ## portal on screen — which is the fastest way to read ADR 0060 as a player.
+func is_open() -> bool:
+	return permitted and reachable
+
+
 func repaint() -> void:
-	var color := Tuning.color("exploration/portal_sheen_color") if permitted \
+	var color := Tuning.color("exploration/portal_sheen_color") if is_open() \
 		else Tuning.color("exploration/portal_denied_color")
 	var energy := Tuning.num("exploration/portal_emission")
 	# The shimmer is what makes it read as a working aperture rather than a painted
@@ -181,15 +194,18 @@ func height() -> float:
 	return Tuning.num("exploration/portal_height")
 
 
-## Say where this goes, or do not. Told by the map, which knows whether this mouth is
-## a way the player could take right now — off the road, the ways ON have names; on it,
-## the ways OFF the road you are riding do.
+## Say where this goes, or do not — and blue or red with it. Told by the map, which
+## knows whether this mouth is a way the player could take right now: off the road, the
+## ways ON; on it, the way OFF the road being ridden.
 func set_named(on: bool) -> void:
-	if on == _named:
+	if on == _named and on == reachable:
 		return
 	_named = on
+	reachable = on
 	if _label != null:
 		_label.visible = on
+	if _sheen != null:
+		repaint()
 
 
 func is_named() -> bool:

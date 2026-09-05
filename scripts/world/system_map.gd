@@ -269,6 +269,18 @@ func relayout() -> void:
 		_field.regions.append(disc.region())
 	for link in _links:
 		_field.regions.append(link.region())
+	# THE ROAD CARRIES ITS OWN SPACE (ADR 0091). A corridor is drawn between two
+	# systems and an interchange ramp is not on one — it cuts the corner between two
+	# highways crossing at an angle — so riding it put the boundary's red across the
+	# view and, past `bounds_stop_distance`, walked the speed ceiling toward zero on a
+	# road the player was legitimately on. Measured at 388 m outside.
+	#
+	# A region per deck rather than a wider corridor: the corridor is what off-road
+	# travel is bounded by and widening it everywhere to cover one ramp would cost that
+	# its meaning. Regions UNITE, so this can only ever add space, and the corridor
+	# still governs wherever both apply.
+	for deck in _road.decks():
+		_field.regions.append(_space_around(deck))
 	_field.warning_band = Tuning.num("exploration/bounds_warning_band")
 	_field.stop_distance = Tuning.num("exploration/bounds_stop_distance")
 
@@ -276,6 +288,24 @@ func relayout() -> void:
 	# around the spine and rejected wherever the boundary says the point is still
 	# playable space, so it cannot exist until the field is composed.
 	_deep.rebuild(_spine, _field)
+
+
+## The bounded space around one carriageway. Radius is DERIVED — the lane's own
+## corner-to-corner plus the warning band — so riding a road can never redden it and
+## nothing here is a feel value to be tuned against the lane it wraps.
+func _space_around(deck: RoadDeck) -> TubeRegion:
+	var tube := TubeRegion.new()
+	tube.name_of = deck.deck_name
+	tube.follow(deck.path().points)
+	var half := Vector2(Tuning.num("exploration/lane_width"),
+		Tuning.num("exploration/lane_height")) * 0.5
+	tube.radius = sqrt(half.x * half.x + half.y * half.y) \
+		+ Tuning.num("exploration/bounds_warning_band")
+	# No flare: a road does not narrow at its ends, and a tube that tapered would put
+	# the edge back across the mouth this exists to keep clear.
+	tube.mouth_radius = tube.radius
+	tube.flare_length = 0.0
+	return tube
 
 
 ## Run the whole map against the ship for this frame.
@@ -297,8 +327,6 @@ func observe(ship: Mothership, delta: float) -> void:
 	# two consumers below cannot disagree about what was pressed this frame.
 	var took_dock := Input.is_action_just_pressed("dock") if reads_input \
 		else pressed_dock
-	var took_click := Input.is_action_just_pressed("fire_primary") if reads_input \
-		else pressed_click
 	pressed_dock = false
 	pressed_click = false
 
@@ -338,7 +366,7 @@ func observe(ship: Mothership, delta: float) -> void:
 	# and buys comfort rather than range (ADR 0086).
 	if ship.is_cruising():
 		ship.cruise_tank.burn(travelled)
-	_aim_signs(ship, took_click)
+	_offer_exits()
 	_name_the_ways()
 	for gate in _road.gates():
 		gate.repaint(delta)
@@ -480,54 +508,65 @@ func _left_through_a_portal(here: Vector3) -> bool:
 	return false
 
 
-## Which exit sign the player is looking at, and taking it if they click.
+## Which exits belong to the road under the ship, and which one is going to happen.
 ##
-## Only while berthed. Flying, a click that changed which road you were on would be
-## autopilot growth (ADR 0013); berthed, the ship is not being flown and the reticle
-## is free, so it is a cursor (ADR 0083).
+## **Nothing is picked here any more** (ADR 0091). An exit is read and taken on the
+## strip along the bottom of the screen; picking a sign with the reticle could not be
+## made to work, because the reticle is a direction from the SHIP and it is drawn
+## projected from a camera behind and above it, so what the player aimed at and what
+## the pick measured were two different rays.
 ##
-## The pick is by the RETICLE rather than by a screen-space cursor, because the mouse
-## is captured while the player is steering and the reticle is the game's existing
-## way of pointing at a thing in the world (ADR 0035).
-func _aim_signs(ship: Mothership, clicked: bool) -> void:
-	# ONLY EXITS OFF THE ROAD YOU ARE ON, and the sign says which road that is. The two
-	# carriageways share one building with glass down the middle and a second highway
-	# crosses it, so every sign on the map is legible from every seat.
-	#
-	# It used to be geometric — the ramp's leaving direction against the road axis
-	# under the ship, the same cone the lane union uses (ADR 0072, ADR 0081) — and that
-	# is right on a straight and wrong everywhere else. The axis under the ship is the
-	# road HERE; an exit's tangent is the road THERE, and on a bend, or on the curving
-	# on-ramp a player joins by, the two differ by more than the cone. Measured from the
-	# seat, no exit ahead was takeable at all. Which carriageway a sign is bolted to is
-	# a fact, so the fact is the test (ADR 0088).
-	#
-	# The SAME answer decides whether the sign is drawn, so what can be seen and what
-	# can be clicked cannot disagree.
-	var picked: ExitSign = null
-	var berthed := _berth.is_berthed() and _berth.hold() != null
-	var looking := ship.aim_direction()
-	var best := Tuning.num("exploration/exit_sign_pick_deg")
-	for sign in _road.signs():
-		var mine := _riding != null and sign.from_deck == _riding
-		sign.set_relevant(mine)
-		# A closed exit is DARK, not absent. The road is refusing to let you off it, and
-		# an exit that vanished would be a road that never had one (ADR 0084).
-		if not mine or not berthed or sign.ramp == null or not sign.ramp.passable:
-			continue
-		var off := sign.offset_degrees(ship.position, looking)
-		if off >= 0.0 and off < best:
-			best = off
-			picked = sign
+## What is left is the fact the strip and the (optional) signs both read: an exit is
+## yours if it is bolted to the carriageway you are on (ADR 0088). The signs are not
+## drawn by default; `exit_signs_visible` puts them back as scenery.
+func _offer_exits() -> void:
 	var taking := _berth.taking()
 	for sign in _road.signs():
-		sign.set_aimed(sign == picked)
+		sign.set_relevant(_riding != null and sign.from_deck == _riding)
 		sign.set_selected(taking != null and sign.ramp == taking)
-	if picked != null and clicked:
-		# A TOGGLE. Clicking the exit that is already going to happen cancels it and
-		# puts the ship back on the highway, which is the only way out of a choice made
-		# in a hurry short of leaving the berth entirely.
-		_berth.take_exit(null if picked.ramp == taking else picked.ramp)
+
+
+## The exits ahead on the road being ridden, nearest first, as
+## `[[ramp, label, metres_ahead, may_take], …]`. Empty off the road.
+##
+## A **closed** exit is listed and refused rather than hidden. ADR 0084's rule is that
+## a refusal you only find out about after choosing is not a refusal — so the turning
+## is on the strip, greyed, and pressing it does nothing.
+##
+## Measured to where the RAMP LEAVES rather than to where its sign hangs: what the
+## player is deciding about is the turning, and the sign was only ever a lead distance
+## in front of it. An exit already taken stays listed a little past zero, so the one
+## that is about to happen does not vanish off the strip at the moment it matters.
+func upcoming_exits(here: Vector3) -> Array:
+	var found: Array = []
+	if _riding == null:
+		return found
+	var line := _riding.path()
+	var ship_at: float = line.closest(here)[0]
+	var horizon := Tuning.num("exploration/nav_exit_horizon_metres")
+	var taking := _berth.taking()
+	for sign in _road.signs():
+		if sign.from_deck != _riding or sign.ramp == null:
+			continue
+		var metres: float = line.closest(sign.ramp.path().start())[0] - ship_at
+		if metres > horizon:
+			continue
+		# A ramp that is behind you is a turning you have missed — unless it is the one
+		# you have chosen, which the strip keeps until the rebind actually happens.
+		if metres < 0.0 and sign.ramp != taking:
+			continue
+		found.append([sign.ramp, sign.label_text, metres, sign.ramp.passable])
+	found.sort_custom(func(a, b) -> bool: return (a[2] as float) < (b[2] as float))
+	return found
+
+
+## Take an exit, from the strip. The rail rebind is still the berth's and still happens
+## when the ramp arrives rather than when the button is pressed (ADR 0083); this is the
+## same toggle the sign click was, moved to a control that can actually be hit.
+func take_exit(ramp: RoadDeck) -> void:
+	if ramp != null and not ramp.passable:
+		return
+	_berth.take_exit(null if ramp == _berth.taking() else ramp)
 
 
 ## Which mouths say where they go.
@@ -566,14 +605,6 @@ func _shell_for(ship: Mothership, here: Vector3) -> HullBarrier:
 func selected_sign() -> ExitSign:
 	for sign in _road.signs():
 		if sign.is_selected():
-			return sign
-	return null
-
-
-## The exit sign the reticle is on, or null. For the HUD and for tests.
-func aimed_sign() -> ExitSign:
-	for sign in _road.signs():
-		if sign.is_aimed():
 			return sign
 	return null
 

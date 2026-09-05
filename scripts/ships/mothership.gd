@@ -712,6 +712,17 @@ func _fly_berthed(delta: float) -> void:
 		deg_to_rad(turn_rate_deg_per_sec()) * delta)
 	basis = FlightGeometry.basis_from_forward(axis)
 
+	# AND SO DOES THE ROAD AXIS, which is what the camera frames (ADR 0091). It is
+	# updated in `_fly_cruise` and that does not run in a berth, so it used to freeze at
+	# whichever way the road went when the berth was taken — invisible on a straight,
+	# and on an interchange ramp that turns fifty-five degrees it left the camera
+	# pointing down the highway you had just left while the ship went somewhere else.
+	# Slewed at the same bounded rate for the same reason: nothing that moves the road
+	# under the ship may move the camera faster than the ship could have flown.
+	_road_axis = berth.axis if _road_axis == Vector3.ZERO \
+		else FlightGeometry.turn_towards(_road_axis, berth.axis,
+			deg_to_rad(Tuning.num("exploration/cruise_turn_rate_deg_per_sec")) * delta)
+
 	# THE RETICLE STILL MOVES, and the nose does not. Nothing here is steering, so the
 	# stick and the mouse are LOOKING — which is what a berth is for, and what makes
 	# the reticle the cursor the exit signs are picked with (ADR 0083). The turn rate

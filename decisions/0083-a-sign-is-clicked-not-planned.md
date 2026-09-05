@@ -1,6 +1,12 @@
 # ADR 0083 — An exit is a sign you click, and taking it is a rail rebind
 
 *Status: accepted · 2026-08-31 · from the human's "while autodocked the player can click on an exit sign to get off on that exit"*
+**The sign, and clicking it, are superseded by ADR 0091.** An exit is a button on the
+strip along the bottom of the screen: picking a sign with the reticle could not be
+made to work, because the reticle is a direction from the SHIP and it is drawn
+projected from a camera behind and above it. The principle below is unchanged — an
+exit is chosen at the moment it can be seen, nothing is planned or routed, and
+taking one is a rail rebind that happens when the ramp arrives.
 
 ## Decision
 

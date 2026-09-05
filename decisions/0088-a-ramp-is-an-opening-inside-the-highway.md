@@ -1,6 +1,11 @@
 # ADR 0088 — Inside the highway a ramp is an opening, not a tube; and a sign belongs to a carriageway
 
 *Status: accepted · 2026-09-05 · from a play session; builds on ADRs 0078, 0080, 0083*
+**Decision 1's cut is superseded by ADR 0091.** A ramp's building is no longer stopped
+at the wall — it keeps its floor and walls through the junction and loses only its
+roof, because cutting it left the last several hundred metres of a merge with no
+structure at all. Decisions 2, 3 and 4 stand, and decision 3's `from_deck` is what
+the bottom strip reads.
 
 ## Decision
 

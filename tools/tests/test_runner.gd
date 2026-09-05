@@ -13,6 +13,14 @@ const SCRIPT_DIRS: Array[String] = ["res://scripts", "res://tools"]
 ## Godot 3.x API denylist lives in a data file so the linter cannot flag itself.
 const GODOT3_DENYLIST := "res://tools/tests/godot3_denylist.json"
 
+## The fewest checks a healthy run makes. **A runtime error inside a test function
+## stops that function and returns to the caller without failing anything** — GDScript
+## does not unwind — so a broken suite reads as "0 failed" with fifty checks quietly
+## missing. That happened, and this is the tripwire: adding tests never breaks it, and
+## the only way it fails is a suite that stopped early or one deliberately deleted.
+## Lower it on purpose, never to make a run go green.
+const MINIMUM_CHECKS := 1295
+
 ## Tuning keys the sandbox needs. Keeping the list here means a rename in
 ## tuning.cfg fails the build instead of silently zeroing a feel value.
 const REQUIRED_TUNING_KEYS: Array[String] = [
@@ -172,6 +180,11 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/structure_station_length", "exploration/structure_barrier_margin",
 	"exploration/structure_bounce_restitution", "exploration/structure_bounce_seconds",
 	"exploration/structure_bounce_speed_keep",
+	"exploration/exit_signs_visible", "exploration/nav_exit_horizon_metres",
+	"hud/nav_font_size", "hud/nav_padding", "hud/nav_separation",
+	"hud/nav_bar_width", "hud/nav_bar_height", "hud/nav_panel_color",
+	"hud/nav_panel_alpha", "hud/nav_text_color", "hud/nav_exit_color",
+	"hud/nav_taken_color", "hud/nav_shut_color", "hud/nav_bottom_margin",
 	"exploration/structure_glass_color", "exploration/ramp_ring_diameter",
 	"exploration/ramp_ring_depth", "exploration/ramp_ring_color",
 	"exploration/crossing_bearing_deg", "exploration/crossing_road_height",
@@ -277,6 +290,12 @@ func _ready() -> void:
 	await _test_sandbox_builds()
 	await _test_arena_builds()
 	await _test_exploration_builds()
+
+	# LAST, and it is a tripwire rather than a test of the game: see `MINIMUM_CHECKS`.
+	_expect(_checks >= MINIMUM_CHECKS,
+		"the whole suite ran — a runtime error stops a test function without failing it",
+		"%d checks against a floor of %d: a suite stopped early" % [
+			_checks, MINIMUM_CHECKS])
 
 	print("── %d checks, %d failed ──" % [_checks, _failures.size()])
 	for f in _failures:
@@ -4019,10 +4038,18 @@ func _test_exploration_builds() -> void:
 	_expect(joints == expected_bays + 1,
 		"…with a collar or a station on every joint, both ends included",
 		"%d joints for %d bays" % [joints, expected_bays])
-	_expect(glazing.multimesh.instance_count >= expected_bays,
+	# GLAZING OF SOME KIND in every gap: a bay a ramp passes through is laid as the same
+	# bay with one face left out, and an opening is a STRETCH now (ADR 0091), so a whole
+	# bay can be one of those. Counting only the solid variant counted the road as
+	# unglazed exactly where a junction is.
+	var glazed := glazing.multimesh.instance_count
+	for open_layer: String in ["BaysOpenRight", "BaysOpenLeft", "BaysOpenTop"]:
+		var layer := pair_built.get_node_or_null(open_layer) as MultiMeshInstance3D
+		if layer != null and layer.multimesh != null:
+			glazed += layer.multimesh.instance_count
+	_expect(glazed >= expected_bays,
 		"…and a bay in every gap between them",
-		"%d bay pieces for %d gaps" % [glazing.multimesh.instance_count,
-			expected_bays])
+		"%d bay pieces for %d gaps" % [glazed, expected_bays])
 	# SERVICE STATIONS take a collar's place every so many joints, so the road has
 	# landmarks rather than an unbroken run of identical ribs. Counted against the
 	# collars they replaced: every station is a joint that is not a rib.
@@ -4504,11 +4531,13 @@ func _test_exploration_builds() -> void:
 		"…and on the road, only the way OFF this road says where it goes",
 		"a way ON was still named while riding: %s" % shouting)
 
-	# CLICKABLE ONLY WHILE BERTHED. Flying, a click that changed which road you were on
-	# would be autopilot growth (ADR 0013).
-	_expect(not berth.is_berthed() and map.aimed_sign() == null,
-		"no sign is aimable while flying — a click may not change the road you are on",
-		"a sign was live off the berth")
+	# TAKEABLE ONLY WHILE BERTHED. Flying, a control that changed which road you were on
+	# would be autopilot growth (ADR 0013), and moving it from a sign in the world to a
+	# button on the strip has not changed that (ADR 0091).
+	map.take_exit(road.get_node_or_null("A377BRampOffCForward") as RoadDeck)
+	_expect(not berth.is_berthed() and berth.taking() == null,
+		"no exit can be taken while flying — a click may not change the road you are on",
+		"an exit was taken off the berth")
 
 	# AND FROM THE SEAT IT IS ACTUALLY REACHABLE. This is the check that was missing
 	# when the human reported "I couldn't get the click off ramp feature to work at
@@ -4520,51 +4549,60 @@ func _test_exploration_builds() -> void:
 	var next_sign := road.get_node_or_null("SignA377BRampOffCForward") as ExitSign
 	if next_sign != null:
 		var carriageway := mainlines[0].path()
-		var sign_at: float = carriageway.closest(next_sign.position)[0]
+		var sign_at: float = carriageway.closest(next_sign.ramp.path().start())[0]
 		var stand := maxf(sign_at - Tuning.num("exploration/exit_sign_lead_metres"), 0.0)
 		var seat_frame := CruiseLane.frame_for(carriageway.tangent_at(stand))
 		var seat: Vector3 = carriageway.point_at(stand) - seat_frame[1] * (
 			Tuning.num("exploration/lane_height") * 0.5
 			- Tuning.num("exploration/berth_ride_height"))
-		# HOW FAR OFF THE ROAD AXIS THE NEXT SIGN ACTUALLY SITS, from the rail. It has
-		# to be inside the cone the reticle can be swept through, or the sign cannot be
-		# looked at from the seat however good the pick is.
-		var straight_ahead: Vector3 = carriageway.tangent_at(stand)
-		var to_sign := (next_sign.position - seat).normalized()
-		var swing := rad_to_deg(to_sign.angle_to(straight_ahead))
-		_expect(swing < Tuning.num("exploration/berth_look_cone_deg"),
-			"…and from the rail the next exit's sign is inside the cone the reticle sweeps",
-			"%.0f deg off the road against a %.0f deg cone" % [swing,
-				Tuning.num("exploration/berth_look_cone_deg")])
 
-		# AND LOOKING AT IT PICKS IT. This is the check that was missing when the human
-		# reported "I couldn't get the click off ramp feature to work at all": every
-		# part of the machinery worked, and the pick's own guard rejected every sign on
-		# the road because it compared the exit's tangent against the road axis UNDER
-		# THE SHIP (ADR 0088). The reticle is put on the sign the way a player's mouse
-		# puts it there, and nothing else is touched.
+		# THE STRIP OFFERS IT, AND PRESSING IT TAKES IT. This is the check that was
+		# missing when the human reported "I couldn't get the click off ramp feature to
+		# work at all" and then "there's only a tiny margin that will let me click it".
+		# The first was the pick's own guard rejecting every sign on the road (ADR
+		# 0088); the second was parallax that could not be tuned out — the reticle is a
+		# direction from the SHIP and it is drawn projected from a camera behind and
+		# above it. The control is a button now (ADR 0091), and this is the whole of
+		# "can a player take an exit".
 		scene.ship().position = seat
-		scene.ship().look_at(scene.ship().global_position
-			+ (next_sign.position - seat), Vector3.UP)
-		scene.ship().reset_reticle()
 		_step_exploration(scene, 1.0 / 60.0)
 		berth.engage(scene.ship(), map.riding())
 		_step_exploration(scene, 1.0 / 60.0)
-		_expect(map.aimed_sign() == next_sign,
-			"…and with the reticle on it, the sign lights up",
-			"aimed at %s, %.1f deg off" % [
-				"nothing" if map.aimed_sign() == null else map.aimed_sign().name,
-				next_sign.offset_degrees(scene.ship().position,
-					scene.ship().aim_direction())])
-		map.pressed_click = true
-		var was_reading := map.reads_input
-		map.reads_input = false
+		var offered := map.upcoming_exits(scene.ship().position)
+		var listed := ""
+		for one: Array in offered:
+			listed += " %s" % (one[0] as RoadDeck).name
+		_expect(not offered.is_empty() and (offered[0][0] as RoadDeck)
+				== next_sign.ramp,
+			"berthed, the strip offers the next exit off this carriageway, nearest first",
+			"offered:%s" % (listed if not listed.is_empty() else " nothing"))
+		var ahead_metres: float = offered[0][2] if not offered.is_empty() else -1.0
+		_expect(ahead_metres > 0.0
+				and ahead_metres < Tuning.num("exploration/nav_exit_horizon_metres"),
+			"…measured to the turning itself, ahead of the ship and inside the horizon",
+			"%.0f m to the exit" % ahead_metres)
+		var mine := true
+		for one: Array in offered:
+			if (one[0] as RoadDeck).route_name != mainlines[0].route_name:
+				mine = false
+		_expect(mine,
+			"…and only exits off the road being ridden, never the oncoming one's",
+			"the strip offered an exit off another road")
+		map.take_exit(next_sign.ramp)
 		_step_exploration(scene, 1.0 / 60.0)
-		map.reads_input = was_reading
 		_expect(berth.taking() == next_sign.ramp,
-			"…and clicking it takes that exit, which is the whole feature",
-			"the click took %s" % ("nothing" if berth.taking() == null
+			"…and pressing one takes that exit, which is the whole feature",
+			"the press took %s" % ("nothing" if berth.taking() == null
 				else berth.taking().name))
+		_expect(map.selected_sign() != null
+				and map.selected_sign().ramp == next_sign.ramp,
+			"…with exactly one exit marked as the one that is going to happen",
+			"nothing is marked")
+		map.take_exit(next_sign.ramp)
+		_step_exploration(scene, 1.0 / 60.0)
+		_expect(berth.taking() == null,
+			"…and pressing it again cancels, so a choice made in a hurry is not final",
+			"the exit could not be cancelled")
 		berth.release(scene.ship())
 
 	# --- THE SHELL (ADR 0087) ---
@@ -4622,6 +4660,7 @@ func _test_exploration_builds() -> void:
 	_expect(scene.ship().speed() > Tuning.num("exploration/cruise_speed") * 0.25,
 		"…and is still flying down the road at speed — held, never stopped",
 		"%.0f m/s against the road it is on" % scene.ship().speed())
+
 
 	# TAKEN, and the swap happens WHEN THE RAMP ARRIVES rather than when the sign is
 	# clicked. The ramp starts ahead, and a rail that pulled the ship back onto its
@@ -4689,27 +4728,28 @@ func _test_exploration_builds() -> void:
 		"the road the berth is on is unnamed")
 
 	# NO EXIT OFF THE ONCOMING CARRIAGEWAY. The two share one building with glass down
-	# the middle, so the other side's signs are perfectly visible from here — and
-	# clicking one would bind the berth to a ramp leaving a road going the other way.
-	# Reported from a play session, watching the ship take an exit to its left.
+	# the middle, so the other side's exits are a few hundred metres away — and taking
+	# one would bind the berth to a ramp leaving a road going the other way. Reported
+	# from a play session, watching the ship take an exit to its left.
 	var wrong_way := 0
-	var heading: Vector3 = berth.hold().axis
-	var cone := cos(deg_to_rad(Tuning.num("exploration/cruise_turn_clamp_deg")))
 	for sign: ExitSign in signs:
-		if sign.ramp.path().tangent_at(0.0).dot(heading) < cone:
+		if sign.from_deck != map.riding():
 			wrong_way += 1
 	_expect(wrong_way > 0,
-		"the oncoming carriageway's exit signs ARE visible from here — they are one building",
-		"there is nothing on the other side to exclude")
-	# …and none of them can be the live one, whatever the reticle is doing.
-	var reachable := true
-	for sign: ExitSign in signs:
-		if sign.is_aimed() \
-				and sign.ramp.path().tangent_at(0.0).dot(heading) < cone:
-			reachable = false
-	_expect(reachable,
-		"…and none of them is ever the live pick, because you could not steer onto it",
-		"a sign for a road going the other way was live")
+		"the map carries exits off other carriageways — there is something to exclude",
+		"every exit on the map belongs to this one")
+	var mine_only := true
+	for one: Array in map.upcoming_exits(scene.ship().position):
+		var listed := one[0] as RoadDeck
+		var owned := false
+		for sign: ExitSign in signs:
+			if sign.ramp == listed and sign.from_deck == map.riding():
+				owned = true
+		if not owned:
+			mine_only = false
+	_expect(mine_only,
+		"…and the strip lists none of them, because you could not steer onto one",
+		"the strip offered an exit off a road going the other way")
 	# A CLOSED EXIT (ADR 0084). The same red barrier that keeps a fighter off an
 	# on-ramp now exists at the other end: a road can refuse to let you off it. Today
 	# it is driven by the same rule that reddens a portal — which a ship on the road
@@ -4718,16 +4758,31 @@ func _test_exploration_builds() -> void:
 	# two places that honour it, and those are what is under test.
 	var shut := road.get_node_or_null("A377BRampOffCForward") as RoadDeck
 	if shut != null:
+		# Stood where the exit is genuinely ahead, so what is under test is the refusal
+		# rather than the horizon.
+		var main_line := mainlines[0].path()
+		var before: float = maxf(main_line.closest(shut.path().start())[0] - 2000.0,
+			0.0)
+		var lift := CruiseLane.frame_for(main_line.tangent_at(before))
+		scene.ship().position = main_line.point_at(before) - lift[1] * (
+			Tuning.num("exploration/lane_height") * 0.5
+			- Tuning.num("exploration/berth_ride_height"))
+		_step_exploration(scene, 1.0 / 60.0)
 		berth.engage(scene.ship(), map.riding())
 		shut.passable = false
 		_step_exploration(scene, 1.0 / 60.0)
-		var still_live := false
-		for sign: ExitSign in signs:
-			if sign.ramp == shut and sign.is_aimed():
-				still_live = true
-		_expect(not still_live,
-			"a closed exit's sign is dark — a refusal you find out about after choosing is not a refusal",
-			"the sign for a shut exit was still live")
+		var greyed := false
+		var listed_shut := false
+		for one: Array in map.upcoming_exits(scene.ship().position):
+			if (one[0] as RoadDeck) != shut:
+				continue
+			listed_shut = true
+			greyed = not (one[3] as bool)
+		map.take_exit(shut)
+		_expect(listed_shut and greyed and berth.taking() != shut,
+			"a closed exit is listed, greyed and refused — a refusal you find out about after choosing is not one",
+			"listed %s, greyed %s, taken %s" % [listed_shut, greyed,
+				berth.taking() == shut])
 		var offered := road.governing(scene.ship().position,
 			map.riding().sample(scene.ship().position).axis, null, Vector2.ZERO)
 		_expect(offered != shut,
@@ -5030,6 +5085,61 @@ func _test_exploration_builds() -> void:
 	scene.ship().input_throttle = 0.0
 	_expect(not scene.ship().has_flight_input(),
 		"…and letting go of both stops counting", "it stayed aborted")
+
+	# --- THE JUNCTION HOLDS YOU IN (ADR 0091) ---
+	# "There is a gap in the on ramp before it connects to the highway… the game will
+	# let me drive through the gap." The ramp's building was cut off at the highway's
+	# wall, which left the last several hundred metres of a merge with no structure at
+	# all — the merge is tangential by construction (ADR 0070) and therefore shallow, so
+	# the crossing runs for hundreds of metres rather than through one hole.
+	#
+	# Flown up the on-ramp with the stick hard over, which is the only way to find a
+	# hole in the side of a road. What is under test is CONTAINMENT — that the ship is
+	# inside a building the whole way — rather than that it stays on the road: pressed
+	# against a wall through a merge it may well miss the handover, and being dropped
+	# where a lane ended is ADR 0076's rule working, not this one failing.
+	# LAST in this suite, because it leaves the ship halfway up a ramp.
+	var merging := road.get_node_or_null("A377BRampOnAForward") as RoadDeck
+	if merging != null:
+		var was_reading_merge := scene.reads_input()
+		scene.set_reads_input(false)
+		var joining := merging.path()
+		# ON THE ROAD THROUGH ITS PORTAL, then moved up it. Cruise is engaged by a swept
+		# crossing and by nothing else (ADR 0057), so a ship put straight onto a ramp is
+		# not on the road at all.
+		var mouth := merging.start_portal()
+		var into := joining.tangent_at(0.0)
+		scene.ship().position = mouth.position - into * 20.0
+		_step_exploration(scene, 1.0 / 60.0)
+		scene.ship().position = mouth.position + into * 20.0
+		_step_exploration(scene, 1.0 / 60.0)
+		scene.ship().position = joining.point_at(joining.length() * 0.45)
+		scene.ship().look_at(scene.map().to_global(
+			joining.point_at(joining.length() * 0.45 + 200.0)), Vector3.UP)
+		scene.ship().reset_reticle()
+		_step_exploration(scene, 1.0 / 60.0)
+		scene.ship().input_throttle = 1.0
+		scene.ship().input_stick = Vector2(1.0, 0.0)
+		var loose := 0
+		var frames := 0
+		for _i in 240:
+			_step_exploration(scene, 1.0 / 60.0)
+			if map.riding() == null:
+				break
+			frames += 1
+			var held := scene.ship().hull_barrier
+			if held == null or not held.inside:
+				loose += 1
+		scene.ship().input_throttle = 0.0
+		scene.ship().input_stick = Vector2.ZERO
+		scene.set_reads_input(was_reading_merge)
+		_expect(frames > 30,
+			"the ship rides the on-ramp far enough for the merge to be under test",
+			"only %d frames on the ramp" % frames)
+		_expect(loose == 0,
+			"flown up an on-ramp with the stick hard over, a building surrounds the ship the whole way",
+			"%d of %d frames with nothing around the ship — that is the gap" % [
+				loose, frames])
 
 	scene.queue_free()
 	await get_tree().process_frame

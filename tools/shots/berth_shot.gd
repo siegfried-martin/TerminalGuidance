@@ -75,13 +75,12 @@ func _process(_delta: float) -> void:
 	if not _scene.map().berth().is_berthed():
 		_scene.map().berth().engage(_scene.ship(), _scene.map().riding())
 		return
-	# Look at the nearest exit sign ahead, which is the other thing only a frame can
-	# answer: whether a sign is READABLE from the roadway at the lead distance the
-	# road gives, or whether it is a smudge by the time it matters.
-	# Ask the MAP which sign is live rather than picking one here. The harness picking
-	# its own nearest-ahead is what produced a frame of the ship taking an exit off
-	# the oncoming carriageway — which turned out to be a real defect in the pick, not
-	# a defect in the harness, and the harness should not be able to reproduce it.
-	var live := _scene.map().aimed_sign()
-	if live != null and _scene.map().berth().taking() == null:
-		_scene.map().berth().take_exit(live.ramp)
+	# Take the next exit the STRIP is offering, which is the other thing only a frame
+	# can answer: whether the bottom strip reads as a nav bar from the roadway or as a
+	# row of text in the way. Asked of the map rather than picked here — the harness
+	# picking its own nearest-ahead is what once produced a frame of the ship taking an
+	# exit off the oncoming carriageway, and a harness should not be able to reproduce
+	# a defect the game cannot have (ADR 0091).
+	var ahead := _scene.map().upcoming_exits(_scene.ship().position)
+	if not ahead.is_empty() and _scene.map().berth().taking() == null:
+		_scene.map().take_exit(ahead[0][0] as RoadDeck)

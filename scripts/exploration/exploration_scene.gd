@@ -47,6 +47,13 @@ var _refuel: Button
 ## on the screen untrue, and this POC exists to read travel figures.
 var _teleports: int = 0
 var _last_teleport: String = ""
+## The strip along the bottom: the ship off the road, the road's own nav on it, with
+## the exits clickable while berthed (ADR 0091).
+var _nav: FlightHud
+## The mouse mode last applied. Godot's `Input.mouse_mode` is a setter with side
+## effects — captured mode recentres the pointer — so it is written only when it
+## actually changes, and the berth now changes it mid-flight.
+var _mouse_mode: int = -1
 ## Whether this scene reads the real input devices. See `Mothership.reads_input`:
 ## `make shot` renders into a real window, so a hand on the mouse steers the ship and
 ## breaks approach locks in a run meant to be reproducible. Set through
@@ -161,6 +168,12 @@ func _build_hud() -> void:
 		return null if _map.is_docked() else _ship
 	overlay_layer.add_child(_overlay)
 
+	# THE STRIP. Its own CanvasLayer under the dock screen, like everything else here.
+	_nav = FlightHud.new()
+	_nav.name = "FlightHud"
+	add_child(_nav)
+	_nav.exit_picked.connect(func(ramp: RoadDeck) -> void: _map.take_exit(ramp))
+
 	# THE DEBUG TELEPORT, and it is the FIRST row on purpose. Every travel figure
 	# below it stops being a reading the moment a jump is made, and this POC exists to
 	# read travel figures — so the warning sits above them rather than under them.
@@ -267,14 +280,14 @@ func _build_hud() -> void:
 			if riding != null and not riding.route_name.is_empty() \
 			else "stay on this road"
 		var taken := _map.selected_sign()
-		var aimed := _map.aimed_sign()
 		if taken != null:
-			return "%s  ·  %s to cancel" % [taken.label_text.to_upper(),
-				"click it again" if aimed == taken else "look back at the sign"]
-		if aimed != null:
-			return "%s  ·  click to take %s instead" % [staying.to_upper(),
-				aimed.label_text]
-		return "%s  ·  look at an exit sign and click to take it" % staying.to_upper()
+			return "%s  ·  click it again on the strip to cancel" % \
+				taken.label_text.to_upper()
+		var ahead := _map.upcoming_exits(_ship_in_map())
+		if ahead.is_empty():
+			return "%s  ·  no exits ahead" % staying.to_upper()
+		return "%s  ·  %d exit%s on the strip below" % [staying.to_upper(),
+			ahead.size(), "" if ahead.size() == 1 else "s"]
 	)
 	# Lane position, stated as metres rather than as a bar. The lane boundary is soft
 	# and the penalty is proportional, so "how far out am I" is the number that
@@ -320,10 +333,12 @@ func _build_hud() -> void:
 		# The label already says TO or FROM. Prefixing it again reads "to TO SYSTEM B".
 		var refused := "REFUSED — no cruise drive" if not _ship.has_cruise_drive() \
 			else "REFUSED — cruise tank dry"
+		if not nearest.reachable:
+			refused = "EXIT ONLY — not a way in from here"
 		return "%s  ·  %.0f m  ·  %s" % [
 			nearest.destination if not nearest.destination.is_empty() else "portal",
 			here.distance_to(nearest.position),
-			"OPEN" if nearest.permitted else refused]
+			"OPEN" if nearest.is_open() else refused]
 	)
 	# THE step-5 number. The leg at this hull's top speed is the baseline the
 	# highway has to beat in step 6, and it is worth reading before flying it as well
@@ -443,6 +458,11 @@ func _ship_in_map() -> Vector3:
 func _process(delta: float) -> void:
 	_map.observe(_ship, delta)
 	_ship.speed_ceiling_scale = _map.speed_scale()
+	_refresh_strip()
+	# The berth frees the pointer so the strip's exits can be clicked, and takes it
+	# back on the way out. Applied every frame rather than on an event because the
+	# berth is engaged and released by the map, not by anything this scene sees.
+	_apply_mouse_mode()
 	# On the road the camera frames the ROAD, not the nose, and the ship yaws inside
 	# the frame (ADR 0057). With the camera on the nose, steering left and the road
 	# curving left look identical and the player has nothing to hold a line against.
@@ -491,20 +511,49 @@ func _on_departed() -> void:
 	_apply_mouse_mode()
 
 
-## The pointer steers the ship, and is released only for the tuning panel. With one
-## station there is nothing else it could be doing.
+## What the strip says this frame.
+##
+## Off the road it is the ship — throttle and hull. On it, the road: which highway and
+## what comes off it, clickable while berthed. The strip swaps rather than growing
+## (ADR 0091).
+func _refresh_strip() -> void:
+	if _nav == null:
+		return
+	var riding := _map.riding()
+	if riding == null:
+		_nav.show_ship(_ship.throttle(), _ship.hp_fraction())
+		return
+	# The deck's name already opens with the road's — "A-377B SYSTEM C bound" — so
+	# prefixing the route again reads "A-377B · A-377B SYSTEM C bound". A ramp's name
+	# does not, and gets the road it belongs to in front of it.
+	var heading := riding.deck_name
+	if not riding.route_name.is_empty() \
+			and not heading.begins_with(riding.route_name):
+		heading = "%s  ·  %s" % [riding.route_name, heading]
+	_nav.show_road(heading, _map.upcoming_exits(_ship_in_map()),
+		_map.berth().taking(), _map.berth().is_berthed())
+
+
+## The pointer steers the ship, and is released for the tuning panel, for a dock — and
+## now for a berth, because the strip's exits are buttons and a captured pointer cannot
+## press one. That is the cost of moving the exit off the reticle (ADR 0091): looking
+## around a berth is the stick's job now, not the mouse's.
 func _apply_mouse_mode() -> void:
 	# A harness leaves the pointer alone entirely. Capturing it in a windowed capture
 	# run is what lets a hand resting on the desk fly the ship.
-	if not _reads_input or DebugPanel.is_open() \
-			or (_map != null and _map.is_docked()):
-		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	var free := not _reads_input or DebugPanel.is_open() \
+		or (_map != null and _map.is_docked()) \
+		or (_map != null and _map.berth().is_berthed())
+	var wanted := Input.MOUSE_MODE_VISIBLE if free else Input.MOUSE_MODE_CAPTURED
+	if wanted == _mouse_mode:
 		return
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	_mouse_mode = wanted
+	Input.mouse_mode = wanted
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not _reads_input or DebugPanel.is_open() or _map.is_docked():
+	if not _reads_input or DebugPanel.is_open() or _map.is_docked() \
+			or _map.berth().is_berthed():
 		return
 	if event is InputEventMouseMotion:
 		_ship.add_mouse_steer((event as InputEventMouseMotion).relative)

@@ -64,10 +64,21 @@ var _mouth: Vector2 = Vector2.ONE
 var _narrows_at_start: bool = false
 var _narrows_at_end: bool = false
 
-## Where ramps pierce this building, along the path, and through which face. Two
-## parallel lists rather than a dictionary so both stay typed.
-var _pierced_at: PackedFloat32Array = PackedFloat32Array()
+## Where ramps pierce this building, as SPANS along the path, and through which face.
+## Parallel lists rather than a dictionary so all of them stay typed.
+##
+## **A span, not a point** (ADR 0091). A ramp joins a highway by rising through its
+## roadway over hundreds of metres — the tangential merge ADR 0070 requires makes the
+## crossing shallow by construction — and a one-ring hole punched at the place its
+## centre-line crossed left the ramp arriving under a solid floor beside the opening.
+## What has to be open is the whole stretch the ramp's TUBE is in the way of.
+var _pierced_from: PackedFloat32Array = PackedFloat32Array()
+var _pierced_to: PackedFloat32Array = PackedFloat32Array()
 var _pierced_face: PackedInt32Array = PackedInt32Array()
+## Where the hoop marking this way through sits, or negative for an opening with no
+## hoop — a ramp's own roof does not get one, because from inside it is not a mouth you
+## fly through, it is the road opening out.
+var _pierced_ring: PackedFloat32Array = PackedFloat32Array()
 
 ## Every layer of modules by name. The `open_*` layers are the same bay with one face
 ## left out, and they are empty on a road nothing leaves.
@@ -119,8 +130,10 @@ func _make_layer(node_name: String, module: String,
 func follow(line: PackedVector3Array, full: Vector2, mouth: Vector2,
 		narrows_at_start: bool, narrows_at_end: bool) -> void:
 	_path.set_points(line)
-	_pierced_at = PackedFloat32Array()
+	_pierced_from = PackedFloat32Array()
+	_pierced_to = PackedFloat32Array()
 	_pierced_face = PackedInt32Array()
+	_pierced_ring = PackedFloat32Array()
 	_full = full
 	_mouth = mouth
 	_narrows_at_start = narrows_at_start
@@ -130,13 +143,18 @@ func follow(line: PackedVector3Array, full: Vector2, mouth: Vector2,
 	rebuild()
 
 
-## A ramp passes through this building here, through this face. Called by the network
-## once it has measured where the ramp actually leaves — the crossing is *found*, not
-## assumed, because a cubic ramp's shape is a consequence of four tuned numbers and
-## guessing where it clears the wall is how an opening ends up in the wrong place.
-func pierce(along: float, face: Face) -> void:
-	_pierced_at.append(along)
+## A ramp passes through this building over this STRETCH, through this face. Called by
+## the network once it has measured where the ramp actually is — the overlap is
+## *found*, not assumed, because a cubic ramp's shape is a consequence of four tuned
+## numbers and guessing where it clears the wall is how an opening ends up in the wrong
+## place.
+##
+## `ring_at` is where the hoop marking the way through sits, or negative for none.
+func pierce(from: float, to: float, face: Face, ring_at: float = -1.0) -> void:
+	_pierced_from.append(minf(from, to))
+	_pierced_to.append(maxf(from, to))
 	_pierced_face.append(int(face))
+	_pierced_ring.append(ring_at)
 	if not _layers.is_empty():
 		rebuild()
 
@@ -177,22 +195,26 @@ func rebuild() -> void:
 	for i in bays:
 		var from := float(i) * step + collar * 0.5
 		var to := float(i + 1) * step - collar * 0.5
-		# A bay is laid as one piece unless a ramp goes through it, and then as a
-		# solid piece either side of every mouth-sized gap. More than one ramp can
-		# land in the same bay — at an interchange the two carriageways' ramps pierce
-		# opposite walls within metres of each other — so this walks the openings in
-		# order rather than handling "the" opening.
+		# A bay is laid as one piece unless a ramp goes through it, and then as a solid
+		# piece either side of every opening. An opening is a STRETCH and may cross
+		# several bays, and more than one ramp can be in the same bay — at an
+		# interchange the two carriageways' ramps pierce opposite walls within metres of
+		# each other — so this clips every opening to this bay and walks what is left.
 		var here := from
-		for opening: Array in _openings_in(i, step, from, to, mouth):
+		for opening: Array in _openings_in(from, to):
 			var gap_from: float = opening[0]
 			var gap_to: float = opening[1]
 			var face: int = opening[2]
 			_fill(placed, here, gap_from, -1)
 			_fill(placed, gap_from, gap_to, face)
-			placed["Rings"].append(
-				_ring((gap_from + gap_to) * 0.5, face, mouth))
 			here = gap_to
 		_fill(placed, here, to, -1)
+
+	# ONE HOOP PER WAY THROUGH, at the place the ramp's own curve crosses — not once
+	# per bay the opening happens to cross. A slot four bays long is one way through.
+	for i in _pierced_ring.size():
+		if _pierced_ring[i] >= 0.0:
+			placed["Rings"].append(_ring(_pierced_ring[i], _pierced_face[i], mouth))
 
 	# A ring at every portal mouth too. A ramp's ends and a ramp's side openings are
 	# the same object to the player: a steel hoop that says "this is the way through".
@@ -241,41 +263,34 @@ func _fill(placed: Dictionary, from: float, to: float, face: int) -> void:
 		placed["Panes"].append(piece)
 
 
-## Every opening belonging to this BAY, in order along the road, as
-## `[gap_from, gap_to, face]`. Each is one ring wide and kept inside the bay.
+## Every opening crossing this stretch of road, in order, clipped to it, as
+## `[gap_from, gap_to, face]`.
 ##
-## Assigned by bay index rather than by falling inside the bay's clear stretch,
-## because the stretch excludes the collars at each end and an aperture landing under
-## a collar would belong to no bay at all — it lost its ring and its opening, which is
-## a ramp going through a solid wall with nothing to say so. Every aperture belongs to
-## exactly one bay and is nudged inside it.
-func _openings_in(bay: int, step: float, from: float, to: float,
-		mouth: float) -> Array:
+## Clipped rather than assigned to a bay: an opening is a SPAN now and a long one
+## crosses several bays, so each bay asks what part of each opening lands in it.
+func _openings_in(from: float, to: float) -> Array:
 	var found: Array = []
-	for i in _pierced_at.size():
-		if int(_pierced_at[i] / step) != bay:
-			continue
-		var at := clampf(_pierced_at[i], from + mouth * 0.5, to - mouth * 0.5)
-		found.append([at - mouth * 0.5, at + mouth * 0.5, _pierced_face[i]])
+	for i in _pierced_from.size():
+		var a := maxf(_pierced_from[i], from)
+		var b := minf(_pierced_to[i], to)
+		if b - a > 1.0:
+			found.append([a, b, _pierced_face[i]])
 	found.sort_custom(func(a, b): return a[0] < b[0])
-	# Two ramps can pierce within a ring of each other — at an interchange the two
-	# carriageways' ramps land within metres, on opposite walls. Overlapping gaps
-	# would lay geometry on top of itself, so each is pushed clear of the one before
-	# and then the whole run is pulled back inside the bay. An opening is never
-	# dropped: a way through with no ring on it is worse than a ring sitting a little
-	# off its ramp.
-	for i in range(1, found.size()):
-		if found[i][0] < found[i - 1][1]:
-			var shift: float = found[i - 1][1] - found[i][0]
-			found[i][0] += shift
-			found[i][1] += shift
-	var overflow: float = found[found.size() - 1][1] - to if not found.is_empty() \
-		else 0.0
-	if overflow > 0.0:
-		for one: Array in found:
-			one[0] -= overflow
-			one[1] -= overflow
-	return found
+	# Two openings can overlap — at an interchange the two carriageways' ramps land
+	# within metres, on opposite walls. Laying both would put geometry on top of
+	# itself, so the later one is clipped to what the earlier one leaves. Where that
+	# leaves nothing the stretch keeps the first opening's face, which is a real
+	# compromise and the honest one: an opening is never dropped in favour of a solid
+	# wall a ramp goes through.
+	var kept: Array = []
+	var reached := -INF
+	for one: Array in found:
+		var a: float = maxf(one[0], reached)
+		if one[1] - a <= 1.0:
+			continue
+		kept.append([a, one[1], one[2]])
+		reached = one[1]
+	return kept
 
 
 func _open_layer(face: int) -> String:
@@ -416,8 +431,8 @@ func barrier(point: Vector3, clearance: Vector2) -> HullBarrier:
 		if absf(across) > extents.x + clearance.x + margin \
 				or absf(lift) > extents.y + clearance.y + margin:
 			return null
-	for i in _pierced_at.size():
-		if absf(_pierced_at[i] - along) > mouth:
+	for i in _pierced_from.size():
+		if along < _pierced_from[i] - mouth or along > _pierced_to[i] + mouth:
 			continue
 		match _pierced_face[i]:
 			int(Face.RIGHT):
@@ -435,12 +450,15 @@ func barrier(point: Vector3, clearance: Vector2) -> HullBarrier:
 	return held
 
 
-## Every aperture in this building, as `[along, face]`. For the gate — nothing in the
-## game asks, and the exit-face rules are only checkable from here.
+## Every aperture in this building, as `[along, face, from, to]` — `along` being where
+## its hoop sits, or the middle of the stretch where it has none. For the gate; nothing
+## in the game asks, and the exit-face rules are only checkable from here.
 func apertures() -> Array:
 	var found: Array = []
-	for i in _pierced_at.size():
-		found.append([_pierced_at[i], _pierced_face[i]])
+	for i in _pierced_from.size():
+		found.append([_pierced_ring[i] if _pierced_ring[i] >= 0.0
+			else (_pierced_from[i] + _pierced_to[i]) * 0.5,
+			_pierced_face[i], _pierced_from[i], _pierced_to[i]])
 	return found
 
 

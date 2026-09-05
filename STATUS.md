@@ -15,11 +15,75 @@ the human's explicit direction.
 | | |
 |---|---|
 | Branch | `feat/highway-section-flips`, pushed |
-| Gate | `make check` — 1285 checks, 0 failed |
+| Gate | `make check` — 1306 checks, 0 failed |
 | Run it | `make fly` |
-| Built | Exploration POC steps 1–8 and **highway rebuild steps A–D**, plus two play-session passes (ADRs 0062–0090) |
+| Built | Exploration POC steps 1–8 and **highway rebuild steps A–D**, plus three play-session passes (ADRs 0062–0091) |
 | **Do next** | **Another drive, against the 2026-09-05 fixes below.** Then the "over the top" left turn — `RoadPath.sweep` now exists and may be most of what it needed. Steps 9–10 are traffic, and rebuild step E folds into them. |
-| **Waiting on you** | **Fly it again first** — six bugs and three asks from the last session are fixed, and three numbers moved to satisfy rules that had no check behind them (below). Then the fourth checkpoint: success criterion 1, ten minutes on the trunk road. `cruise_turn_clamp_deg` is tuned WITH `road_curve_deg` and `road_curve_period`, never against them. |
+| **Waiting on you** | **Fly it again** — the second session's list is fixed (below), including the junction gap and the exit control, which is a bar along the bottom of the screen now. One report from that list is NOT diagnosed: the undock on the far highway that put the ship in the other lane. You said it might not be worth reproducing; if it happens again, say so. Then the fourth checkpoint: success criterion 1, ten minutes on the trunk road. |
+
+### What landed on 2026-09-05 — the third play session's feedback
+
+Six bugs and one feature. **ADR 0091** carries all of it.
+
+**A junction is two buildings meeting.** The gap you flew through was ADR 0088's cut:
+the ramp's building was stopped at the highway's wall, which left the last several
+hundred metres of a merge with no structure at all. That happens because ADR 0070 makes
+a merge *tangential*, so it is shallow, so the crossing runs for about seven hundred
+metres rather than through one hole. Now: an aperture is a **stretch**, the highway's
+floor is open for all of it, and over the same stretch the ramp loses its **roof** and
+keeps its floor and walls. A trough rising into a slot, which is what a merge is — and
+`bay_open_top` turns out to be the junction tile you asked for twice. Measured: the old
+geometry left the ship with nothing around it for **110 of 240 frames** of a merge, and
+that number is now a gate check.
+
+**The road carries its own playable space.** An interchange ramp cuts the corner between
+two highways crossing at an angle, and no corridor is drawn there — measured at **388 m
+outside**, which is past `bounds_stop_distance`, so the boundary was not just reddening
+but walking your speed ceiling toward zero on a road you were legitimately on. Every
+carriageway is a boundary region now. Widening the corridor instead would have cost the
+corridor its meaning: it is what *off-road* travel is bounded by.
+
+**An exit's mouth is not an entrance.** Every mouth was painted from the drive-and-fuel
+test alone, so an off-ramp's exit read exactly like an on-ramp's entrance. A portal is
+blue only when it is a way you could take from where you are; the HUD says `EXIT ONLY —
+not a way in from here`. It still refuses by colour and never by a wall (ADR 0084).
+
+**The camera follows the road in a berth.** `_road_axis` is only updated where the ship
+flies itself, so in a berth it froze at whichever way the road went when you docked —
+invisible on a straight, and on a fifty-five degree interchange it left the camera
+pointing down the highway you had just left.
+
+### And the bottom strip — your feature, and it replaces the signs
+
+`FlightHud` is a bar along the bottom. **Off the road** it is the ship: throttle and a
+hull bar (a placeholder, and it says so — `ship/invulnerable` is on). **On a highway**
+it swaps to the road: which one, which way, and the turnings ahead with their distances.
+**Berthed**, those turnings are buttons. A closed exit is listed, greyed and refused.
+
+**This is what fixes the click**, and the fix is not a better pick. *"Only a tiny margin
+… when my mouse is on the words the option to click goes away"* is parallax, and it is
+structural: the reticle is a **direction from the ship** and it is drawn projected from a
+camera that sits behind and above the ship, so the ray you aim along and the ray the
+pick measured start from different points, with an error that grows with distance —
+which for a sign at its lead distance is exactly the range that matters. Every fix for
+that is a fudge factor. A button is a button, and it can carry the distance a sign never
+could.
+
+The signs are still in the world behind `exit_signs_visible`, off by default, for the
+cosmetic pass you mentioned. **The pointer is released in a berth** so the strip can be
+pressed — that is the real cost: looking around a berth is the stick's job now.
+
+> **Not fixed:** the undock on the far highway that put the ship in the other lane with
+> the camera offset. You said the state was probably too broken to be worth reproducing;
+> nothing here is claimed to address it. If it recurs, that is the next thing.
+
+### And the gate was lying
+
+`make check` reported **"0 failed" while quietly skipping 58 checks**. A runtime error
+inside a test function stops that function and returns to the caller without failing
+anything — GDScript does not unwind — so a broken suite reads as a clean run. There is a
+floor on the total now (`MINIMUM_CHECKS`): adding tests never trips it, and the only way
+it fails is a suite that stopped early.
 
 ### What landed on 2026-09-05 — the second play session's feedback
 
