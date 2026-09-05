@@ -1,6 +1,12 @@
 # ADR 0087 — The lane is soft; the shell is not
 
 *Status: accepted · 2026-09-05 · narrows ADR 0064, and is the fix that plan predicted*
+**The "it never bumps" clause is superseded by ADR 0090.** The road bounces: the speed
+going into a face comes back out of it, and a bounce costs the throttle once per
+contact. Everything else below stands, and one clause of it is what keeps the bounce
+legal — the correction is still NORMAL-ONLY, so motion along a surface is untouched and
+a wall may deflect but may never stop. The sliding stop described here is
+`structure_bounce_restitution = 0`.
 
 ## Decision
 
@@ -11,11 +17,13 @@ the ship out. It is measured against the hull's own half-section, exactly as the
 is (ADR 0068), so the ship is held when its *side* reaches the wall rather than when
 its centre does.
 
-**It never bumps.** There is no impulse, no bounce, and no stop. The hull is put back
+**It never bumps.** *(Superseded by ADR 0090 — it bounces, and the bounce costs the
+throttle once per contact. What survives, and what ADR 0090 depends on, is the clause
+in bold.)* There is no impulse, no bounce, and no stop. The hull is put back
 against the face it was crossing and the component of its velocity going *through*
-that face is dropped; everything along the surface is untouched, and the forward speed
-the throttle drives is never reduced. A ship held against the roadway keeps flying down
-the road at the speed it had.
+that face is dropped; **everything along the surface is untouched**, and the forward
+speed the throttle drives is never reduced. A ship held against the roadway keeps
+flying down the road at the speed it had.
 
 Three things are deliberately not held, and each is a way through rather than an
 oversight:
@@ -82,9 +90,9 @@ side behind.
 
 ## What this forbids
 
-- **Do not make the shell bump.** No impulse, no bounce, no reduction of speed along
-  the surface, and no change to `_speed`. If a ship pressed against the roadway ever
-  slows down because of it, this is wrong.
+- ~~**Do not make the shell bump.**~~ *(Retired by ADR 0090.)* What still holds: **no
+  reduction of speed ALONG the surface**, ever. If a ship flying beside a wall can be
+  brought to a stop by it, this is wrong.
 - **Do not widen ADR 0064's push to do this job.** The lane is soft and stays soft; a
   lane you can be stopped by is still wrong.
 - **Do not hold an aperture, a portal flare, or the open end of a ramp.** Those are

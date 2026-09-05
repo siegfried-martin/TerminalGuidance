@@ -428,6 +428,7 @@ func barrier(point: Vector3, clearance: Vector2) -> HullBarrier:
 				held.open_above = true
 			_:
 				held.open_below = true
+	held.restitution = Tuning.num("exploration/structure_bounce_restitution")
 	held.has_median = has_median and held.inside
 	if held.has_median and absf(across) > clearance.x:
 		held.median_side = signf(across)

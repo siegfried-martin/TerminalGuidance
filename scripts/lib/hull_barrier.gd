@@ -16,12 +16,17 @@ extends RefCounted
 ## the apertures a ramp makes, the open ends of a ramp, and the portal mouths — and
 ## those are told to this object as open faces rather than guessed at.
 ##
-## **It never bumps.** There is no impulse, no bounce and no stop: the hull is put
-## back against the face it was crossing and the component of its velocity going
-## *through* that face is dropped. Everything along the surface is untouched, so a
-## ship held against the roadway keeps flying down the road at the speed it had. That
-## is the difference between a barrier and a collision, and it is the property to
-## check if this is ever rewritten.
+## **It bounces** (ADR 0090, reversing ADR 0087's original "never bumps"). The hull is
+## put back against the face it was crossing and the speed going *through* that face
+## comes back out of it, scaled by `restitution`. A road of steel and glass is a thing
+## you rebound off; the sliding stop the first version did was the reading that suited
+## an energy tube, and the structure is not one any more.
+##
+## What survives from that first version, and is still the property to check: **motion
+## ALONG the surface is untouched.** The bounce is in the normal direction only, so a
+## glancing hit is deflected and a ship is never stopped by a wall it is flying beside.
+## What the bounce costs is the caller's to apply — see `into_wall`, which is the speed
+## the surface actually absorbed.
 
 ## Which building this came from. For the gate and the HUD; nothing steers by it.
 var shell_name: String = ""
@@ -63,6 +68,11 @@ var open_below: bool = false
 var has_median: bool = false
 var median_side: float = 0.0
 
+## How much of the speed going into a face comes back out of it. 0 is the sliding stop
+## this class was first written with; 1 would be a superball. A feel value, so it is
+## pushed in from the structure rather than read here.
+var restitution: float = 0.0
+
 
 ## How much room there is to the nearest face: positive inside, negative outside. What
 ## the network compares when two shells both have an opinion — the one the hull is
@@ -71,11 +81,17 @@ func room() -> float:
 	return minf(extents.x - absf(across), extents.y - absf(lift))
 
 
-## Hold a hull that has moved to `point`, as `[held_point, held_velocity]`.
+## Hold a hull that has moved to `point`, as
+## `[held_point, held_velocity, kick, into_wall]`.
 ##
-## The correction is a slide, not a stop. Each axis is clamped independently and only
-## the velocity going *through* the face is dropped, so a ship pressed against the
-## roadway still travels along it — see the class comment.
+## `kick` is the rebound: an outward velocity the caller carries for a moment, so the
+## bounce reads as a bounce rather than as one frame of displacement. `into_wall` is
+## the speed the surface absorbed, which is how square the hit was and therefore what
+## it should cost — a glancing touch is nearly zero and a dive into the roadway is
+## nearly the whole speed.
+##
+## Each axis is clamped independently and only the velocity going *through* the face is
+## touched, so a ship pressed against the roadway still travels along it.
 func hold(point: Vector3, velocity: Vector3) -> Array:
 	var offset := point - centre
 	var across := offset.dot(right)
@@ -119,20 +135,27 @@ func hold(point: Vector3, velocity: Vector3) -> Array:
 				held_lift = reach_y * (vertical if not is_zero_approx(vertical) else 1.0)
 
 	if is_equal_approx(held_across, across) and is_equal_approx(held_lift, lift):
-		return [point, velocity]
+		return [point, velocity, Vector3.ZERO, 0.0]
 
 	var held := centre + right * held_across + up * held_lift \
 		+ axis * offset.dot(axis)
 	var kept := velocity
-	# Only the component GOING THROUGH the face is dropped. Coming back off it is the
-	# player flying away from the wall and must not be touched, or a hull resting
-	# against the roadway could never leave it.
+	var kick := Vector3.ZERO
+	var into_wall := 0.0
+	var bounce := clampf(restitution, 0.0, 1.0)
+	# Only the component GOING THROUGH the face is touched. Coming back off it is the
+	# player flying away from the wall and must be left alone, or a hull resting against
+	# the roadway could never leave it.
 	if not is_equal_approx(held_across, across):
 		var v := kept.dot(right)
 		if signf(v) == signf(across - held_across):
 			kept -= right * v
+			kick -= right * v * bounce
+			into_wall += absf(v)
 	if not is_equal_approx(held_lift, lift):
 		var v := kept.dot(up)
 		if signf(v) == signf(lift - held_lift):
 			kept -= up * v
-	return [held, kept]
+			kick -= up * v * bounce
+			into_wall += absf(v)
+	return [held, kept, kick, into_wall]

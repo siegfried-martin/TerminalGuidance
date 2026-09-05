@@ -134,8 +134,9 @@ The reasoning, including what the alternative was and why it lost.
 | [0085](0085-the-map-is-a-network-of-routes.md) | The map is a network of routes, and an interchange swings out before it changes height |
 
 | [0086](0086-a-dry-tank-is-slow-not-stranded.md) | A dry tank is slow, never stranded, and the road spends fuel by the metre |
-| [0087](0087-the-lane-is-soft-the-shell-is-not.md) | The lane is soft; the shell is not — a hull does not pass through the road's structure |
+| [0087](0087-the-lane-is-soft-the-shell-is-not.md) | The lane is soft; the shell is not — a hull does not pass through the road's structure. The "never bumps" clause is superseded by 0090 |
 | [0088](0088-a-ramp-is-an-opening-inside-the-highway.md) | Inside the highway a ramp is an opening, not a tube; and a sign belongs to a carriageway |
 | [0089](0089-the-throttle-does-not-abort-an-approach.md) | The throttle does not abort an approach; steering does |
+| [0090](0090-the-road-bounces.md) | The road bounces, and a bounce costs the throttle — supersedes 0087's "never bumps" |
 
-*Next number: 0090.*
+*Next number: 0091.*

@@ -170,6 +170,8 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/structure_glass_alpha", "exploration/structure_metal_color",
 	"exploration/structure_station_spacing",
 	"exploration/structure_station_length", "exploration/structure_barrier_margin",
+	"exploration/structure_bounce_restitution", "exploration/structure_bounce_seconds",
+	"exploration/structure_bounce_speed_keep",
 	"exploration/structure_glass_color", "exploration/ramp_ring_diameter",
 	"exploration/ramp_ring_depth", "exploration/ramp_ring_color",
 	"exploration/crossing_bearing_deg", "exploration/crossing_road_height",
@@ -2592,18 +2594,35 @@ func _test_hull_barrier() -> void:
 	# THROUGH THE FLOOR is the case the human reported: at cruise inside the steering
 	# cone a ship carries far more downward speed than the lane's push is worth, so it
 	# sank through the roadway and out the bottom of the road (ADR 0087).
+	shell.restitution = 0.5
 	var sunk := shell.hold(Vector3(0.0, -80.0, 0.0), Vector3(0.0, -60.0, -200.0))
 	_expect(is_equal_approx((sunk[0] as Vector3).y, -45.0),
 		"…and one pushed through the roadway is held at it, hull included",
 		"y %.1f, wanted -45" % (sunk[0] as Vector3).y)
 	_expect(is_zero_approx((sunk[1] as Vector3).y),
-		"…with the speed going THROUGH the floor dropped",
+		"…with the speed going THROUGH the floor taken out of the velocity",
 		"%.1f m/s still going down" % (sunk[1] as Vector3).y)
 	_expect(is_equal_approx((sunk[1] as Vector3).z, -200.0),
-		"…and the speed along the road untouched — a barrier, not a collision",
+		"…and the speed along the road untouched — a wall you fly beside, not into",
 		"%.1f m/s along, was -200" % (sunk[1] as Vector3).z)
+	# AND IT COMES BACK OUT (ADR 0090). The road is steel and glass; you bounce off it.
+	_expect(is_equal_approx((sunk[2] as Vector3).y, 30.0)
+			and is_zero_approx((sunk[2] as Vector3).z),
+		"…and half of it comes back out as a bounce, in the NORMAL direction only",
+		"kick %s" % sunk[2])
+	_expect(is_equal_approx(sunk[3] as float, 60.0),
+		"…with the speed the surface absorbed reported, so the caller can price the hit",
+		"%.1f m/s absorbed, wanted 60" % (sunk[3] as float))
+	# A GLANCING HIT IS DEFLECTED, NOT STOPPED. This is the property that keeps a wall
+	# from being a wall, and it is what the caller's penalty is scaled by.
+	var grazed := shell.hold(Vector3(0.0, -80.0, 0.0), Vector3(0.0, -2.0, -200.0))
+	_expect((grazed[3] as float) / 200.0 < 0.02,
+		"…while brushing along a wall barely registers as a hit at all",
+		"%.1f m/s absorbed against 200 along" % (grazed[3] as float))
+	shell.restitution = 0.0
 	var leaving := shell.hold(Vector3(0.0, -80.0, 0.0), Vector3(0.0, 30.0, -200.0))
-	_expect(is_equal_approx((leaving[1] as Vector3).y, 30.0),
+	_expect(is_equal_approx((leaving[1] as Vector3).y, 30.0)
+			and is_zero_approx(leaving[3] as float),
 		"…while coming back OFF the floor is the player flying, and is not touched",
 		"the climb away was cancelled too")
 
@@ -4567,6 +4586,8 @@ func _test_exploration_builds() -> void:
 	scene.ship().input_stick = Vector2(0.0, 1.0)
 	var sank_to := 0.0
 	var came_off := false
+	var bounced := 0.0
+	var slowest := INF
 	for _i in 240:
 		_step_exploration(scene, 1.0 / 60.0)
 		if map.riding() == null or scene.ship().cruise == null:
@@ -4574,6 +4595,8 @@ func _test_exploration_builds() -> void:
 			break
 		sank_to = minf(sank_to, scene.ship().cruise.vertical
 			+ scene.ship().cruise.half_height)
+		bounced = maxf(bounced, scene.ship().rebound_speed())
+		slowest = minf(slowest, scene.ship().speed())
 	scene.ship().input_throttle = 0.0
 	scene.ship().input_stick = Vector2.ZERO
 	scene.set_reads_input(was_reading_shell)
@@ -4583,11 +4606,21 @@ func _test_exploration_builds() -> void:
 	_expect(sank_to > -1.0,
 		"…and never gets below the roadway, hull and all",
 		"the hull reached %.1f m under the road surface" % -sank_to)
-	# AND IT IS A BARRIER RATHER THAN A COLLISION: pressed against the roadway the ship
-	# is still travelling down the road. If this ever fails, the shell has become a wall
-	# and ADR 0087's one hard rule is gone.
+	# AND IT BOUNCES (ADR 0090). The road is steel and glass, so the roadway throws the
+	# ship back off it rather than absorbing it.
+	_expect(bounced > 1.0,
+		"…and comes back OFF the roadway rather than sliding along it",
+		"the hardest rebound in four seconds was %.1f m/s" % bounced)
+	# WITHOUT EVER BEING STOPPED BY IT. Four seconds of flying at a wall is dozens of
+	# frames of contact; charged per frame instead of once per hit, the penalty would
+	# compound into a full stop, and a shell that stops you is the one thing it may not
+	# be. This is the check that would fail if the rising edge is ever dropped.
+	_expect(slowest > Tuning.num("exploration/cruise_speed") * 0.2,
+		"…while never being brought to a stop by it — one hit, one cost",
+		"it fell to %.0f m/s against a %.0f m/s road" % [slowest,
+			Tuning.num("exploration/cruise_speed")])
 	_expect(scene.ship().speed() > Tuning.num("exploration/cruise_speed") * 0.25,
-		"…while still flying down the road at speed — held, never stopped",
+		"…and is still flying down the road at speed — held, never stopped",
 		"%.0f m/s against the road it is on" % scene.ship().speed())
 
 	# TAKEN, and the swap happens WHEN THE RAMP ARRIVES rather than when the sign is

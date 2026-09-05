@@ -80,8 +80,16 @@ var berth: BerthHold = null
 ##
 ## **The lane is soft and the shell is not** (ADR 0087). The lane's push is a slope
 ## that keeps you near the centre-line; this is the building, and you do not fly
-## through a building. It never bumps — see `HullBarrier`.
+## through a building — you bounce off it (ADR 0090).
 var hull_barrier: HullBarrier = null
+## The bounce, still bleeding off. Carried rather than applied in one frame, because a
+## rebound that lasts one frame is a displacement and reads as a stutter; over a few
+## tenths it reads as coming off a wall.
+var _rebound: Vector3 = Vector3.ZERO
+## Whether the hull was against a surface last frame. The cost of a bounce is charged
+## on the RISING EDGE and nowhere else: charged per frame, a ship sliding along a wall
+## would be brought to a stop by it, which is the one thing the shell may not do.
+var _shell_contact: bool = false
 
 ## The cruise drive's tank (POC step 7, ADR 0017). It is the SHIP's rather than the
 ## map's because it is a fitting on this hull, and because the arena — which has no
@@ -252,7 +260,7 @@ func _process(delta: float) -> void:
 		position += _velocity * delta
 	# LAST, and for every way the ship can have moved. A shell you can pass through by
 	# picking the right flight mode is not a shell (ADR 0087).
-	_hold_against_the_shell()
+	_hold_against_the_shell(delta)
 
 
 # --- autopilot ---------------------------------------------------------------
@@ -721,19 +729,51 @@ func _fly_berthed(delta: float) -> void:
 	_throttle = clampf(_speed / maxf(manual_max_speed(), 0.001), 0.0, 1.0)
 
 
-## Put back against the face it was crossing, with the velocity going through that
-## face dropped and everything else untouched (ADR 0087).
+## Put back against the face it was crossing, and **bounced off it** (ADR 0090).
 ##
-## `_speed` is deliberately NOT reduced. It is the forward speed the throttle drives,
-## and the shell only ever holds the two directions ACROSS the road — a ship pressed
-## against the roadway is still travelling down it at the speed it had, which is the
-## whole difference between a barrier and a collision.
-func _hold_against_the_shell() -> void:
+## The rebound is carried and bled off over `structure_bounce_seconds`, because a
+## rebound applied in one frame is a displacement rather than a bounce.
+##
+## **The cost is charged on the rising edge of contact, and it is charged to the
+## THROTTLE.** Two things follow from that and both are deliberate. Charged per frame,
+## a ship sliding along a wall would be brought to a stop by it — a shell that stops
+## you is the one thing this may not be. And `_speed` climbs straight back to
+## `_throttle * top` on the next frame because acceleration is paced by the throttle's
+## own travel (`brake_limited` only limits going down), so cutting the speed alone
+## would have been invisible; cutting the throttle means the ship spools back up over
+## its own `accel_seconds`, which is what makes flying straight worth something.
+##
+## The penalty scales with how SQUARE the hit was. A glancing touch costs nearly
+## nothing and a dive into the roadway costs the whole of it.
+func _hold_against_the_shell(delta: float) -> void:
+	var fade := maxf(Tuning.num("exploration/structure_bounce_seconds"), 0.01)
+	_rebound *= maxf(1.0 - delta / fade, 0.0)
 	if hull_barrier == null:
+		_shell_contact = false
+		position += _rebound * delta
 		return
+	var arriving := _velocity.length()
 	var held := hull_barrier.hold(position, _velocity)
 	position = held[0]
 	_velocity = held[1]
+	var into_wall: float = held[3]
+	var touching := into_wall > 0.0
+	if touching and not _shell_contact:
+		_rebound = held[2]
+		var square := clampf(into_wall / maxf(arriving, 0.001), 0.0, 1.0)
+		var keep := lerpf(1.0,
+			Tuning.num("exploration/structure_bounce_speed_keep"), square)
+		_throttle *= keep
+		_speed *= keep
+	_shell_contact = touching
+	position += _rebound * delta
+	_velocity += _rebound
+
+
+## How hard the ship is still coming off a wall, in m/s. For the HUD — a bounce is a
+## thing that happened TO the ship and the row that reports the shell should say so.
+func rebound_speed() -> float:
+	return _rebound.length()
 
 
 ## Sitting in a berth on the road, carried rather than flown.

@@ -303,10 +303,12 @@ func _build_hud() -> void:
 				[held.open_above, "above"], [held.open_below, "below"]]:
 			if face[0]:
 				ways.append(face[1] as String)
-		return "%s  ·  %s  ·  %+.0f across, %+.0f up  ·  %.0f m to the nearest face%s" % [
+		var kicked := _ship.rebound_speed()
+		return "%s  ·  %s  ·  %+.0f across, %+.0f up  ·  %.0f m to the nearest face%s%s" % [
 			held.shell_name, "INSIDE" if held.inside else "outside",
 			held.across, held.lift, absf(held.room()),
-			"" if ways.is_empty() else "  ·  open %s" % ", ".join(ways)])
+			"" if ways.is_empty() else "  ·  open %s" % ", ".join(ways),
+			"" if kicked < 0.5 else "  ·  BOUNCING OFF at %.0f m/s" % kicked])
 	# Where the nearest way on or off is, and whether it will open. The colour is the
 	# whole of the answer (ADR 0060); this row is for reading it from the terminal
 	# while tuning, not a second channel the player is meant to need.

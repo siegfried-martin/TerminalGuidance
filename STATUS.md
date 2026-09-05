@@ -15,9 +15,9 @@ the human's explicit direction.
 | | |
 |---|---|
 | Branch | `feat/highway-section-flips`, pushed |
-| Gate | `make check` — 1277 checks, 0 failed |
+| Gate | `make check` — 1285 checks, 0 failed |
 | Run it | `make fly` |
-| Built | Exploration POC steps 1–8 and **highway rebuild steps A–D**, plus two play-session passes (ADRs 0062–0089) |
+| Built | Exploration POC steps 1–8 and **highway rebuild steps A–D**, plus two play-session passes (ADRs 0062–0090) |
 | **Do next** | **Another drive, against the 2026-09-05 fixes below.** Then the "over the top" left turn — `RoadPath.sweep` now exists and may be most of what it needed. Steps 9–10 are traffic, and rebuild step E folds into them. |
 | **Waiting on you** | **Fly it again first** — six bugs and three asks from the last session are fixed, and three numbers moved to satisfy rules that had no check behind them (below). Then the fourth checkpoint: success criterion 1, ten minutes on the trunk road. `cruise_turn_clamp_deg` is tuned WITH `road_curve_deg` and `road_curve_period`, never against them. |
 
@@ -34,13 +34,29 @@ whichever side it is on: inside the tube it keeps you in, outside it keeps you o
 median is the same rule rather than a special case — it only *looked* like it worked
 because it sits 240 m away across a lane where the push has room, and the floor is 75.
 
-**It never bumps.** The hull is put back against the face it was crossing and only the
-velocity going *through* that face is dropped; motion along the surface and the forward
-speed the throttle drives are untouched, so a ship pressed against the roadway keeps
-flying down the road at the speed it had. Nothing gains a physics body. Apertures,
-portal flares and the open ends of ramps are not held — those are the junctions.
-`HIGHWAY_STRUCTURE_PLAN.md` predicted this fix in these words a week ago, and the plan
-doc now records that it was needed. New HUD row: **`shell`**.
+**And it bounces** (ADR 0090, your call after flying it — steel and glass is a thing you
+come off, and the sliding stop was the reading that suited an energy tube). The speed
+going *into* a face comes back out of it at `structure_bounce_restitution`, carried for
+`structure_bounce_seconds` so it reads as a rebound rather than as one frame of
+displacement. **A bounce costs the throttle**, once per contact, scaled by how square
+the hit was — brushing a wall is nearly free, diving into the roadway costs
+`structure_bounce_speed_keep`, and the ship spools back up over its own `accel_seconds`.
+That is the "rewarded for flying straight" half, and it is a property of the hull you
+are in rather than a number: 3.2 s for a taxi, 7 for a capital.
+
+No physics engine, and it is *cheaper* than the slide it replaced — the normal component
+was already being computed in order to remove it. The one refinement that matters:
+charged per frame instead of per contact, the penalty compounds and a ship sliding along
+a wall is brought to a full stop in under a second. Measured, and the gate now fails if
+the rising edge is ever dropped. The bounce is normal-only, so a glancing hit is
+deflected and a wall may never stop you; the nose is never turned. Nothing gains a
+physics body. Apertures, portal flares and the open ends of ramps are not held — those
+are the junctions. `HIGHWAY_STRUCTURE_PLAN.md` predicted the shell in these words a week
+ago, and the plan doc now records that it was needed. New HUD row: **`shell`**, which
+says which building has you, how much room is left, and how hard you are coming off it.
+
+> `structure_bounce_restitution = 0` is exactly the sliding version, so the old
+> behaviour is a slider away rather than gone. The three bounce values are yours.
 
 **A ramp no longer stands inside the highway.** ADR 0088. Its *lane* runs the whole way
 — the union needs it to — but its *building* stops at the wall it goes through. Drawn
@@ -109,7 +125,9 @@ shorter `local_leg_length`, and the gate holds both ends. A→B is now 11.5 km c
 centre — 46 s by road against 383 s by hand.
 
 *Also new:* `structure_barrier_margin` (90 m) — how close to a wall a ship **outside**
-the road gets before the shell holds it out.
+the road gets before the shell holds it out — and the three bounce values:
+`structure_bounce_restitution` (0.55), `structure_bounce_seconds` (0.45),
+`structure_bounce_speed_keep` (0.8).
 
 ### Also on 2026-09-01 — you can steer and accelerate at the same time
 
