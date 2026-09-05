@@ -126,7 +126,7 @@ The reasoning, including what the alternative was and why it lost.
 | [0077](0077-traffic-runs-on-the-right.md) | Traffic runs on the right, and the deck convention is retired |
 | [0078](0078-the-road-is-built-from-modules.md) | The road is built from modules, and a deck is the lane rather than the building |
 | [0079](0079-glass-is-a-diffuser.md) | The glass is a diffuser, and "visually open" is measured as area |
-| [0080](0080-a-ring-marks-every-way-through.md) | A steel ring marks every way through, and which face a ramp uses is authored |
+| [0080](0080-a-ring-marks-every-way-through.md) | A steel ring marks every MOUTH, and which face a ramp uses is authored — junctions carry none, per 0092 |
 | [0081](0081-the-map-carries-more-than-one-road.md) | The map carries more than one road, so the union's guard is geometric and a ramp is declared |
 | [0082](0082-the-road-is-a-dock-host.md) | The road is a dock host, and a berth is left on purpose |
 | [0083](0083-a-sign-is-clicked-not-planned.md) | An exit is chosen where it can be seen, and taking it is a rail rebind — the *sign* is superseded by 0091 |
@@ -139,5 +139,6 @@ The reasoning, including what the alternative was and why it lost.
 | [0089](0089-the-throttle-does-not-abort-an-approach.md) | The throttle does not abort an approach; steering does |
 | [0090](0090-the-road-bounces.md) | The road bounces, and a bounce costs the throttle — supersedes 0087's "never bumps" |
 | [0091](0091-a-junction-is-two-buildings-meeting.md) | A junction is two buildings meeting; the road is playable space; an exit is a button on a strip |
+| [0092](0092-a-hoop-marks-a-mouth-not-a-junction.md) | A hoop marks a mouth, not a junction; an exit's building starts where it clears the highway; a ramp hands the berth back |
 
-*Next number: 0092.*
+*Next number: 0093.*

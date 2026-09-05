@@ -77,6 +77,17 @@ func observe(ship: Mothership, riding: RoadDeck, onward: RoadDeck, pressed: bool
 			_along = _deck.path().closest(ship.position)[0]
 			_taking = null
 		_rebind_if_reached(ship)
+		# A RAMP TO A PLANET HANDS YOU BACK (ADR 0092). It ends at a portal, so a berth
+		# carried down one either flies the ship into the mouth or sits on the last
+		# metre when the road runs out — reported as "when I used the off ramp while
+		# docking and didn't undock it has some really weird behavior". You fly the rest
+		# of it, which is what a ramp is for. An INTERCHANGE ramp keeps the berth: it is
+		# road to road, it ends by merging, and there is nothing to hand back for.
+		if _deck != null and _deck.is_ramp \
+				and (_deck.has_start_portal or _deck.has_end_portal) \
+				and _along >= Tuning.num("exploration/berth_ramp_release_metres"):
+			release(ship)
+			return
 		# The rail runs on at the berth's own speed. Clamped to the road, so a berth
 		# that reaches the end stops advancing rather than running off the end of the
 		# path and being reported as sitting on its last metre for ever (ADR 0076).

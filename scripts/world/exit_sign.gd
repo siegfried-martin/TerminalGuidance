@@ -19,6 +19,14 @@ extends Node3D
 ## behind it — because they are the same kind of object to the player: text on the
 ## road that says where something goes.
 
+## How solid the board behind the text is, and where the sign sits in the section: in
+## from the wall it names, and up out of the traffic. Not feel values any more — the
+## strip is what a player reads (ADR 0091), and a cosmetic sign nobody steers by does
+## not need three sliders (ADR 0092).
+const PANEL_ALPHA := 0.5
+const WALL_INSET := 0.86
+const RISE := 0.35
+
 ## Which road this sign is for. Clicking it binds the berth to this deck when the ship
 ## reaches it.
 var ramp: RoadDeck = null
@@ -75,11 +83,6 @@ func rebuild() -> void:
 	if _label == null:
 		return
 	var size := Tuning.num("exploration/exit_sign_metres")
-	# A LIT SIGN IS A BIGGER SIGN. Colour alone is a weak signal at the lead distance
-	# the road gives — a sign 1400 m out is a small mark in the frame — so the one that
-	# is going to happen grows as well as brightens.
-	if _selected:
-		size *= Tuning.num("exploration/exit_sign_selected_scale")
 	(_panel.mesh as QuadMesh).size = Vector2(size * 2.6, size)
 	_label.text = label_text
 	_label.pixel_size = size / 64.0
@@ -89,15 +92,11 @@ func rebuild() -> void:
 func repaint() -> void:
 	if _label == null:
 		return
-	var key := "exploration/exit_sign_color"
-	if _selected:
-		key = "exploration/exit_sign_selected_color"
-	var color := Tuning.color(key)
+	var color := Tuning.color("exploration/exit_sign_color")
 	_label.modulate = color
 	_label.outline_modulate = Color(0.0, 0.0, 0.0, 0.6)
 	var panel := color.darkened(0.72)
-	panel.a = Tuning.num("exploration/exit_sign_selected_panel_alpha" if _selected
-		else "exploration/exit_sign_panel_alpha")
+	panel.a = PANEL_ALPHA
 	(_panel.material_override as StandardMaterial3D).albedo_color = panel
 
 

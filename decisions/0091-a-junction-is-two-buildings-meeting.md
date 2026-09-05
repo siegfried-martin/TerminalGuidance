@@ -2,6 +2,10 @@
 
 *Status: accepted · 2026-09-05 · from a play session · supersedes ADR 0083's sign click
 and ADR 0088's "the shell stops at the wall"*
+**Refined by ADR 0092.** The trough in decision 1 is right for an ENTRY and wrong for an
+exit, which leaves sideways at lane height and is therefore cut clear of the highway
+instead; junction apertures carry no hoop, and a berth is handed back on a ramp to a
+planet.
 
 ## Decision
 

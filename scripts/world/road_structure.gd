@@ -75,10 +75,11 @@ var _narrows_at_end: bool = false
 var _pierced_from: PackedFloat32Array = PackedFloat32Array()
 var _pierced_to: PackedFloat32Array = PackedFloat32Array()
 var _pierced_face: PackedInt32Array = PackedInt32Array()
-## Where the hoop marking this way through sits, or negative for an opening with no
-## hoop — a ramp's own roof does not get one, because from inside it is not a mouth you
-## fly through, it is the road opening out.
-var _pierced_ring: PackedFloat32Array = PackedFloat32Array()
+## Where the ramp's own curve crosses this building's surface, inside the span. Not a
+## hoop — junctions have none (ADR 0092) — but the place a sign is measured back from
+## and a permission surface hangs, which is the middle of the way through rather than
+## the whole length of it.
+var _pierced_at: PackedFloat32Array = PackedFloat32Array()
 
 ## Every layer of modules by name. The `open_*` layers are the same bay with one face
 ## left out, and they are empty on a road nothing leaves.
@@ -133,7 +134,7 @@ func follow(line: PackedVector3Array, full: Vector2, mouth: Vector2,
 	_pierced_from = PackedFloat32Array()
 	_pierced_to = PackedFloat32Array()
 	_pierced_face = PackedInt32Array()
-	_pierced_ring = PackedFloat32Array()
+	_pierced_at = PackedFloat32Array()
 	_full = full
 	_mouth = mouth
 	_narrows_at_start = narrows_at_start
@@ -149,12 +150,13 @@ func follow(line: PackedVector3Array, full: Vector2, mouth: Vector2,
 ## numbers and guessing where it clears the wall is how an opening ends up in the wrong
 ## place.
 ##
-## `ring_at` is where the hoop marking the way through sits, or negative for none.
-func pierce(from: float, to: float, face: Face, ring_at: float = -1.0) -> void:
+## `crossed_at` is where the ramp's own curve crosses, which is where a sign is
+## measured back from; negative for an opening nothing hangs off.
+func pierce(from: float, to: float, face: Face, crossed_at: float = -1.0) -> void:
 	_pierced_from.append(minf(from, to))
 	_pierced_to.append(maxf(from, to))
 	_pierced_face.append(int(face))
-	_pierced_ring.append(ring_at)
+	_pierced_at.append(crossed_at)
 	if not _layers.is_empty():
 		rebuild()
 
@@ -187,6 +189,12 @@ func rebuild() -> void:
 	var every := maxi(int(Tuning.num("exploration/structure_station_spacing")), 0)
 	var station := maxf(Tuning.num("exploration/structure_station_length"), collar)
 	for i in bays + 1:
+		# NO COLLAR INSIDE AN OPENING. A rib is a frame across the whole section, so one
+		# standing in the middle of a junction is a hoop across the merging lane — the
+		# human's "assets of the highway running into the off ramp". A junction is a
+		# couple of joints long and reads as an open span without them (ADR 0092).
+		if _inside_an_opening(float(i) * step):
+			continue
 		if every > 0 and i > 0 and i < bays and i % every == 0:
 			placed["Stations"].append(_module(float(i) * step, station))
 		else:
@@ -210,12 +218,12 @@ func rebuild() -> void:
 			here = gap_to
 		_fill(placed, here, to, -1)
 
-	# ONE HOOP PER WAY THROUGH, at the place the ramp's own curve crosses — not once
-	# per bay the opening happens to cross. A slot four bays long is one way through.
-	for i in _pierced_ring.size():
-		if _pierced_ring[i] >= 0.0:
-			placed["Rings"].append(_ring(_pierced_ring[i], _pierced_face[i], mouth))
-
+	# NO HOOP ON A JUNCTION. A hoop marks a mouth you fly through; a junction is a slot
+	# hundreds of metres long that you drift sideways out of, and a circle hung across
+	# part of one is smaller than the way through, never aligned with it, and in the
+	# way — "the circle holes are just way too small in general… we can just remove the
+	# rings that overlap with the on ramp merging onto the highway" (ADR 0092). The
+	# hoops that remain are the portal mouths at the ends of ramps, below.
 	# A ring at every portal mouth too. A ramp's ends and a ramp's side openings are
 	# the same object to the player: a steel hoop that says "this is the way through".
 	if _narrows_at_start:
@@ -268,6 +276,14 @@ func _fill(placed: Dictionary, from: float, to: float, face: int) -> void:
 ##
 ## Clipped rather than assigned to a bay: an opening is a SPAN now and a long one
 ## crosses several bays, so each bay asks what part of each opening lands in it.
+## Is this point inside a way through? Used to keep a collar out of one.
+func _inside_an_opening(along: float) -> bool:
+	for i in _pierced_from.size():
+		if along >= _pierced_from[i] and along <= _pierced_to[i]:
+			return true
+	return false
+
+
 func _openings_in(from: float, to: float) -> Array:
 	var found: Array = []
 	for i in _pierced_from.size():
@@ -318,35 +334,6 @@ func _module(along: float, length: float) -> Transform3D:
 ## One module filling the stretch between two points along the road.
 func _span(from: float, to: float) -> Transform3D:
 	return _module((from + to) * 0.5, to - from)
-
-
-## A hoop on one face of the building, at its own uniform scale.
-##
-## Uniform, unlike every other module here, and that is the point: a mouth you fly
-## through has to read as one size from any angle, and an ellipse does not (ADR 0080).
-func _ring(along: float, face: int, diameter: float) -> Transform3D:
-	var at := clampf(along, 0.0, _path.length())
-	var forward := _path.tangent_at(at)
-	var frame := CruiseLane.frame_for(forward)
-	var extents := extents_at(at)
-	var out := frame[0]
-	var offset := extents.x
-	match face:
-		int(Face.LEFT):
-			out = -frame[0]
-		int(Face.ABOVE):
-			out = frame[1]
-			offset = extents.y
-		int(Face.BELOW):
-			out = -frame[1]
-			offset = extents.y
-	var depth := maxf(Tuning.num("exploration/ramp_ring_depth"), 0.01)
-	# The hoop's hole runs along its own Z, so Z is the face normal and the other two
-	# axes are anything perpendicular — here, the road and the remaining direction.
-	var tall := out.cross(forward).normalized()
-	return Transform3D(
-		Basis(forward * diameter, tall * diameter, out * depth),
-		_path.point_at(at) + out * offset)
 
 
 ## A hoop around the end of a road, facing along it. This is the portal mouth's
@@ -456,7 +443,7 @@ func barrier(point: Vector3, clearance: Vector2) -> HullBarrier:
 func apertures() -> Array:
 	var found: Array = []
 	for i in _pierced_from.size():
-		found.append([_pierced_ring[i] if _pierced_ring[i] >= 0.0
+		found.append([_pierced_at[i] if _pierced_at[i] >= 0.0
 			else (_pierced_from[i] + _pierced_to[i]) * 0.5,
 			_pierced_face[i], _pierced_from[i], _pierced_to[i]])
 	return found

@@ -188,18 +188,22 @@ func _add_section(section: String) -> VBoxContainer:
 		_apply_filter(_filter.text))
 
 	_sections.append({"section": section, "header": header, "body": body})
-	_paint_header(header, section, open)
 	body.visible = open
 	return body
 
 
 ## The arrow and the count both live in the header text, so a collapsed section
 ## still says how much is inside it.
+##
+## Counted off the FOLD's own rows rather than by matching paths against its label: a
+## fold is `section · group` once a section is subdivided, no `section/key` path begins
+## with that, and every heading read zero (ADR 0092). `_apply_filter` repaints every
+## header after the rows are in, which is why `_add_section` no longer does.
 func _paint_header(header: Button, section: String, open: bool) -> void:
 	var total := 0
-	for path: String in _row_nodes:
-		if path.begins_with(section + "/"):
-			total += 1
+	for entry in _sections:
+		if entry["header"] == header:
+			total = (entry["body"] as Control).get_child_count()
 	header.text = "%s  [%s]   %d" % ["▾" if open else "▸", section, total]
 
 
@@ -399,8 +403,15 @@ func _apply_filter(text: String) -> void:
 		var shown := needle.is_empty() or path.to_lower().contains(needle) \
 			or row.tooltip_text.to_lower().contains(needle)
 		row.visible = shown
+		# WHICH FOLD, not which section. A fold is `section · group` once a section is
+		# subdivided, and matching a row's `section/key` path against that label found
+		# nothing — so the filter hid every fold containing its own results. It went
+		# unnoticed while only `[exploration]` had groups and the test filtered inside a
+		# flat one; with every section grouped it broke everywhere, which is why the
+		# human typed a word and got an empty panel (ADR 0092). The row's own parent is
+		# the fold, and it cannot disagree with itself.
 		if shown and not needle.is_empty():
-			matched[path.split("/")[0]] = true
+			matched[row.get_parent()] = true
 
 	for entry in _sections:
 		var section := String(entry["section"])
@@ -413,7 +424,7 @@ func _apply_filter(text: String) -> void:
 			body.visible = open
 			_paint_header(header, section, open)
 		else:
-			var hit := matched.has(section)
+			var hit := matched.has(body)
 			header.visible = hit
 			body.visible = hit
 			_paint_header(header, section, hit)

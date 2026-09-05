@@ -15,11 +15,62 @@ the human's explicit direction.
 | | |
 |---|---|
 | Branch | `feat/highway-section-flips`, pushed |
-| Gate | `make check` — 1306 checks, 0 failed |
+| Gate | `make check` — 1295 checks, 0 failed |
 | Run it | `make fly` |
-| Built | Exploration POC steps 1–8 and **highway rebuild steps A–D**, plus three play-session passes (ADRs 0062–0091) |
+| Built | Exploration POC steps 1–8 and **highway rebuild steps A–D**, plus four play-session passes (ADRs 0062–0092) |
 | **Do next** | **Another drive, against the 2026-09-05 fixes below.** Then the "over the top" left turn — `RoadPath.sweep` now exists and may be most of what it needed. Steps 9–10 are traffic, and rebuild step E folds into them. |
-| **Waiting on you** | **Fly it again** — the second session's list is fixed (below), including the junction gap and the exit control, which is a bar along the bottom of the screen now. One report from that list is NOT diagnosed: the undock on the far highway that put the ship in the other lane. You said it might not be worth reproducing; if it happens again, say so. Then the fourth checkpoint: success criterion 1, ten minutes on the trunk road. |
+| **Waiting on you** | **Fly it again, and open F2.** The junction is rebuilt (no hoops, no ribs in the way, exits cut clear), a ramp hands the berth back so you fly it, and the tuning panel is grouped everywhere with a filter that works — the glass is under `exploration · The highway structure`, and typing "glass" now finds it. Still not diagnosed: the undock on the far highway that put the ship in the other lane. Then the fourth checkpoint: success criterion 1, ten minutes on the trunk road. |
+
+### What landed on 2026-09-05 — the fourth play session's feedback
+
+**ADR 0092.** Five screenshots and a complaint about the tuning file.
+
+**The hoops are gone from junctions.** *"The hole is misaligned and the circle holes are
+just way too small in general."* The size was never the problem: ADR 0091 made an
+aperture a slot hundreds of metres long that you drift sideways out of, and a circle hung
+across part of one cannot mark it at any size. Hoops are now only at portal mouths, where
+a mouth really is a mouth, and `ramp_ring_diameter` is sized to **frame its portal**
+(210 m) rather than to fit inside a wall it no longer sits in. **And no collar stands
+inside an opening** — a rib is a frame across the whole section, so one at a junction is
+a hoop across the merging lane, which is *"assets of the highway running into the off
+ramp"*.
+
+**An exit's building starts where it clears the highway.** ADR 0091 gave every ramp a
+trough, which is right for an **entry** — its roadway is a section-height below the one
+it is joining — and wrong for an **exit**, which leaves sideways at lane height, so its
+roadway and the highway's are the same surface and its walls stand in the lane. That is
+also the other half of *"I drove through a wall because it's impossible to drive through
+a hole sideways to get off"*: there was structure between you and your exit. The
+asymmetry is authored now: an entry troughs, an exit is cut.
+
+**A ramp hands the berth back.** Your call, and the right one: a planet ramp ends at a
+*portal*, so a berth carried down one either flies the ship into the mouth or sits on the
+last metre when the road runs out. It releases `berth_ramp_release_metres` (400 m) in and
+you fly the rest. An **interchange** keeps the berth — road to road, ending in a merge.
+
+### The tuning file — and why you couldn't find the glass
+
+Three separate causes, all real:
+
+- The glass colours had been pushed out of the highway-structure group by a later
+  insertion and were filed under **"The bounce"**. Moved back.
+- **Every section was one flat list** except `[exploration]` — forty-eight sliders in
+  `[turret]`, twenty-nine in `[hud]`. All grouped now, and the gate fails on any key with
+  no group above it.
+- **The filter was broken, and had been since groups were introduced.** It keyed matches
+  by the section in a row's path and compared them against a fold labelled
+  `section · group`, so a search **hid every fold containing its own results**. Typing
+  "glass" returned an empty panel. It went unnoticed because only `[exploration]` was
+  grouped and the test filtered inside a flat section. Fixed, and the test now filters
+  for "glass" by name. Every fold's row count read zero for the same reason; also fixed.
+
+**Fifteen dead keys deleted** — the sign pick's angles and colours (the pick is gone),
+`portal_entry_seconds` and `start_hull_class` (both superseded), and the four traffic
+values for a system that does not exist yet. They come back with the thing that needs
+them.
+
+> The glass is `exploration/structure_glass_color` and `structure_glass_alpha`, under
+> **exploration · The highway structure**.
 
 ### What landed on 2026-09-05 — the third play session's feedback
 

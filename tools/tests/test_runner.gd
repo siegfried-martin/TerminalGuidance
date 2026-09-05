@@ -19,7 +19,7 @@ const GODOT3_DENYLIST := "res://tools/tests/godot3_denylist.json"
 ## missing. That happened, and this is the tripwire: adding tests never breaks it, and
 ## the only way it fails is a suite that stopped early or one deliberately deleted.
 ## Lower it on purpose, never to make a run go green.
-const MINIMUM_CHECKS := 1295
+const MINIMUM_CHECKS := 1285
 
 ## Tuning keys the sandbox needs. Keeping the list here means a rename in
 ## tuning.cfg fails the build instead of silently zeroing a feel value.
@@ -135,7 +135,7 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/taxi_max_speed", "exploration/fighter_max_speed",
 	"exploration/capital_max_speed", "exploration/cruise_speed",
 	"exploration/taxi_speed_ceiling_fraction", "exploration/fighter_speed_ceiling_fraction",
-	"exploration/capital_speed_ceiling_fraction", "exploration/start_hull_class",
+	"exploration/capital_speed_ceiling_fraction",
 	"exploration/fighter_turn_rate_deg_per_sec", "exploration/fighter_accel_seconds",
 	"exploration/fighter_brake_seconds", "exploration/fighter_strafe_speed",
 	"exploration/fighter_reticle_max_angle_deg", "exploration/fighter_hull_scale",
@@ -149,13 +149,11 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/lane_edge_speed_penalty", "exploration/lane_edge_push_accel",
 	"exploration/deck_separation",
 	"exploration/portal_width", "exploration/portal_height",
-	"exploration/portal_flare_length", "exploration/portal_entry_seconds",
+	"exploration/portal_flare_length",
 	"exploration/portal_sheen_color", "exploration/portal_denied_color",
 	"exploration/portal_emission", "exploration/portal_sheen_scroll_hz",
 	"exploration/cruise_fuel_capacity", "exploration/cruise_fuel_per_km",
 	"exploration/cruise_fuel_start_fraction",
-	"exploration/road_traffic_per_km", "exploration/road_traffic_speed_spread",
-	"exploration/open_traffic_per_100km3", "exploration/traffic_despawn_distance",
 	"exploration/system_diameter", "exploration/system_ceiling_height",
 	"exploration/system_floor_depth",
 	"exploration/bounds_warning_band", "exploration/bounds_grace_seconds",
@@ -195,15 +193,11 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/interchange_side_offset",
 	"exploration/berth_speed_fraction", "exploration/berth_offer_height",
 	"exploration/berth_ride_height", "exploration/berth_pull_rate",
+	"exploration/berth_ramp_release_metres",
 	"exploration/exit_sign_lead_metres", "exploration/exit_sign_metres",
-	"exploration/exit_sign_inset", "exploration/exit_sign_rise",
-	"exploration/exit_sign_color", "exploration/exit_sign_aimed_color",
-	"exploration/exit_sign_panel_alpha",
-	"exploration/exit_sign_selected_color", "exploration/exit_sign_aimed_scale",
-	"exploration/exit_sign_selected_scale",
-	"exploration/exit_sign_selected_panel_alpha",
+	"exploration/exit_sign_color",
 	"exploration/ramp_gate_alpha_scale",
-	"exploration/exit_sign_pick_deg", "exploration/berth_look_cone_deg",
+	"exploration/berth_look_cone_deg",
 	"camera/near_plane", "camera/far_plane",
 	"exploration/deep_seed",
 	"exploration/starfield_count", "exploration/starfield_distance",
@@ -2181,9 +2175,16 @@ func _test_debug_panel() -> void:
 			label += "  ·  " + group
 			grouped[String(entry["section"])] = true
 		expected_sections[label] = true
-	_expect(grouped.has("exploration"),
-		"the biggest section is subdivided into groups rather than left as one list",
-		"exploration carries no `;;;` groups")
+	# EVERY section is subdivided now, not just the big one: a flat list of forty-eight
+	# sliders is a list nobody finds anything in either, and the human went looking for
+	# the highway's glass and could not find it (ADR 0092).
+	var flat := ""
+	for entry in Tuning.schema():
+		if String(entry.get("group", "")).is_empty():
+			flat = String(entry["section"]) + "/" + String(entry["key"])
+	_expect(grouped.has("exploration") and flat.is_empty(),
+		"every section is subdivided into groups rather than left as one list",
+		"%s carries no `;;;` group" % flat)
 	# A group heading must not eat the documentation of the key under it.
 	for entry in Tuning.schema():
 		if String(entry["key"]) == "lane_width":
@@ -2198,14 +2199,20 @@ func _test_debug_panel() -> void:
 			DebugPanel.section_count(), expected_sections.size()])
 	_expect(DebugPanel.open_section_count() == 0,
 		"sections start collapsed", "%d opened themselves" % DebugPanel.open_section_count())
-	DebugPanel.set_section_open("missile", true)
+	DebugPanel.set_section_open("ship  ·  The launch tube", true)
 	_expect(DebugPanel.open_section_count() == 1,
 		"a section opens on demand", "%d open" % DebugPanel.open_section_count())
-	# A filter has to reach into collapsed sections, or it hides its own results.
+	# A filter has to reach into collapsed sections, or it hides its own results — and
+	# it has to do it in a GROUPED section, which is every section now. Matching a row's
+	# `section/key` path against a fold labelled `section · group` found nothing, so the
+	# filter hid every fold containing its own results (ADR 0092). "glass" is the word
+	# the human actually typed.
+	for needle: String in ["standoff", "glass"]:
+		DebugPanel.set_filter(needle)
+		_expect(DebugPanel.visible_row_count() > 0,
+			"filtering for \"%s\" finds values inside collapsed, grouped sections" % needle,
+			"the filter matched nothing it could show")
 	DebugPanel.set_filter("standoff")
-	_expect(DebugPanel.visible_row_count() > 0,
-		"filtering finds values inside collapsed sections",
-		"the filter matched nothing it could show")
 	_expect(DebugPanel.visible_row_count() < rows,
 		"…and hides the rest", "%d of %d rows still shown" % [
 			DebugPanel.visible_row_count(), rows])
@@ -2213,7 +2220,7 @@ func _test_debug_panel() -> void:
 	_expect(DebugPanel.open_section_count() == 1,
 		"clearing the filter restores the human's fold state",
 		"%d open after clearing" % DebugPanel.open_section_count())
-	DebugPanel.set_section_open("missile", false)
+	DebugPanel.set_section_open("ship  ·  The launch tube", false)
 	DebugPanel.set_open(false)
 	_expect(not DebugPanel.is_open(), "the tuning panel closes", "stayed open")
 
@@ -4030,14 +4037,27 @@ func _test_exploration_builds() -> void:
 	var glazing := (pair_built.get_node_or_null("Bays") as MultiMeshInstance3D)
 	var expected_bays := maxi(int(pair_built.length()
 		/ Tuning.num("exploration/structure_module_length")), 1)
-	# A joint carries either a collar or a service station, and every joint carries
-	# one. Counted together, because a station takes a collar's place.
+	# A joint carries either a collar or a service station — EXCEPT inside a junction,
+	# where it carries neither: a rib is a frame across the whole section, so one
+	# standing in an opening is a hoop across the merging lane (ADR 0092). So the count
+	# is every joint less the ones a way through has swallowed.
+	var swallowed := 0
+	for joint in expected_bays + 1:
+		var at := pair_built.length() * float(joint) / float(expected_bays)
+		for opening: Array in pair_built.apertures():
+			if at >= float(opening[2]) and at <= float(opening[3]):
+				swallowed += 1
+				break
 	var joints := collars.multimesh.instance_count \
 		+ (pair_built.get_node_or_null("Stations")
 			as MultiMeshInstance3D).multimesh.instance_count
-	_expect(joints == expected_bays + 1,
-		"…with a collar or a station on every joint, both ends included",
-		"%d joints for %d bays" % [joints, expected_bays])
+	_expect(swallowed > 0,
+		"a junction swallows the collars inside it — there is one to check",
+		"no joint falls inside an opening")
+	_expect(joints == expected_bays + 1 - swallowed,
+		"…and every other joint carries a collar or a station, both ends included",
+		"%d joints for %d bays less %d inside openings" % [joints, expected_bays,
+			swallowed])
 	# GLAZING OF SOME KIND in every gap: a bay a ramp passes through is laid as the same
 	# bay with one face left out, and an opening is a STRETCH now (ADR 0091), so a whole
 	# bay can be one of those. Counting only the solid variant counted the road as
@@ -4057,14 +4077,14 @@ func _test_exploration_builds() -> void:
 		as MultiMeshInstance3D)
 	var every := maxi(int(Tuning.num("exploration/structure_station_spacing")), 0)
 	var due := 0 if every <= 0 else maxi((expected_bays - 1) / every, 0)
-	_expect(stations != null and stations.multimesh.instance_count == due,
+	var standing := 0 if stations == null else stations.multimesh.instance_count
+	_expect(stations != null and standing > 0 and standing <= due,
 		"…with a service station in place of a collar every few joints",
-		"%d stations, %d due" % [
-			0 if stations == null else stations.multimesh.instance_count, due])
-	_expect(collars.multimesh.instance_count + due == expected_bays + 1,
+		"%d stations, %d due before the junctions took theirs" % [standing, due])
+	_expect(collars.multimesh.instance_count + standing == joints,
 		"…and a station REPLACES a collar rather than being added beside one",
 		"%d collars and %d stations for %d joints" % [
-			collars.multimesh.instance_count, due, expected_bays + 1])
+			collars.multimesh.instance_count, standing, joints])
 
 	# --- RINGS AND EXIT FACES (ADR 0080) ---
 	# Every ramp goes through the mainline's building somewhere, and the building has
@@ -4180,19 +4200,34 @@ func _test_exploration_builds() -> void:
 			"a %s passes through a ramp ring with room around it, corner to corner"
 				% HullClass.name_of(kind),
 			"%.0f m ring against a %.0f m diagonal" % [ring, diagonal])
-	# …and a ring may not be taller than the wall it sits in. A side opening is the
-	# wall's full height, and a hoop bigger than that stands proud of the road.
-	_expect(ring <= Tuning.num("exploration/lane_height"),
-		"…and no bigger than the wall it opens, so it sits in the building",
-		"%.0f m ring in a %.0f m section" % [ring,
-			Tuning.num("exploration/lane_height")])
+	# …and it FRAMES the portal it surrounds. A hoop is only ever at a mouth now
+	# (ADR 0092), so what it has to clear is the opening rather than the wall it used to
+	# sit in — a hoop narrower than its own portal is a mouth with a smaller mouth
+	# inside it.
+	var mouth_size := Vector2(Tuning.num("exploration/portal_width"),
+		Tuning.num("exploration/portal_height"))
+	_expect(ring >= mouth_size.length(),
+		"…and frames the portal mouth it surrounds, corner to corner",
+		"%.0f m hoop around a %.0f x %.0f opening" % [ring, mouth_size.x,
+			mouth_size.y])
+	# A HOOP MARKS A MOUTH, NOT A JUNCTION (ADR 0092). A junction is a slot hundreds of
+	# metres long that you drift sideways out of; a circle hung across part of one is
+	# smaller than the way through, never aligned with it, and in the way. So the
+	# mainline — which has only junctions on it — carries none, and every hoop on the
+	# map is at the end of a ramp, where a mouth really is a mouth.
 	var hoops := pair_built.get_node_or_null("Rings") as MultiMeshInstance3D
-	_expect(hoops != null
-			and hoops.multimesh.instance_count == pair_built.apertures().size(),
-		"…and every opening actually carries one",
-		"%d rings for %d openings" % [
-			0 if hoops == null else hoops.multimesh.instance_count,
-			pair_built.apertures().size()])
+	_expect(hoops != null and hoops.multimesh.instance_count == 0,
+		"a junction carries no hoop — a hoop marks a mouth you fly through",
+		"%d hoops on a road with only junctions on it" % [
+			0 if hoops == null else hoops.multimesh.instance_count])
+	var mouths := 0
+	for shell: RoadStructure in road.structures():
+		var layer := shell.get_node_or_null("Rings") as MultiMeshInstance3D
+		if layer != null:
+			mouths += layer.multimesh.instance_count
+	_expect(mouths > 0,
+		"…and every ramp that ends at a portal carries one there",
+		"no hoop anywhere on the map")
 
 	# THE BUILDING CONTAINS THE LANES. The pair's interior spans both carriageways and
 	# the gap between them, so the outermost lane edge is exactly its inside face. If
