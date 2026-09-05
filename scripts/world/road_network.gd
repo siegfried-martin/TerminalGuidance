@@ -153,7 +153,7 @@ func add_route(spine: PackedVector3Array, centres: Array[Vector3],
 			var ahead := i + onward
 			var behind := i - onward
 			_build_ramps(route, built, base, centres[i], names[i], sense, across,
-				runs_forward, route_name,
+				runs_forward, route_name, mainline,
 				names[ahead] if ahead >= 0 and ahead < names.size() else "",
 				names[behind] if behind >= 0 and behind < names.size() else "")
 	_route_pairs.append(carriageways)
@@ -214,7 +214,8 @@ func _link(from_route: int, to_route: int, across: float) -> void:
 				onto.path().closest(at)[0])).dot(Vector3.UP)
 			if turn >= 0.0:
 				continue
-			_build_interchange(from_route, leaving, onto, meeting, across)
+			_build_interchange(from_route, to_route, leaving, onto, meeting,
+					across)
 
 
 ## A route, raised to its road's height and moved to one carriageway's side of it, and
@@ -266,7 +267,7 @@ func _across_at(route: RoadPath, index: int) -> Vector3:
 ## it. An empty `ahead` or `behind` is how the caller says so.
 func _build_ramps(route: RoadPath, built: RoadStructure, base: Vector3,
 		centre: Vector3, place: String, sense: float, across: float,
-		runs_forward: bool, route_name: String, ahead: String,
+		runs_forward: bool, route_name: String, mainline: RoadDeck, ahead: String,
 		behind: String) -> void:
 	var run := Tuning.num("exploration/ramp_run_length")
 	var gap := Tuning.num("exploration/portal_site_offset")
@@ -293,17 +294,21 @@ func _build_ramps(route: RoadPath, built: RoadStructure, base: Vector3,
 		var off_curve := RoadPath.ramp(leaves[0], leaves[1], off_mouth[0],
 			off_mouth[1], tightness, RAMP_SEGMENTS)
 		off_ramp.follow(off_curve, place, behind)
-		# A ramp is a building with one lane in it and no median, narrowing to its
-		# portal at the end it meets the planet.
-		_make_structure("Structure" + (suffix % "Off"), true, false).follow(
-			off_curve, _lane_section(), _mouth_section(), false, true)
 		# The mainline's wall has to open where this ramp leaves through it — and a
 		# sign has to hang far enough back that the choice arrives before the exit
 		# does. Reading it in time is a piloting act, and missing it costs one hop off
 		# and back on, which is the price ADR 0057 already sets (ADR 0083).
-		_open_for(built, off_ramp.path(), true)
-		_sign_for(built, off_ramp, place)
-		_gate_for(built, off_ramp)
+		var off_hole := _open_for(built, off_ramp.path(), true)
+		# A ramp is a building with one lane in it and no median, narrowing to its
+		# portal at the end it meets the planet — and it STARTS at the mainline's wall.
+		# Built along its whole curve it stood inside the highway, roofing over the
+		# opening it comes out of and putting a second roadway across the lane (ADR
+		# 0088). The lane is untouched: only the building is cut.
+		_make_structure("Structure" + (suffix % "Off"), true, false).follow(
+			_shell_of(off_ramp.path(), off_hole, true),
+			_lane_section(), _mouth_section(), false, true)
+		_sign_for(built, off_ramp, place, mainline, off_hole)
+		_gate_for(built, off_ramp, off_hole)
 
 	if not ahead.is_empty():
 		var on_mouth := _mouth(route, here + sense * gap, entry_out, entry_down, sense,
@@ -319,10 +324,14 @@ func _build_ramps(route: RoadPath, built: RoadStructure, base: Vector3,
 		var on_curve := RoadPath.ramp(on_mouth[0], on_mouth[1], rejoins[0],
 			rejoins[1], tightness, RAMP_SEGMENTS)
 		on_ramp.follow(on_curve, ahead, place)
-		_make_structure("Structure" + (suffix % "On"), true, false).follow(
-			on_curve, _lane_section(), _mouth_section(), true, false)
 		# …and its roadway has to open where this one comes up through it.
-		_open_for(built, on_ramp.path(), false)
+		var on_hole := _open_for(built, on_ramp.path(), false)
+		# The on-ramp's own building STOPS at that hole, for the same reason the
+		# off-ramp's starts at one: past it the ramp is inside the highway, and a tube
+		# drawn there plugs the floor it is supposed to be coming up through (ADR 0088).
+		_make_structure("Structure" + (suffix % "On"), true, false).follow(
+			_shell_of(on_ramp.path(), on_hole, false),
+			_lane_section(), _mouth_section(), true, false)
 
 
 ## A point on the mainline and the direction traffic runs there, as `[point, tangent]`.
@@ -369,13 +378,37 @@ func _side_of(travel: Vector3) -> Vector3:
 ## nothing else; an exit leaves through whichever wall or roof its own curve reaches,
 ## and never the floor (ADR 0080). What is measured is WHERE, and — through
 ## `crossing()` — whether the ramp actually obeys the rule it was authored to.
-func _open_for(built: RoadStructure, ramp: RoadPath, leaving: bool) -> void:
+## Returns the crossing it made, as `crossing` reports it, so the caller can cut the
+## ramp's own building at the same place rather than measuring it twice.
+func _open_for(built: RoadStructure, ramp: RoadPath, leaving: bool,
+		measured_entry: bool = false) -> Array:
 	if built == null or ramp.length() <= 0.0:
-		return
+		return []
 	var found := crossing(built, ramp, leaving)
 	if found.is_empty():
-		return
-	built.pierce(found[0], found[1] if leaving else RoadStructure.Face.BELOW)
+		return []
+	var through: int = found[1] if leaving or measured_entry \
+		else int(RoadStructure.Face.BELOW)
+	built.pierce(found[0], through as RoadStructure.Face)
+	return [found[0], through, found[2]]
+
+
+## A ramp's own building: its curve, cut where it enters the building of the road it
+## serves.
+##
+## **The lane runs the whole way and the shell does not** (ADR 0088). Inside the
+## highway the ramp is not a tube — it is a hole in the floor or a gap in the wall,
+## and the mainline's own building is what surrounds you there. Drawn as a tube it
+## roofed over its own opening from below and hung a second roadway across the lane
+## from above, which is exactly what the human reported.
+func _shell_of(ramp: RoadPath, hole: Array, leaving: bool) -> PackedVector3Array:
+	if hole.is_empty():
+		return ramp.points
+	var at: float = hole[2]
+	var line := ramp.section(at, ramp.length()) if leaving else ramp.section(0.0, at)
+	# A cut that leaves nothing is not a cut. Better a ramp that reaches too far than
+	# one with no building at all — the gate checks the rule, not this fallback.
+	return ramp.points if line.size() < 2 else line
 
 
 ## Where a ramp first leaves the building it is inside, walking from the end that
@@ -394,7 +427,8 @@ static func crossing(built: RoadStructure, ramp: RoadPath,
 	var line := built.path()
 	for i in CROSSING_STEPS + 1:
 		var t := float(i) / float(CROSSING_STEPS)
-		var point := ramp.point_at(ramp.length() * (t if leaving else 1.0 - t))
+		var walked := ramp.length() * (t if leaving else 1.0 - t)
+		var point := ramp.point_at(walked)
 		var found := line.closest(point)
 		var here: float = found[0]
 		var frame := CruiseLane.frame_for(found[2] as Vector3)
@@ -412,7 +446,7 @@ static func crossing(built: RoadStructure, ramp: RoadPath,
 				else RoadStructure.Face.LEFT
 		elif up > 0.0:
 			face = RoadStructure.Face.ABOVE
-		return [here, face]
+		return [here, face, walked]
 	return []
 
 
@@ -423,15 +457,22 @@ static func crossing(built: RoadStructure, ramp: RoadPath,
 ## rotation and needs a curve built to a bounded radius, which `RoadPath` cannot make
 ## yet (ADR 0085). Which face the ramp actually uses is measured, and the gate holds
 ## the rule (ADR 0080).
-func _build_interchange(from_route: int, leaving: RoadDeck, onto: RoadDeck,
-		meeting: float, across: float) -> void:
+func _build_interchange(from_route: int, to_route: int, leaving: RoadDeck,
+		onto: RoadDeck, meeting: float, across: float) -> void:
 	var route: RoadPath = _routes[from_route]
 	var built: RoadStructure = _route_buildings[from_route]
 	var base: Vector3 = _route_bases[from_route]
 	var run := Tuning.num("exploration/interchange_run_length")
 	var sense := 1.0 if leaving.runs_forward else -1.0
 	var leaves := _at(route, meeting - sense * run, base, sense, across)
-	var lands: float = onto.path().closest(route.point_at(meeting))[0] + run * 0.45
+	# WHERE IT LANDS, and it has to land clear of the system's own on-ramp. The roads
+	# cross AT a system, so the merge from that system's planet is already using this
+	# stretch — landed on top of it, the union handed a ship coming up the on-ramp an
+	# interchange ramp that was about to end, which is the stutter ADR 0076 is about.
+	# One ramp run past that merge is the separation, taken from the ramp rather than
+	# picked (ADR 0088).
+	var lands: float = onto.path().closest(route.point_at(meeting))[0] \
+		+ Tuning.num("exploration/ramp_run_length") + run * 0.45
 	lands = clampf(lands, 0.0, onto.length())
 	var ramp := _make_deck("%sTo%s%s" % [_tag(leaving.route_name),
 		_tag(onto.route_name), "Forward" if leaving.runs_forward else "Reverse"],
@@ -448,31 +489,50 @@ func _build_interchange(from_route: int, leaving: RoadDeck, onto: RoadDeck,
 	# it is "to the right if the highway is below": you swing out of the building
 	# first, and you climb or drop once you are outside it.
 	#
-	# So it is two sweeps through a point out to the side at the SAME height. The
-	# first is a lane change and clears the wall; the second is the turn and the
-	# height, entirely outside the building.
-	var out := _side_of(leaves[1] as Vector3) \
+	# So it is two sweeps through a point out to the side of the road. The first is a
+	# lane change and clears the wall; the second is the turn and the height, entirely
+	# outside the building.
+	#
+	# THE SWING POINT IS MEASURED OFF THE ROAD, not off the leaving tangent. Held on the
+	# tangent it was a straight line beside a road that weaves and undulates, so over
+	# two kilometres it drifted out of the building's section vertically and left
+	# through the FLOOR — which the exit-face gate caught, and which also left the
+	# ramp's shell standing inside the highway. Asked of the road at that point, the
+	# lane change is parallel to the road for its whole length and the only face it can
+	# reach is the side wall (ADR 0088).
+	var swung := _at(route, meeting - sense * run * 0.55, base, sense, across)
+	var via: Vector3 = (swung[0] as Vector3) + _side_of(swung[1] as Vector3) \
 		* Tuning.num("exploration/interchange_side_offset")
-	var via: Vector3 = (leaves[0] as Vector3) + (leaves[1] as Vector3) \
-		* (run * 0.45) + out
 	# A SWEEP, not a ramp. The two differ in how the control arms are measured, and an
 	# interchange is the case `ramp` measures badly: half of a fifty-five degree turn
 	# is across the leaving direction, so the along-road projection under-measures it
 	# and crams the whole turn into the middle (ADR 0085).
-	var curve := RoadPath.sweep(leaves[0], leaves[1], via, leaves[1], tightness,
+	var curve := RoadPath.sweep(leaves[0], leaves[1], via, swung[1], tightness,
 		RAMP_SEGMENTS)
-	var onward := RoadPath.sweep(via, leaves[1], arrives, joins, tightness,
+	var onward := RoadPath.sweep(via, swung[1], arrives, joins, tightness,
 		RAMP_SEGMENTS * 2)
 	for i in range(1, onward.size()):
 		curve.append(onward[i])
 	ramp.follow(curve, "", "")
-	_make_structure("Structure" + ramp.name, true, false).follow(
-		curve, _lane_section(), _lane_section(), false, false)
 	# An interchange is an exit like any other: it opens the wall it leaves through,
 	# it hangs a sign naming where it goes, and it carries a gate that can refuse.
-	_open_for(built, ramp.path(), true)
-	_sign_for(built, ramp, onto.route_name)
-	_gate_for(built, ramp)
+	var hole := _open_for(built, ramp.path(), true)
+	# AND AN ENTRANCE AT THE FAR END. It arrives inside the OTHER road's building, so
+	# that one needs an opening too. The face is the measured one rather than the
+	# authored BELOW a planet on-ramp gets: a ramp climbing to a road above enters
+	# through its floor and one dropping to a road below enters through its roof, and
+	# both are entries (ADR 0088).
+	var landing := _open_for(_route_buildings[to_route], ramp.path(), false, true)
+	# Cut at BOTH ends: inside either building the ramp is an opening rather than a
+	# tube, and what surrounds you there is the mainline's own building.
+	var shell := ramp.path().section(
+		float(hole[2]) if not hole.is_empty() else 0.0,
+		float(landing[2]) if not landing.is_empty() else ramp.length())
+	_make_structure("Structure" + ramp.name, true, false).follow(
+		curve if shell.size() < 2 else shell,
+		_lane_section(), _lane_section(), false, false)
+	_sign_for(built, ramp, onto.route_name, leaving, hole)
+	_gate_for(built, ramp, hole)
 
 
 ## A sign on the mainline, ahead of an exit, naming where it goes.
@@ -480,13 +540,10 @@ func _build_interchange(from_route: int, leaving: RoadDeck, onto: RoadDeck,
 ## Placed from the opening the ramp actually makes, not from the ramp's own start: what
 ## the player has to see coming is the hole in the wall, and the sign belongs a lead
 ## distance back from that, on the same side, tucked just inside the section.
-func _sign_for(built: RoadStructure, ramp: RoadDeck, place: String) -> void:
-	if built == null:
+func _sign_for(built: RoadStructure, ramp: RoadDeck, place: String,
+		mainline: RoadDeck, opening: Array) -> void:
+	if built == null or opening.is_empty():
 		return
-	var openings := built.apertures()
-	if openings.is_empty():
-		return
-	var opening: Array = openings[openings.size() - 1]
 	var at: float = opening[0]
 	var face: int = opening[1]
 	var lead := Tuning.num("exploration/exit_sign_lead_metres")
@@ -498,6 +555,10 @@ func _sign_for(built: RoadStructure, ramp: RoadDeck, place: String) -> void:
 	var sign := ExitSign.new()
 	sign.name = "Sign" + ramp.name
 	sign.ramp = ramp
+	# WHICH CARRIAGEWAY THIS SIGN IS FOR. Authored where the sign is hung rather than
+	# worked out from geometry later: a sign is mounted on one road's wall, and "is
+	# this exit mine" is that fact and nothing else (ADR 0088).
+	sign.from_deck = mainline
 	sign.label_text = "EXIT  %s" % place
 	# Just inside the wall the exit is in, and up out of the traffic on the roadway.
 	sign.position = line.point_at(along) \
@@ -513,13 +574,9 @@ func _sign_for(built: RoadStructure, ramp: RoadDeck, place: String) -> void:
 ## the decision to LEAVE — it has to be read from the road you are on, before you are
 ## committed, which is the same clause ADR 0012 asks of everything else that offers
 ## you something.
-func _gate_for(built: RoadStructure, ramp: RoadDeck) -> void:
-	if built == null:
+func _gate_for(built: RoadStructure, ramp: RoadDeck, opening: Array) -> void:
+	if built == null or opening.is_empty():
 		return
-	var openings := built.apertures()
-	if openings.is_empty():
-		return
-	var opening: Array = openings[openings.size() - 1]
 	var at: float = opening[0]
 	var face: int = opening[1]
 	var line := built.path()
@@ -675,6 +732,33 @@ func governing(point: Vector3, along: Vector3, exclude: RoadDeck = null,
 		if depth < best_depth:
 			best_depth = depth
 			best = deck
+	return best
+
+
+## Which shell holds this hull, or null when none does (ADR 0087).
+##
+## Resolved the same way the lane union is (ADR 0063): every building is asked how it
+## sees the hull, and one of them governs.
+##
+## **The one with the MOST room governs** — the building the hull is deepest inside of.
+## Buildings overlap where roads cross, and picking the tightest instead pinned a ship
+## flying down the middle of the mainline against the wall of an interchange ramp
+## passing through it, which is being held by a building you are not in. Deepest-inside
+## is also the right answer outside: there `room` is negative, so the largest is the
+## nearest wall, which is the one the hull is about to be through.
+##
+## An INSIDE answer always beats an OUTSIDE one. A ship can be inside one building and
+## within a wall's thickness of another, and the shell it is in is the one whose
+## surfaces it may not leave.
+func barrier(point: Vector3, clearance: Vector2) -> HullBarrier:
+	var best: HullBarrier = null
+	for built in _structures:
+		var held := built.barrier(point, clearance)
+		if held == null:
+			continue
+		if best == null or (held.inside and not best.inside) \
+				or (held.inside == best.inside and held.room() > best.room()):
+			best = held
 	return best
 
 

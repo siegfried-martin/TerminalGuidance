@@ -103,6 +103,28 @@ func finish() -> Vector3:
 	return Vector3.ZERO if points.is_empty() else points[points.size() - 1]
 
 
+## The stretch of this path between two distances along it, as its own polyline.
+##
+## Used to stop a ramp's BUILDING where it enters the building of the road it serves
+## (ADR 0088). The lane is never cut — a deck has to run the whole way for the union to
+## hand over — so this cuts the shell and nothing else.
+##
+## The cut points are real vertices at the ends, so the trimmed line starts and ends
+## exactly where it was asked to rather than at the nearest tessellation step.
+func section(from: float, to: float) -> PackedVector3Array:
+	var span := length()
+	var head := clampf(minf(from, to), 0.0, span)
+	var tail := clampf(maxf(from, to), 0.0, span)
+	if is_empty() or tail - head <= 0.001:
+		return PackedVector3Array()
+	var line := PackedVector3Array([point_at(head)])
+	for i in points.size():
+		if _milestones[i] > head and _milestones[i] < tail:
+			line.append(points[i])
+	line.append(point_at(tail))
+	return line
+
+
 ## A straight run between two points.
 static func straight(from: Vector3, to: Vector3) -> PackedVector3Array:
 	return PackedVector3Array([from, to])

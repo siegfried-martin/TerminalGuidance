@@ -34,6 +34,9 @@ var host: Node3D
 var _state: State = State.CLEAR
 ## Counts up while locked, and down while relocking.
 var _timer: float = 0.0
+## Whether the current relock also needs the player to leave. True after a departure,
+## false after an abort — see `State.RELOCKING`.
+var _must_leave: bool = false
 ## Three orthogonal rings marking the threshold. See `_ready` for why not a shell.
 var _shell: Node3D
 var _speed_scale: float = 1.0
@@ -125,15 +128,30 @@ func observe(ship: Mothership, delta: float) -> void:
 			_speed_scale = 0.0
 		State.RELOCKING:
 			_timer = maxf(_timer - delta, 0.0)
-			# Only re-arm once the player has actually left, so departing does not
-			# put them straight back into the sequence they just walked out of.
-			if _timer <= 0.0 and not inside:
+			# Departing re-arms only once the player has actually LEFT, so taking off
+			# does not put them straight back into the sequence they just walked out
+			# of. An ABORT is the other case and used to share this rule, which made
+			# it a trap: steer once inside a 560 m envelope and the sequence never
+			# came back, because the way to clear it was to leave a place you were
+			# trying to land on. An abort is "not that time", not "not here" (ADR
+			# 0089).
+			if _timer <= 0.0 and (not inside or not _must_leave):
 				_state = State.CLEAR
+				_must_leave = false
 
 
-## Any flight input at all breaks the lock (ADR 0012). Mouse motion counts, above a
-## threshold — a hand resting on a desk must not abort an approach, and a hand that
-## has decided to fly somewhere else must.
+## STEERING breaks the lock (ADR 0012, narrowed by ADR 0089). Mouse motion counts,
+## above a threshold — a hand resting on a desk must not abort an approach, and a hand
+## that has decided to fly somewhere else must.
+##
+## **The throttle does not.** ADR 0012's rule is that a sequence which moves the ship
+## must hand it back the moment the player asks to fly somewhere else, and this
+## sequence moves the ship in exactly one way: it walks the SPEED CEILING down. A held
+## throttle is a request for speed under that ceiling, which the ceiling already
+## answers; a held stick is a request for a different heading, which nothing else
+## answers and which the sequence must not override. Aborting on the throttle made the
+## envelope unreachable in practice — you arrive at a planet flying, so the lock broke
+## on its first frame every time, and the human reported it as never engaging at all.
 ##
 ## BOTH halves are asked of the SHIP rather than of `Input`, and for the same reason.
 ## The engine's `get_last_mouse_velocity()` is the velocity of the last motion event
@@ -145,7 +163,7 @@ func observe(ship: Mothership, delta: float) -> void:
 ##
 ## The threshold stays here because it is this envelope's tuned value.
 func _has_flight_input(ship: Mothership) -> bool:
-	return ship.has_flight_input() or ship.mouse_speed() \
+	return ship.is_steering() or ship.mouse_speed() \
 		> Tuning.num("exploration/approach_abort_mouse_speed")
 
 
@@ -155,6 +173,7 @@ func abort() -> void:
 	if _state != State.LOCKED:
 		return
 	_state = State.RELOCKING
+	_must_leave = false
 	_timer = Tuning.num("exploration/approach_relock_seconds")
 	_speed_scale = 1.0
 	aborted.emit()
@@ -166,6 +185,7 @@ func depart() -> void:
 	if _state != State.DOCKED:
 		return
 	_state = State.RELOCKING
+	_must_leave = true
 	_timer = Tuning.num("exploration/approach_relock_seconds")
 	_speed_scale = 1.0
 	departed.emit()
@@ -210,7 +230,8 @@ func seconds_left() -> float:
 func state_label() -> String:
 	match _state:
 		State.LOCKED:
-			return "APPROACH  ·  %.1f s  ·  any input aborts" % seconds_left()
+			return "APPROACH  ·  %.1f s  ·  steering aborts, the throttle does not" \
+				% seconds_left()
 		State.DOCKED:
 			return "DOCKED"
 		State.RELOCKING:

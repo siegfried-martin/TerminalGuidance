@@ -190,6 +190,14 @@ turns you back before contact. 0064 stands unchanged and nothing gains collision
 it is not, the honest fix is narrowing ADR 0064 to "the lane is soft, the structure is
 not", not widening the push.
 
+*Watched, and it was not enough — **ADR 0087**, 2026-09-05. The margin held laterally
+(240 m of lane for the push to work in) and did not hold vertically (75 m), so the
+floor of a ramp was something a ship at cruise sank through and came out the bottom of.
+The fix is the one predicted here, word for word: the lane stays soft and the structure
+does not. `HullBarrier` holds a hull against every surface of the shell from whichever
+side it is on, without ever bumping — nothing gains collision, and the apertures stay
+open.*
+
 ---
 
 ## The steps

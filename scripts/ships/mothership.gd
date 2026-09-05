@@ -74,6 +74,14 @@ var cruise: CruiseLane = null
 ## between a threshold you might cross by accident and a berth you deliberately
 ## entered. It is left the way it was entered: by pressing the key again.
 var berth: BerthHold = null
+## The road's shell, where the ship is, or null out in the open. Handed down by the
+## map each frame exactly as `cruise` is, and for the same reason: the road belongs to
+## the map and the ship never looks it up.
+##
+## **The lane is soft and the shell is not** (ADR 0087). The lane's push is a slope
+## that keeps you near the centre-line; this is the building, and you do not fly
+## through a building. It never bumps — see `HullBarrier`.
+var hull_barrier: HullBarrier = null
 
 ## The cruise drive's tank (POC step 7, ADR 0017). It is the SHIP's rather than the
 ## map's because it is a fitting on this hull, and because the arena — which has no
@@ -242,6 +250,9 @@ func _process(delta: float) -> void:
 		# nothing is acting on it — there is no flight model here, and there is not
 		# meant to be one (ADR 0003).
 		position += _velocity * delta
+	# LAST, and for every way the ship can have moved. A shell you can pass through by
+	# picking the right flight mode is not a shell (ADR 0087).
+	_hold_against_the_shell()
 
 
 # --- autopilot ---------------------------------------------------------------
@@ -378,27 +389,41 @@ func _strafe_input() -> float:
 	return Input.get_axis("strafe_left", "strafe_right")
 
 
-## Is anything flying this ship right now? Asked by the approach envelope, which
-## hands the ship back on any flight input at all (ADR 0012).
+## Is anything flying this ship right now?
 ##
-## It lives here for the same reason `mouse_speed` does: the envelope has to ask what
-## is flying THIS SHIP rather than what the devices are doing. Asking the devices was
-## already once a bug — `get_last_mouse_velocity` never decays — and it would make the
-## abort rule true only for humans, so a harness holding the throttle would sail
+## It lives here for the same reason `mouse_speed` does: a caller has to ask what is
+## flying THIS SHIP rather than what the devices are doing. Asking the devices was
+## already once a bug — `get_last_mouse_velocity` never decays — and it would make any
+## rule built on it true only for humans, so a harness holding the throttle would sail
 ## through a sequence a player could not.
 ##
 ## The mouse is deliberately NOT part of this: its threshold is a tuned feel value and
 ## belongs to the caller that owns it.
 func has_flight_input() -> bool:
+	return is_steering() or _throttle_up_held() or _throttle_down_held() \
+		or _pressed("boost") or _pressed("brake")
+
+
+## Is the player asking to go somewhere ELSE — a heading, not a speed?
+##
+## The distinction is the approach envelope's (ADR 0089) and it is worth stating here
+## rather than there: the sequence walks a SPEED CEILING down, so a held throttle is a
+## request the ceiling already answers, and a moved stick is a request for a direction
+## that nothing else answers. Only the second one is grounds for handing the ship back.
+func is_steering() -> bool:
 	if not reads_input:
-		return not is_zero_approx(input_throttle) \
-			or not is_zero_approx(input_strafe) \
+		return not is_zero_approx(input_strafe) \
 			or input_stick.length_squared() > 0.0
-	for action in ["throttle_up", "throttle_down", "strafe_left", "strafe_right",
-			"aim_left", "aim_right", "aim_up", "aim_down", "boost", "brake"]:
-		if InputMap.has_action(action) and Input.is_action_pressed(action):
+	for action in ["strafe_left", "strafe_right",
+			"aim_left", "aim_right", "aim_up", "aim_down"]:
+		if _pressed(action):
 			return true
 	return false
+
+
+func _pressed(action: String) -> bool:
+	return reads_input and InputMap.has_action(action) \
+		and Input.is_action_pressed(action)
 
 
 ## The most speed a hull may lose in one frame: what its own brakes can take off it.
@@ -694,6 +719,21 @@ func _fly_berthed(delta: float) -> void:
 	# The throttle is kept honest against the speed being held, so leaving the berth
 	# does not lurch: the ship carries on at what it was already doing.
 	_throttle = clampf(_speed / maxf(manual_max_speed(), 0.001), 0.0, 1.0)
+
+
+## Put back against the face it was crossing, with the velocity going through that
+## face dropped and everything else untouched (ADR 0087).
+##
+## `_speed` is deliberately NOT reduced. It is the forward speed the throttle drives,
+## and the shell only ever holds the two directions ACROSS the road — a ship pressed
+## against the roadway is still travelling down it at the speed it had, which is the
+## whole difference between a barrier and a collision.
+func _hold_against_the_shell() -> void:
+	if hull_barrier == null:
+		return
+	var held := hull_barrier.hold(position, _velocity)
+	position = held[0]
+	_velocity = held[1]
 
 
 ## Sitting in a berth on the road, carried rather than flown.

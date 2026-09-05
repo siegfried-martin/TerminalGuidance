@@ -1,6 +1,6 @@
 # STATUS
 
-*Updated 2026-09-01.*
+*Updated 2026-09-05.*
 
 ---
 
@@ -15,11 +15,101 @@ the human's explicit direction.
 | | |
 |---|---|
 | Branch | `feat/highway-section-flips`, pushed |
-| Gate | `make check` — 1245 checks, 0 failed |
+| Gate | `make check` — 1277 checks, 0 failed |
 | Run it | `make fly` |
-| Built | Exploration POC steps 1–8 and **highway rebuild steps A–D**, plus a play-session pass (ADRs 0062–0086) |
-| **Do next** | **A drive on the five-system map, with the tank now worth watching.** Then the "over the top" left turn — `RoadPath.sweep` now exists and may be most of what it needed. Steps 9–10 are traffic, and rebuild step E folds into them. |
-| **Waiting on you** | **The fourth checkpoint, and the important one**: success criterion 1, on a trunk road that now weaves and undulates. Ten minutes on it. `cruise_turn_clamp_deg` is tuned WITH `road_curve_deg` and `road_curve_period`, never against them. The third checkpoint is still open too — is a 38-second hop worth the portal, against 203 s by hand? |
+| Built | Exploration POC steps 1–8 and **highway rebuild steps A–D**, plus two play-session passes (ADRs 0062–0089) |
+| **Do next** | **Another drive, against the 2026-09-05 fixes below.** Then the "over the top" left turn — `RoadPath.sweep` now exists and may be most of what it needed. Steps 9–10 are traffic, and rebuild step E folds into them. |
+| **Waiting on you** | **Fly it again first** — six bugs and three asks from the last session are fixed, and three numbers moved to satisfy rules that had no check behind them (below). Then the fourth checkpoint: success criterion 1, ten minutes on the trunk road. `cruise_turn_clamp_deg` is tuned WITH `road_curve_deg` and `road_curve_period`, never against them. |
+
+### What landed on 2026-09-05 — the second play session's feedback
+
+Six bugs and three asks, from you flying the five-system map. Ordered as they matter.
+
+**You could fly through the floor, and now you cannot.** ADR 0087. At cruise 250 inside
+the 18-degree cone a ship carries 77 m/s downward; the lane's push is worth about 35 at
+the roadway, so the floor of a ramp was something you sank through — and once outside
+the lane and past the end of the deck, the union had nothing to hand you and the road
+dropped you. `HullBarrier` holds a hull against **every** surface of the shell, from
+whichever side it is on: inside the tube it keeps you in, outside it keeps you out. The
+median is the same rule rather than a special case — it only *looked* like it worked
+because it sits 240 m away across a lane where the push has room, and the floor is 75.
+
+**It never bumps.** The hull is put back against the face it was crossing and only the
+velocity going *through* that face is dropped; motion along the surface and the forward
+speed the throttle drives are untouched, so a ship pressed against the roadway keeps
+flying down the road at the speed it had. Nothing gains a physics body. Apertures,
+portal flares and the open ends of ramps are not held — those are the junctions.
+`HIGHWAY_STRUCTURE_PLAN.md` predicted this fix in these words a week ago, and the plan
+doc now records that it was needed. New HUD row: **`shell`**.
+
+**A ramp no longer stands inside the highway.** ADR 0088. Its *lane* runs the whole way
+— the union needs it to — but its *building* stops at the wall it goes through. Drawn
+the whole way, an on-ramp's own roadway plugged the hole in the mainline's floor it was
+supposed to be coming up through, and from above an interchange ramp's roof and walls
+stood in the lane. Both halves of *"where the highway enters from below the bottom of
+the road should not be closed, and where it enters from above the ramp should not
+extend into the highway"* are that one cut. An interchange is cut at **both** ends and
+the road it lands on gets an aperture too — it had none, so it arrived through a solid
+wall.
+
+**Clicking an exit sign works.** ADR 0088. Every part of the machinery was fine; the
+pick's own guard rejected every sign on the road. It compared the exit's tangent
+against the road axis *under the ship* — the road **here** against the road **there** —
+which agree on a straight and differ by more than the steering cone on a bend, and on
+the curving on-ramp you first berth on. From the seat, **no exit ahead was takeable at
+all**, which is what "my mouse won't fully move to be able to click on an off ramp"
+feels like: the reticle moves fine, nothing ever lights up. A sign now says which
+carriageway it is bolted to, and that is the whole test.
+
+**And a berth follows the road onto the highway** instead of releasing you at the
+merge. Pressing `C` on the on-ramp is where you first meet the offer, and a ramp that
+ends is not a choice — there is one road it becomes.
+
+**Signs and portal names only show when they are choices.** ADR 0088, from *"seeing all
+the signs from all the directions makes it look very chaotic and confusing."* Two
+carriageways share one building with glass down the middle and a second highway crosses
+it, so every sign and every destination on the map was legible from every seat. Now: a
+sign is drawn when it belongs to the carriageway you are on; a mouth is *named* when it
+is a way you could take — the ways **on** while you are off the road, the way **off**
+the road you are riding. The apertures themselves never come and go, and a **closed**
+exit's sign is dark rather than absent (ADR 0084 stands).
+
+**The interchange had no glass.** A ramp is drawn darker so the eye can tell which road
+leaves the highway (ADR 0076), and that darkening was being applied to the panes as
+well as the steel — which took a diffuser at alpha 0.3 down to something you look
+straight through. Only the metal is shaded now; ADR 0079 makes the glass load-bearing
+rather than decorative.
+
+**Landing on a planet engages.** ADR 0089. ADR 0012 says a sequence that moves the ship
+aborts on input, and it was reading that as *any* input. This sequence moves the ship in
+exactly one way — it walks the speed ceiling down — so a held throttle is a request that
+ceiling already answers, while a moved stick is a request for a heading nothing else
+answers. You arrive at a planet flying, so the lock broke on its first frame every time;
+and an abort used to stay locked out until you *left* a 560 m sphere you were trying to
+land in. Steering aborts, the throttle does not, and an abort re-arms where you stand.
+
+> **Still open, and yours:** `approach_alpha_far = 0` makes the envelope invisible until
+> you are nearly in it, which is a second and independent reason a landing is hard to
+> find. It has been flagged since the rebuild plan was written. It is a feel value.
+
+### Three numbers moved, and each now has a rule behind it
+
+Feel values are yours. These three were violating structural rules that had no check,
+so they moved to the smallest value that clears the new check — **and the gate will now
+tell you if you move them back**.
+
+| | Was | Now | The rule it failed |
+|---|---|---|---|
+| `ramp_entry_depth` | 640 | **260** | *The highway is above the planets.* At 640 the on-ramp dived to y = −320 against a planet reaching −250. The gate measures the **underside of the roadway** on every deck against the top of a planet. |
+| `local_leg_length` | 2600 | **8000** | *No exit sign stands in front of a player who has not finished joining.* Reading an exit takes a lead distance; so does joining. The gate measures every sign against the merge behind it. |
+| `interchange_run_length` | 4500 | **6000** | *No road out-turns the ship* (ADR 0070). The interchange's lane change now follows the road rather than a straight tangent, which is what stopped it leaving through the floor — and a curve parallel to a weaving road eats more of the run, so the turn gets less of it. |
+
+The two lengths trade against each other: a shorter `interchange_run_length` buys a
+shorter `local_leg_length`, and the gate holds both ends. A→B is now 11.5 km centre to
+centre — 46 s by road against 383 s by hand.
+
+*Also new:* `structure_barrier_margin` (90 m) — how close to a wall a ship **outside**
+the road gets before the shell holds it out.
 
 ### Also on 2026-09-01 — you can steer and accelerate at the same time
 

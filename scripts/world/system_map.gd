@@ -322,7 +322,15 @@ func observe(ship: Mothership, delta: float) -> void:
 	# AFTER the road, because a berth binds to the deck the ship is on and the road is
 	# what decides which one that is. Reading the key here rather than inside the
 	# berth keeps `RoadBerth` drivable by the gate, which has no input device.
-	_berth.observe(ship, _riding, took_dock, delta)
+	#
+	# The union's answer goes with it. A berth never changes roads on proximity (ADR
+	# 0082), but a road that has ENDED is not a choice — there is exactly one thing it
+	# becomes — and releasing there dropped a player at the merge they berthed for.
+	_berth.observe(ship, _riding,
+		_road.governing(here, ship.road_axis(), _riding, ship.lane_clearance()),
+		took_dock, delta)
+	# THE SHELL, measured before the ship moves and enforced after it has (ADR 0087).
+	ship.hull_barrier = _shell_for(ship, here)
 	# HIGHWAY METRES, whoever is doing the steering. A berth is carried by the road at
 	# a fraction of cruise (ADR 0082), and a berth that also travelled free would be
 	# the range-optimal way to cross the map — which is exactly the "automation is
@@ -331,6 +339,7 @@ func observe(ship: Mothership, delta: float) -> void:
 	if ship.is_cruising():
 		ship.cruise_tank.burn(travelled)
 	_aim_signs(ship, took_click)
+	_name_the_ways()
 	for gate in _road.gates():
 		gate.repaint(delta)
 	_road.set_active(_riding)
@@ -481,33 +490,35 @@ func _left_through_a_portal(here: Vector3) -> bool:
 ## is captured while the player is steering and the reticle is the game's existing
 ## way of pointing at a thing in the world (ADR 0035).
 func _aim_signs(ship: Mothership, clicked: bool) -> void:
+	# ONLY EXITS OFF THE ROAD YOU ARE ON, and the sign says which road that is. The two
+	# carriageways share one building with glass down the middle and a second highway
+	# crosses it, so every sign on the map is legible from every seat.
+	#
+	# It used to be geometric — the ramp's leaving direction against the road axis
+	# under the ship, the same cone the lane union uses (ADR 0072, ADR 0081) — and that
+	# is right on a straight and wrong everywhere else. The axis under the ship is the
+	# road HERE; an exit's tangent is the road THERE, and on a bend, or on the curving
+	# on-ramp a player joins by, the two differ by more than the cone. Measured from the
+	# seat, no exit ahead was takeable at all. Which carriageway a sign is bolted to is
+	# a fact, so the fact is the test (ADR 0088).
+	#
+	# The SAME answer decides whether the sign is drawn, so what can be seen and what
+	# can be clicked cannot disagree.
 	var picked: ExitSign = null
-	if _berth.is_berthed() and _berth.hold() != null:
-		var looking := ship.aim_direction()
-		var best := Tuning.num("exploration/exit_sign_pick_deg")
-		# ONLY EXITS OFF THE ROAD YOU ARE ON. The two carriageways share one building
-		# with glass down the middle, so the oncoming side's signs are perfectly
-		# visible from here — and clicking one would bind the berth to a ramp leaving
-		# a road going the other way.
-		#
-		# The test is the one the union already uses (ADR 0072, ADR 0081): a ramp
-		# whose direction where it leaves is outside the steering cone around the road
-		# you are held against is not a road you could take. An oncoming carriageway's
-		# ramp is 180 degrees outside it. No new flag, and it stays right when a road
-		# crosses at an angle.
-		var heading := _berth.hold().axis
-		var cone := cos(deg_to_rad(Tuning.num("exploration/cruise_turn_clamp_deg")))
-		for sign in _road.signs():
-			# A closed exit is dark. The road is refusing to let you off it, and a
-			# sign you can still click would be a refusal you only discover after
-			# choosing (ADR 0084).
-			if sign.ramp == null or not sign.ramp.passable \
-					or sign.ramp.path().tangent_at(0.0).dot(heading) < cone:
-				continue
-			var off := sign.offset_degrees(ship.position, looking)
-			if off >= 0.0 and off < best:
-				best = off
-				picked = sign
+	var berthed := _berth.is_berthed() and _berth.hold() != null
+	var looking := ship.aim_direction()
+	var best := Tuning.num("exploration/exit_sign_pick_deg")
+	for sign in _road.signs():
+		var mine := _riding != null and sign.from_deck == _riding
+		sign.set_relevant(mine)
+		# A closed exit is DARK, not absent. The road is refusing to let you off it, and
+		# an exit that vanished would be a road that never had one (ADR 0084).
+		if not mine or not berthed or sign.ramp == null or not sign.ramp.passable:
+			continue
+		var off := sign.offset_degrees(ship.position, looking)
+		if off >= 0.0 and off < best:
+			best = off
+			picked = sign
 	var taking := _berth.taking()
 	for sign in _road.signs():
 		sign.set_aimed(sign == picked)
@@ -517,6 +528,38 @@ func _aim_signs(ship: Mothership, clicked: bool) -> void:
 		# puts the ship back on the highway, which is the only way out of a choice made
 		# in a hurry short of leaving the berth entirely.
 		_berth.take_exit(null if picked.ramp == taking else picked.ramp)
+
+
+## Which mouths say where they go.
+##
+## Off the road, the ways ON are the choices and they are named; on it, the way OFF the
+## road you are riding is. A mouth that is neither is still DRAWN — it is a built thing
+## and a structure that came and went would be worse than clutter — it simply stops
+## shouting its destination across the system (ADR 0088).
+func _name_the_ways() -> void:
+	for deck in _road.decks():
+		var joining := deck.start_portal()
+		var leaving := deck.end_portal()
+		if joining != null:
+			joining.set_named(_riding == null or _riding == deck)
+		if leaving != null:
+			leaving.set_named(_riding == deck)
+
+
+## The shell the ship is held against this frame, in the SHIP's own frame (ADR 0087).
+##
+## Measured here rather than in the ship because the road is the map's, and handed down
+## exactly as `cruise` is: the ship never looks the road up. The conversion is not
+## ceremony — a barrier carries a POINT, and a point is the one thing a floating-origin
+## recentre can invalidate (ADR 0020).
+func _shell_for(ship: Mothership, here: Vector3) -> HullBarrier:
+	var held := _road.barrier(here, ship.lane_clearance())
+	if held == null:
+		return null
+	var parent := ship.get_parent_node_3d()
+	if parent != null:
+		held.centre = parent.to_local(to_global(held.centre))
+	return held
 
 
 ## The exit that is going to happen, as its sign. For the HUD and for tests.

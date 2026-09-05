@@ -18,6 +18,16 @@ extends Node3D
 ## Which road this sign is for. Clicking it binds the berth to this deck when the ship
 ## reaches it.
 var ramp: RoadDeck = null
+## The carriageway this sign is mounted for — the road you have to be on for this exit
+## to be yours to take.
+##
+## **Authored where the sign is hung, never worked out from geometry** (ADR 0088). It
+## used to be inferred by comparing the ramp's leaving direction against the road axis
+## under the ship, which is right on a straight and wrong everywhere else: on a bend,
+## and on the curving on-ramp a player joins by, every exit ahead fell outside the cone
+## and no sign was takeable at all. Which wall a sign is bolted to is a fact, and the
+## fact is the test.
+var from_deck: RoadDeck = null
 ## What it reads. The place the exit serves, not the road it hangs over.
 var label_text: String = ""
 
@@ -32,6 +42,11 @@ var _panel: MeshInstance3D
 ## needs at a glance (ADR 0083).
 var _aimed: bool = false
 var _selected: bool = false
+## Whether this exit is one the player could take from where they are. A sign for a
+## road going somewhere else is not drawn at all: the two carriageways share one
+## building with glass down the middle and a second highway crosses it, so every sign
+## on the map was legible from every seat and the road read as noise (ADR 0088).
+var _relevant: bool = false
 
 
 func _ready() -> void:
@@ -53,6 +68,7 @@ func _ready() -> void:
 	_label.no_depth_test = true
 	_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(_label)
+	visible = _relevant
 	rebuild()
 
 
@@ -88,6 +104,19 @@ func repaint() -> void:
 	panel.a = Tuning.num("exploration/exit_sign_selected_panel_alpha" if _selected
 		else "exploration/exit_sign_panel_alpha")
 	(_panel.material_override as StandardMaterial3D).albedo_color = panel
+
+
+## Is this exit takeable from where the player is? Told, not asked, exactly as `aimed`
+## is — the map knows which road the ship is on and the sign does not go looking.
+func set_relevant(on: bool) -> void:
+	if on == _relevant:
+		return
+	_relevant = on
+	visible = on
+
+
+func is_relevant() -> bool:
+	return _relevant
 
 
 ## Is the reticle on this sign? Told, not asked: the map knows where the player is

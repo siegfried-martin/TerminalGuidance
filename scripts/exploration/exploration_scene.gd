@@ -290,6 +290,23 @@ func _build_hud() -> void:
 		return "OUT OF LANE  ·  %.0f m past  ·  speed limit at %.0f%%, pushed back" % [
 			past, (lane.top_speed() / maxf(lane.base_speed, 0.001)) * 100.0]
 	)
+	# THE SHELL you are held against (ADR 0087). The barrier never bumps, so from the
+	# seat a held ship looks exactly like one that chose to fly level — this row is what
+	# tells the difference, and it is where a wall in the wrong place shows up as a
+	# building you are inside and should not be.
+	_hud.add_row("shell", func() -> String:
+		var held := _ship.hull_barrier
+		if held == null:
+			return "clear of every building"
+		var ways := PackedStringArray()
+		for face: Array in [[held.open_right, "right"], [held.open_left, "left"],
+				[held.open_above, "above"], [held.open_below, "below"]]:
+			if face[0]:
+				ways.append(face[1] as String)
+		return "%s  ·  %s  ·  %+.0f across, %+.0f up  ·  %.0f m to the nearest face%s" % [
+			held.shell_name, "INSIDE" if held.inside else "outside",
+			held.across, held.lift, absf(held.room()),
+			"" if ways.is_empty() else "  ·  open %s" % ", ".join(ways)])
 	# Where the nearest way on or off is, and whether it will open. The colour is the
 	# whole of the answer (ADR 0060); this row is for reading it from the terminal
 	# while tuning, not a second channel the player is meant to need.

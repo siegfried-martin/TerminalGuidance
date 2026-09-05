@@ -356,6 +356,84 @@ func extents_at(along: float) -> Vector2:
 		_narrows_at_start, _narrows_at_end)
 
 
+## The shell as a surface a hull does not pass through, or null where this building
+## has nothing to hold (ADR 0087).
+##
+## `inside` is decided HERE, from where the hull is before it moves, and enforced by
+## the ship after it has. That is what keeps the whole thing stateless: nothing has to
+## remember which side of a wall anything was on last frame.
+##
+## Three places are deliberately not held, and each is a way through rather than an
+## oversight: the faces a ramp pierces, the flared mouth at a portal, and the open end
+## of a ramp where it meets the road it joins. Holding any of them would be a highway
+## with no junctions on it.
+func barrier(point: Vector3, clearance: Vector2) -> HullBarrier:
+	var span := _path.length()
+	if span <= 0.0:
+		return null
+	var found := _path.closest(point)
+	var along: float = found[0]
+	# A RAMP'S ENDS ARE OPENINGS. One is its portal and the other is where it merges
+	# into the road it serves, and both are flown through along the tube rather than
+	# across a face — so the shell stops short of them.
+	var mouth := maxf(Tuning.num("exploration/ramp_ring_diameter"), 1.0)
+	if is_ramp and (along <= mouth or along >= span - mouth):
+		return null
+	# And the flare is a threshold, not a wall. The section pinches to the portal's own
+	# opening over `portal_flare_length`, and a hull held against a shrinking tube would
+	# be funnelled by geometry rather than flown through it; the lane's soft push is
+	# what governs a mouth (ADR 0064).
+	var flare := Tuning.num("exploration/portal_flare_length")
+	if (_narrows_at_start and along <= flare) \
+			or (_narrows_at_end and along >= span - flare):
+		return null
+
+	var centre: Vector3 = found[1]
+	var tangent: Vector3 = found[2]
+	var frame := CruiseLane.frame_for(tangent)
+	var offset := point - centre
+	var across := offset.dot(frame[0])
+	var lift := offset.dot(frame[1])
+	var extents := extents_at(along)
+
+	var held := HullBarrier.new()
+	held.shell_name = structure_name
+	held.centre = centre
+	held.axis = tangent
+	held.right = frame[0]
+	held.up = frame[1]
+	held.extents = extents
+	held.clearance = clearance
+	held.across = across
+	held.lift = lift
+	held.inside = absf(across) <= extents.x and absf(lift) <= extents.y
+	if not held.inside:
+		# A hull nowhere near this building is not this building's business. Engaging
+		# only once it is about to be through the wall keeps the cost to the road the
+		# ship is actually at, and keeps a road twenty kilometres away from having an
+		# opinion about open space.
+		var margin := Tuning.num("exploration/structure_barrier_margin")
+		if absf(across) > extents.x + clearance.x + margin \
+				or absf(lift) > extents.y + clearance.y + margin:
+			return null
+	for i in _pierced_at.size():
+		if absf(_pierced_at[i] - along) > mouth:
+			continue
+		match _pierced_face[i]:
+			int(Face.RIGHT):
+				held.open_right = true
+			int(Face.LEFT):
+				held.open_left = true
+			int(Face.ABOVE):
+				held.open_above = true
+			_:
+				held.open_below = true
+	held.has_median = has_median and held.inside
+	if held.has_median and absf(across) > clearance.x:
+		held.median_side = signf(across)
+	return held
+
+
 ## Every aperture in this building, as `[along, face]`. For the gate — nothing in the
 ## game asks, and the exit-face rules are only checkable from here.
 func apertures() -> Array:
@@ -396,8 +474,13 @@ func repaint() -> void:
 	shade = clampf(shade, 0.0, 1.0)
 	var metal := Tuning.color("exploration/structure_metal_color").darkened(
 		1.0 - shade)
-	var glass := Tuning.color("exploration/structure_glass_color").darkened(
-		1.0 - shade)
+	# THE GLASS IS NOT SHADED DOWN. A ramp is drawn darker so the eye can tell which
+	# road leaves the highway (ADR 0076), and that is the STEEL's job — darkening the
+	# panes as well took a diffuser at alpha 0.3 down to something you look straight
+	# through, and the human reported the interchange as "a highway with no glass".
+	# ADR 0079 makes the glass load-bearing rather than decorative: a pane a rough
+	# render is not visible behind is not a diffuser, on a ramp or anywhere else.
+	var glass := Tuning.color("exploration/structure_glass_color")
 	glass.a = Tuning.num("exploration/structure_glass_alpha")
 	# A RING IS NEVER SHADED DOWN. Everything else on a ramp is drawn darker so the eye
 	# can tell which road leaves the highway (ADR 0076); the ring is the opposite job —

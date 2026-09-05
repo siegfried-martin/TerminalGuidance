@@ -52,7 +52,7 @@ var _along: float = 0.0
 
 ## Offer, hold, or release, for this frame. `riding` is the deck the ship is on, or
 ## null when it is off the road.
-func observe(ship: Mothership, riding: RoadDeck, pressed: bool,
+func observe(ship: Mothership, riding: RoadDeck, onward: RoadDeck, pressed: bool,
 		delta: float) -> void:
 	if riding == null or ship.cruise == null:
 		release(ship)
@@ -62,12 +62,20 @@ func observe(ship: Mothership, riding: RoadDeck, pressed: bool,
 		if pressed:
 			release(ship)
 			return
-		# Running out of road ends the berth the same way it ends cruise: there is
-		# nothing to hand to, so the ship is handed back to itself, still moving.
+		# Running out of road ends the berth the same way it ends cruise — unless there
+		# is something to hand to. A ramp that ENDS is not a choice: there is exactly
+		# one road it becomes, and a player who pressed C on the on-ramp was asking to
+		# be carried onto the highway, not dropped at the merge. That is not the berth
+		# choosing a route (ADR 0082 forbids the union handing it a road on PROXIMITY,
+		# which is a choice); it is the road it is on continuing (ADR 0088).
 		if _deck == null or _deck.length() <= 0.0 \
 				or _deck.length() - _along <= 0.001:
-			release(ship)
-			return
+			if onward == null or onward == _deck:
+				release(ship)
+				return
+			_deck = onward
+			_along = _deck.path().closest(ship.position)[0]
+			_taking = null
 		_rebind_if_reached(ship)
 		# The rail runs on at the berth's own speed. Clamped to the road, so a berth
 		# that reaches the end stops advancing rather than running off the end of the

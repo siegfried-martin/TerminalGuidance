@@ -21,6 +21,12 @@ var destination: String = ""
 ## Set from the hull the player is currently flying. It is the colour that carries
 ## the answer, and it has to be readable before the approach rather than on contact.
 var permitted: bool = true
+## Whether this way on or off is one the player could actually use from where they
+## are. The APERTURE is always drawn — it is a built thing and it does not come and go
+## — but its NAME is not: a system with two highways through it carries eight mouths,
+## and a seat that can read all eight names at once is reading noise rather than a
+## signpost (ADR 0088).
+var _named: bool = false
 
 var _sheen: MeshInstance3D
 var _frame: MeshInstance3D
@@ -50,6 +56,7 @@ func _ready() -> void:
 	_label.no_depth_test = true
 	_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(_label)
+	_label.visible = _named
 	rebuild()
 
 
@@ -172,3 +179,18 @@ func width() -> float:
 
 func height() -> float:
 	return Tuning.num("exploration/portal_height")
+
+
+## Say where this goes, or do not. Told by the map, which knows whether this mouth is
+## a way the player could take right now — off the road, the ways ON have names; on it,
+## the ways OFF the road you are riding do.
+func set_named(on: bool) -> void:
+	if on == _named:
+		return
+	_named = on
+	if _label != null:
+		_label.visible = on
+
+
+func is_named() -> bool:
+	return _named

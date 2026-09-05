@@ -169,7 +169,7 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/structure_module_length", "exploration/structure_rib_thickness",
 	"exploration/structure_glass_alpha", "exploration/structure_metal_color",
 	"exploration/structure_station_spacing",
-	"exploration/structure_station_length",
+	"exploration/structure_station_length", "exploration/structure_barrier_margin",
 	"exploration/structure_glass_color", "exploration/ramp_ring_diameter",
 	"exploration/ramp_ring_depth", "exploration/ramp_ring_color",
 	"exploration/crossing_bearing_deg", "exploration/crossing_road_height",
@@ -252,6 +252,7 @@ func _ready() -> void:
 	_test_manual_flight()
 	_test_hull_classes()
 	_test_lane_geometry()
+	_test_hull_barrier()
 	_test_cruise_tank()
 	_test_deep_field()
 	_test_envelope_meter()
@@ -2567,6 +2568,107 @@ func _test_hull_classes() -> void:
 
 ## Lane, deck and portal geometry. These are the relationships that have to hold
 ## whatever the numbers are tuned to; the numbers themselves are the human's.
+## THE SHELL (ADR 0087). Pure: a box section, a hull with a size, and the rule that a
+## hull does not pass through a surface from whichever side it is on.
+##
+## The property that matters most is the one that makes it a barrier rather than a
+## collision: motion ALONG the surface survives untouched. If that ever stops being
+## true, a ship held against the roadway stops dead on it and the road becomes a wall.
+func _test_hull_barrier() -> void:
+	var shell := HullBarrier.new()
+	shell.centre = Vector3.ZERO
+	shell.axis = Vector3.FORWARD
+	shell.right = Vector3.RIGHT
+	shell.up = Vector3.UP
+	shell.extents = Vector2(100.0, 50.0)
+	shell.clearance = Vector2(10.0, 5.0)
+	shell.inside = true
+
+	var clear := shell.hold(Vector3(20.0, 10.0, 0.0), Vector3(5.0, 5.0, -200.0))
+	_expect((clear[0] as Vector3).is_equal_approx(Vector3(20.0, 10.0, 0.0)),
+		"a hull inside the shell is left exactly where it is",
+		"it was moved from the middle of the road")
+
+	# THROUGH THE FLOOR is the case the human reported: at cruise inside the steering
+	# cone a ship carries far more downward speed than the lane's push is worth, so it
+	# sank through the roadway and out the bottom of the road (ADR 0087).
+	var sunk := shell.hold(Vector3(0.0, -80.0, 0.0), Vector3(0.0, -60.0, -200.0))
+	_expect(is_equal_approx((sunk[0] as Vector3).y, -45.0),
+		"…and one pushed through the roadway is held at it, hull included",
+		"y %.1f, wanted -45" % (sunk[0] as Vector3).y)
+	_expect(is_zero_approx((sunk[1] as Vector3).y),
+		"…with the speed going THROUGH the floor dropped",
+		"%.1f m/s still going down" % (sunk[1] as Vector3).y)
+	_expect(is_equal_approx((sunk[1] as Vector3).z, -200.0),
+		"…and the speed along the road untouched — a barrier, not a collision",
+		"%.1f m/s along, was -200" % (sunk[1] as Vector3).z)
+	var leaving := shell.hold(Vector3(0.0, -80.0, 0.0), Vector3(0.0, 30.0, -200.0))
+	_expect(is_equal_approx((leaving[1] as Vector3).y, 30.0),
+		"…while coming back OFF the floor is the player flying, and is not touched",
+		"the climb away was cancelled too")
+
+	# AN OPEN FACE IS THE WAY THROUGH. A ramp's aperture is a hole, and holding it
+	# would be a highway with no junctions on it.
+	shell.open_below = true
+	var dropped := shell.hold(Vector3(0.0, -80.0, 0.0), Vector3(0.0, -60.0, -200.0))
+	_expect(is_equal_approx((dropped[0] as Vector3).y, -80.0),
+		"…and an OPEN face is not held: that is the ramp going through it",
+		"the aperture was closed")
+	shell.open_below = false
+
+	# FROM OUTSIDE, the same surface, the other way round. This is the half that stops
+	# a ship in open space flying in through a wall.
+	shell.inside = false
+	var poked := shell.hold(Vector3(0.0, 20.0, 0.0), Vector3(0.0, -40.0, 0.0))
+	_expect(is_equal_approx((poked[0] as Vector3).y, 55.0),
+		"a hull outside the shell is kept out of it, at its own half-height",
+		"y %.1f, wanted 55" % (poked[0] as Vector3).y)
+	shell.open_above = true
+	var entered := shell.hold(Vector3(0.0, 20.0, 0.0), Vector3(0.0, -40.0, 0.0))
+	_expect(is_equal_approx((entered[0] as Vector3).y, 20.0),
+		"…unless it came in through an opening, which is how a ramp is joined",
+		"the opening refused a hull from outside")
+
+	# THE MEDIAN is a wall in the middle rather than at the edge, and a hull still
+	# astride it is left free rather than pinned to a side it never chose.
+	shell.inside = true
+	shell.open_above = false
+	shell.has_median = true
+	shell.median_side = 1.0
+	var crossed := shell.hold(Vector3(-40.0, 0.0, 0.0), Vector3(-30.0, 0.0, -200.0))
+	_expect(is_equal_approx((crossed[0] as Vector3).x, 10.0),
+		"the median holds a hull on the side of the pane it was already on",
+		"x %.1f, wanted 10" % (crossed[0] as Vector3).x)
+	shell.median_side = 0.0
+	var astride := shell.hold(Vector3(-4.0, 0.0, 0.0), Vector3(-30.0, 0.0, -200.0))
+	_expect(is_equal_approx((astride[0] as Vector3).x, -4.0),
+		"…and a hull astride it is left alone rather than shoved to one side",
+		"a straddling hull was moved")
+
+	# ROOM is what the network compares when two buildings both have an opinion.
+	shell.has_median = false
+	shell.across = 60.0
+	shell.lift = 40.0
+	_expect(is_equal_approx(shell.room(), 10.0),
+		"room is the distance to the NEAREST face, so the tightest one decides",
+		"room %.1f, wanted 10" % shell.room())
+
+	# --- RoadPath.section, which is what cuts a ramp's building at the wall ---
+	var line := RoadPath.new()
+	line.set_points(PackedVector3Array([Vector3.ZERO, Vector3(100.0, 0.0, 0.0),
+		Vector3(200.0, 0.0, 0.0), Vector3(300.0, 0.0, 0.0)]))
+	var cut := RoadPath.new()
+	cut.set_points(line.section(120.0, 260.0))
+	_expect(is_equal_approx(cut.length(), 140.0)
+			and cut.start().is_equal_approx(Vector3(120.0, 0.0, 0.0))
+			and cut.finish().is_equal_approx(Vector3(260.0, 0.0, 0.0)),
+		"a path can be cut to a stretch of itself, ending exactly where asked",
+		"%.0f m from %s to %s" % [cut.length(), cut.start(), cut.finish()])
+	_expect(line.section(80.0, 80.0).is_empty(),
+		"…and a cut with nothing in it is empty rather than a degenerate line",
+		"a zero-length cut produced points")
+
+
 func _test_lane_geometry() -> void:
 	var lane_width := Tuning.num("exploration/lane_width")
 	var lane_height := Tuning.num("exploration/lane_height")
@@ -3689,6 +3791,28 @@ func _test_exploration_builds() -> void:
 		"…and no road anywhere enters an approach envelope (ADR 0012)",
 		"a road passes %.0f m from a planet, envelope is %.0f" % [
 			nearest_envelope, envelope])
+	# THE HIGHWAY IS ABOVE THE PLANETS, ramps included. It is what makes a system a
+	# place you look down into from the road rather than a thing the road runs through
+	# the middle of — and it stopped being true the moment `ramp_entry_depth` grew,
+	# because an on-ramp dives to reach its mouth and nothing measured how far. The
+	# roadway's underside is the lowest part of a road, so that is what is measured
+	# (ADR 0088).
+	var planet_top := Tuning.num("exploration/planet_radius") \
+		- Tuning.num("exploration/planet_center_depth")
+	var deepest := INF
+	var deepest_road := ""
+	for deck in road.decks():
+		var line := deck.path()
+		for i in 60:
+			var along := line.length() * float(i) / 59.0
+			var under: float = line.point_at(along).y - deck.profile(along).y
+			if under < deepest:
+				deepest = under
+				deepest_road = deck.name
+	_expect(deepest > planet_top,
+		"…and the whole highway, ramps included, stays ABOVE the planets",
+		"%s dips to %.0f m against a planet reaching %.0f" % [
+			deepest_road, deepest, planet_top])
 
 	# --- one lane is lit, and it is the one being flown ---
 	# Four carriageways cross the view at an interchange. The player has to be able to
@@ -3910,10 +4034,19 @@ func _test_exploration_builds() -> void:
 	for sign: ExitSign in road.signs():
 		if sign.ramp != null and sign.ramp.route_name == SystemMap.ROUTE_NAMES[0]:
 			route_signs.append(sign)
-	_expect(pair_built.apertures().size() == route_ramps.size(),
-		"the building opens once for every ramp that goes through it",
-		"%d openings for %d ramps" % [pair_built.apertures().size(),
-			route_ramps.size()])
+	# A ramp LEAVING this road opens its wall, and a ramp ARRIVING from the road that
+	# crosses it opens one too — a curve that ends on this carriageway has to get in
+	# (ADR 0088). So the count is this route's own ramps plus the interchange ramps
+	# that land on it.
+	var arrivals := 0
+	for ramp: RoadDeck in ramps:
+		if ramp.route_name != SystemMap.ROUTE_NAMES[0] \
+				and ramp.deck_name.ends_with(SystemMap.ROUTE_NAMES[0]):
+			arrivals += 1
+	_expect(pair_built.apertures().size() == route_ramps.size() + arrivals,
+		"the building opens once for every ramp that goes through it, in or out",
+		"%d openings for %d ramps out and %d in" % [pair_built.apertures().size(),
+			route_ramps.size(), arrivals])
 	# THE EXIT-FACE RULE, asked of each ramp's own curve rather than of the opening it
 	# was given. An exit leaves through a wall or the roof and NEVER through the floor
 	# — the floor is the roadway, and an exit competing with it for the meaning of
@@ -3951,6 +4084,39 @@ func _test_exploration_builds() -> void:
 	_expect(exits_downward.is_empty(),
 		"no ramp leaves through the FLOOR — down is the roadway, and it is not an exit",
 		exits_downward)
+	# AND ITS BUILDING STOPS THERE. Inside the highway a ramp is an opening, not a tube:
+	# drawn the whole way it roofed over the hole it comes up through and hung a second
+	# roadway across the lane from above, which is what the human reported (ADR 0088).
+	# The LANE is untouched and still runs the whole way — the union needs it to.
+	var overreaching := ""
+	var deepest_intrusion := 0.0
+	for ramp: RoadDeck in ramps:
+		var owner := road.building_for(ramp.route_name)
+		var shell: RoadStructure = null
+		for candidate: RoadStructure in road.structures():
+			if candidate.structure_name == "Structure" + String(ramp.name):
+				shell = candidate
+		if owner == null or shell == null:
+			continue
+		# Walk the ramp's own building and ask the mainline's whether any of it is
+		# inside. A metre or two at the joint is the cut point itself; a tube standing
+		# in the lane is hundreds.
+		var line := shell.path()
+		for i in 40:
+			var at: Vector3 = line.point_at(line.length() * float(i) / 39.0)
+			var found := owner.path().closest(at)
+			var frame := CruiseLane.frame_for(found[2] as Vector3)
+			var offset: Vector3 = at - (found[1] as Vector3)
+			var room := owner.extents_at(found[0] as float)
+			var inside := minf(room.x - absf(offset.dot(frame[0])),
+				room.y - absf(offset.dot(frame[1])))
+			if inside > deepest_intrusion:
+				deepest_intrusion = inside
+				overreaching = "%s reaches %.0f m inside the highway" % [
+					shell.structure_name, inside]
+	_expect(deepest_intrusion < Tuning.num("exploration/ramp_ring_diameter"),
+		"…and a ramp's BUILDING stops at that wall rather than standing inside the lane",
+		overreaching)
 	_expect(entries_not_from_below.is_empty(),
 		"…and every ramp joins from BELOW, up through the roadway",
 		entries_not_from_below)
@@ -3976,11 +4142,11 @@ func _test_exploration_builds() -> void:
 			Tuning.num("exploration/lane_height")])
 	var hoops := pair_built.get_node_or_null("Rings") as MultiMeshInstance3D
 	_expect(hoops != null
-			and hoops.multimesh.instance_count == route_ramps.size(),
+			and hoops.multimesh.instance_count == pair_built.apertures().size(),
 		"…and every opening actually carries one",
 		"%d rings for %d openings" % [
 			0 if hoops == null else hoops.multimesh.instance_count,
-			route_ramps.size()])
+			pair_built.apertures().size()])
 
 	# THE BUILDING CONTAINS THE LANES. The pair's interior spans both carriageways and
 	# the gap between them, so the outermost lane edge is exactly its inside face. If
@@ -4243,14 +4409,186 @@ func _test_exploration_builds() -> void:
 			named = false
 	_expect(named, "…and reads as an exit, naming where it goes",
 		"a sign does not name its exit")
+	# EVERY SIGN SAYS WHICH CARRIAGEWAY IT IS FOR. That is what makes "is this exit
+	# mine" a comparison rather than a geometric guess, and it is what both the pick
+	# and the drawing read (ADR 0088).
+	var unowned := ""
+	for sign: ExitSign in signs:
+		if sign.from_deck == null or sign.from_deck.is_ramp:
+			unowned = sign.name
+	_expect(unowned.is_empty(),
+		"…and says which carriageway it is bolted to, which is a fact rather than an angle",
+		"%s belongs to no mainline" % unowned)
+
+	# NO SIGN STANDS IN FRONT OF A PLAYER WHO HAS NOT FINISHED JOINING. The human's
+	# report was "the first exit is a bit too close": on the old 2.6 km local leg the
+	# K-112 interchange's sign hung before the on-ramp from A had even merged, so the
+	# first thing on the road was a choice you could not yet make. Reading an exit
+	# takes a lead distance; so does joining, and one is the honest measure of the
+	# other (ADR 0088).
+	var crowded := ""
+	var tightest := INF
+	for carriageway: RoadDeck in mainlines:
+		var merges := PackedFloat32Array()
+		for deck in road.decks():
+			if deck.is_ramp and deck.start_portal() != null \
+					and deck.route_name == carriageway.route_name:
+				merges.append(carriageway.path().closest(deck.path().finish())[0])
+		for sign: ExitSign in signs:
+			if sign.from_deck != carriageway:
+				continue
+			var at: float = carriageway.path().closest(sign.position)[0]
+			for merge in merges:
+				if merge >= at:
+					continue
+				if at - merge < tightest:
+					tightest = at - merge
+					crowded = "%s stands %.0f m past a merge" % [sign.name, at - merge]
+	_expect(tightest >= Tuning.num("exploration/exit_sign_lead_metres"),
+		"…and no sign stands closer to the merge behind it than its own lead distance",
+		crowded)
+
+	# ONLY THE EXITS OFF THE ROAD YOU ARE ON ARE DRAWN. Two carriageways share one
+	# building with glass down the middle and a second highway crosses it, so every
+	# sign on the map was legible from every seat: "seeing all the signs from all the
+	# directions makes it look very chaotic and confusing" (ADR 0088). The predicate
+	# that decides whether an exit is yours is the one that decides whether you can see
+	# it, so this is also the check that the pick and the drawing cannot disagree.
+	scene.ship().position = floor_point
+	_step_exploration(scene, 1.0 / 60.0)
+	var shown := 0
+	var wrong_road := ""
+	for sign: ExitSign in signs:
+		if not sign.is_relevant():
+			continue
+		shown += 1
+		if sign.from_deck != map.riding():
+			wrong_road = sign.name
+	_expect(shown > 0 and wrong_road.is_empty(),
+		"only the exits off the carriageway being ridden are drawn at all",
+		"%d signs drawn%s" % [shown,
+			"" if wrong_road.is_empty() else ", including %s" % wrong_road])
+	_expect(shown < signs.size(),
+		"…and the rest of the map's signs are not, which is the whole of the clutter",
+		"all %d signs were drawn" % signs.size())
+
+	# AND A MOUTH ONLY SAYS WHERE IT GOES WHEN IT IS A CHOICE. On the road, the way OFF
+	# the road you are riding; off it, the ways ON. The APERTURES stay drawn either way
+	# — they are built things (ADR 0088).
+	var shouting := ""
+	for portal: Portal in map.portals():
+		if not portal.is_named():
+			continue
+		if not portal.destination.begins_with("FROM"):
+			shouting = portal.destination
+	_expect(shouting.is_empty(),
+		"…and on the road, only the way OFF this road says where it goes",
+		"a way ON was still named while riding: %s" % shouting)
 
 	# CLICKABLE ONLY WHILE BERTHED. Flying, a click that changed which road you were on
 	# would be autopilot growth (ADR 0013).
-	scene.ship().position = floor_point
-	_step_exploration(scene, 1.0 / 60.0)
 	_expect(not berth.is_berthed() and map.aimed_sign() == null,
 		"no sign is aimable while flying — a click may not change the road you are on",
 		"a sign was live off the berth")
+
+	# AND FROM THE SEAT IT IS ACTUALLY REACHABLE. This is the check that was missing
+	# when the human reported "I couldn't get the click off ramp feature to work at
+	# all": every part of the machinery worked, and the pick's own guard rejected every
+	# sign on the road because it compared the exit's tangent against the road axis
+	# UNDER THE SHIP (ADR 0088). Berthed on the rail a lead distance short of a sign,
+	# with the reticle parked on the nose and nothing touched, the sign has to light up
+	# — that is the whole of "can a player take an exit".
+	var next_sign := road.get_node_or_null("SignA377BRampOffCForward") as ExitSign
+	if next_sign != null:
+		var carriageway := mainlines[0].path()
+		var sign_at: float = carriageway.closest(next_sign.position)[0]
+		var stand := maxf(sign_at - Tuning.num("exploration/exit_sign_lead_metres"), 0.0)
+		var seat_frame := CruiseLane.frame_for(carriageway.tangent_at(stand))
+		var seat: Vector3 = carriageway.point_at(stand) - seat_frame[1] * (
+			Tuning.num("exploration/lane_height") * 0.5
+			- Tuning.num("exploration/berth_ride_height"))
+		# HOW FAR OFF THE ROAD AXIS THE NEXT SIGN ACTUALLY SITS, from the rail. It has
+		# to be inside the cone the reticle can be swept through, or the sign cannot be
+		# looked at from the seat however good the pick is.
+		var straight_ahead: Vector3 = carriageway.tangent_at(stand)
+		var to_sign := (next_sign.position - seat).normalized()
+		var swing := rad_to_deg(to_sign.angle_to(straight_ahead))
+		_expect(swing < Tuning.num("exploration/berth_look_cone_deg"),
+			"…and from the rail the next exit's sign is inside the cone the reticle sweeps",
+			"%.0f deg off the road against a %.0f deg cone" % [swing,
+				Tuning.num("exploration/berth_look_cone_deg")])
+
+		# AND LOOKING AT IT PICKS IT. This is the check that was missing when the human
+		# reported "I couldn't get the click off ramp feature to work at all": every
+		# part of the machinery worked, and the pick's own guard rejected every sign on
+		# the road because it compared the exit's tangent against the road axis UNDER
+		# THE SHIP (ADR 0088). The reticle is put on the sign the way a player's mouse
+		# puts it there, and nothing else is touched.
+		scene.ship().position = seat
+		scene.ship().look_at(scene.ship().global_position
+			+ (next_sign.position - seat), Vector3.UP)
+		scene.ship().reset_reticle()
+		_step_exploration(scene, 1.0 / 60.0)
+		berth.engage(scene.ship(), map.riding())
+		_step_exploration(scene, 1.0 / 60.0)
+		_expect(map.aimed_sign() == next_sign,
+			"…and with the reticle on it, the sign lights up",
+			"aimed at %s, %.1f deg off" % [
+				"nothing" if map.aimed_sign() == null else map.aimed_sign().name,
+				next_sign.offset_degrees(scene.ship().position,
+					scene.ship().aim_direction())])
+		map.pressed_click = true
+		var was_reading := map.reads_input
+		map.reads_input = false
+		_step_exploration(scene, 1.0 / 60.0)
+		map.reads_input = was_reading
+		_expect(berth.taking() == next_sign.ramp,
+			"…and clicking it takes that exit, which is the whole feature",
+			"the click took %s" % ("nothing" if berth.taking() == null
+				else berth.taking().name))
+		berth.release(scene.ship())
+
+	# --- THE SHELL (ADR 0087) ---
+	# The report: "I was able to go through the floor of the on ramp and it looks like
+	# it took me off altogether." At cruise inside the steering cone a ship carries far
+	# more downward speed than the lane's push is worth, so it sank through the roadway,
+	# and once outside the lane and past the end of the deck the union had nothing to
+	# hand it and the road dropped it.
+	#
+	# Flown the way it was flown: full throttle, stick held all the way down, for four
+	# seconds. The nose is clamped into the road's cone every frame, so this is the
+	# steepest descent the road allows and there is no steeper one to try.
+	var was_reading_shell := scene.reads_input()
+	scene.set_reads_input(false)
+	scene.ship().position = floor_point + Vector3.UP * (
+		Tuning.num("exploration/lane_height") * 0.5)
+	_step_exploration(scene, 1.0 / 60.0)
+	scene.ship().input_throttle = 1.0
+	scene.ship().input_stick = Vector2(0.0, 1.0)
+	var sank_to := 0.0
+	var came_off := false
+	for _i in 240:
+		_step_exploration(scene, 1.0 / 60.0)
+		if map.riding() == null or scene.ship().cruise == null:
+			came_off = true
+			break
+		sank_to = minf(sank_to, scene.ship().cruise.vertical
+			+ scene.ship().cruise.half_height)
+	scene.ship().input_throttle = 0.0
+	scene.ship().input_stick = Vector2.ZERO
+	scene.set_reads_input(was_reading_shell)
+	_expect(not came_off,
+		"flown at the roadway at full throttle the ship stays ON the road",
+		"it went through the floor and off the highway")
+	_expect(sank_to > -1.0,
+		"…and never gets below the roadway, hull and all",
+		"the hull reached %.1f m under the road surface" % -sank_to)
+	# AND IT IS A BARRIER RATHER THAN A COLLISION: pressed against the roadway the ship
+	# is still travelling down the road. If this ever fails, the shell has become a wall
+	# and ADR 0087's one hard rule is gone.
+	_expect(scene.ship().speed() > Tuning.num("exploration/cruise_speed") * 0.25,
+		"…while still flying down the road at speed — held, never stopped",
+		"%.0f m/s against the road it is on" % scene.ship().speed())
 
 	# TAKEN, and the swap happens WHEN THE RAMP ARRIVES rather than when the sign is
 	# clicked. The ramp starts ahead, and a rail that pulled the ship back onto its
@@ -4641,16 +4979,24 @@ func _test_exploration_builds() -> void:
 		"…and the throttle it holds travels at the hull's own rate, not instantly",
 		"%.2f became %.2f" % [from_throttle, scene.ship().throttle()])
 	# …and it is a FAITHFUL stand-in, which is the part that could have gone wrong
-	# quietly: the approach envelope aborts on any flight input (ADR 0012), and it asks
-	# the ship rather than the devices — so a harness holding the throttle is refused
-	# exactly as a player holding W is, instead of sailing through a sequence no human
-	# could have completed.
-	_expect(map.approaches()[0]._has_flight_input(scene.ship()),
+	# quietly: everything that asks "is the player flying" asks the SHIP rather than the
+	# devices, so a harness is seen exactly as a player is instead of sailing through a
+	# sequence no human could have completed.
+	_expect(scene.ship().has_flight_input(),
 		"a harness holding the throttle counts as flight input, as a player does",
-		"the envelope could not see the harness flying")
+		"the ship could not see the harness flying")
+	_expect(not scene.ship().is_steering(),
+		"…and the throttle is not STEERING, which is the distinction the approach makes",
+		"a held throttle read as a heading request")
+	scene.ship().input_stick = Vector2(1.0, 0.0)
+	_expect(scene.ship().is_steering() and map.approaches()[0]._has_flight_input(
+			scene.ship()),
+		"…while the harness's stick is, and the envelope sees it",
+		"a harness steering did not read as steering")
+	scene.ship().input_stick = Vector2.ZERO
 	scene.ship().input_throttle = 0.0
-	_expect(not map.approaches()[0]._has_flight_input(scene.ship()),
-		"…and letting go of it stops counting", "it stayed aborted")
+	_expect(not scene.ship().has_flight_input(),
+		"…and letting go of both stops counting", "it stayed aborted")
 
 	scene.queue_free()
 	await get_tree().process_frame
@@ -4824,8 +5170,15 @@ func _test_approach_envelope() -> void:
 	_expect(envelope.state() == ApproachEnvelope.State.CLEAR,
 		"…and clears once outside", "state %d" % envelope.state())
 
-	# THE rule of ADR 0012: any input aborts, and the ship is handed straight back.
-	# Driven through real Input actions, which work headlessly.
+	# ADR 0012's rule, as ADR 0089 narrows it: STEERING aborts and the throttle does
+	# not. The sequence moves the ship in exactly one way — it walks the speed ceiling
+	# down — so a held throttle is a request that ceiling already answers, and a moved
+	# stick is a request for a heading nothing else answers.
+	#
+	# The old rule made the envelope unreachable: you arrive at a planet flying, so the
+	# lock broke on its first frame every time and the human reported the landing
+	# sequence as never engaging at all. Driven through real Input actions, which work
+	# headlessly.
 	ship.position = Vector3(0.0, 0.0, envelope.radius() * 0.5)
 	envelope.observe(ship, step)
 	envelope.observe(ship, step)
@@ -4833,13 +5186,29 @@ func _test_approach_envelope() -> void:
 		"the sequence is running again", "state %d" % envelope.state())
 	Input.action_press("throttle_up")
 	envelope.observe(ship, step)
+	envelope.observe(ship, step)
 	Input.action_release("throttle_up")
+	_expect(envelope.state() == ApproachEnvelope.State.LOCKED,
+		"HOLDING THE THROTTLE does not abort — you arrive at a planet flying (ADR 0089)",
+		"state %d" % envelope.state())
+	Input.action_press("aim_left")
+	envelope.observe(ship, step)
+	Input.action_release("aim_left")
 	_expect(envelope.state() == ApproachEnvelope.State.RELOCKING,
-		"any flight input aborts the approach (ADR 0012)",
+		"…and STEERING does, because that is asking to go somewhere else (ADR 0012)",
 		"state %d" % envelope.state())
 	_expect(is_equal_approx(envelope.speed_scale(), 1.0),
 		"…and the ship is unconstrained the same frame — no drag on the way out",
 		"scale %.2f" % envelope.speed_scale())
+	# AN ABORT RE-ARMS WHERE YOU STAND. It used to share the departure's rule — clear
+	# only once the player has left — which made one twitch inside a 560 m envelope
+	# cost the whole landing, because the way to clear it was to leave the place you
+	# were trying to land on. An abort is "not that time", not "not here" (ADR 0089).
+	for _i in int(Tuning.num("exploration/approach_relock_seconds") / step) + 4:
+		envelope.observe(ship, step)
+	_expect(envelope.state() != ApproachEnvelope.State.RELOCKING,
+		"…and the relock clears WITHOUT leaving, so a twitch costs one countdown",
+		"still relocking after the timer, while inside")
 
 	# THE SECOND LANDING. Reported from a play session: after docking and leaving a
 	# planet once, it stopped accepting a landing at all and the ship flew straight
