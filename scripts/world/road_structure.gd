@@ -55,6 +55,15 @@ var is_ramp: bool = false
 ## for a ramp: a median divides two directions and a ramp has only one.
 var has_median: bool = false
 
+## How much of each end is covered by a collar the NETWORK places rather than by a
+## rib of this building's own — `x` at the start, `y` at the end.
+##
+## On the lattice a vertex is ONE collar shared by the two edges meeting there (ADR
+## 0095). Each edge is mitred past the vertex so the outer corner is closed, and a rib
+## of its own at that end would stand inside the collar and fight it. Zero, which is
+## every road that is not a lattice edge, means this building caps its own ends.
+var end_inset: Vector2 = Vector2.ZERO
+
 var _path: RoadPath = RoadPath.new()
 ## The full interior half-extents, and the narrower ones at a portal mouth. The
 ## structure narrows exactly where the lane does — `LaneProfile` answers for both, so
@@ -189,6 +198,10 @@ func rebuild() -> void:
 	var every := maxi(int(Tuning.num("exploration/structure_station_spacing")), 0)
 	var station := maxf(Tuning.num("exploration/structure_station_length"), collar)
 	for i in bays + 1:
+		# NO RIB WHERE THE NETWORK STANDS A COLLAR. On a lattice edge the joint at
+		# each end belongs to the vertex, not to this building.
+		if (i == 0 and end_inset.x > 0.0) or (i == bays and end_inset.y > 0.0):
+			continue
 		# NO COLLAR INSIDE AN OPENING. A rib is a frame across the whole section, so one
 		# standing in the middle of a junction is a hoop across the merging lane — the
 		# human's "assets of the highway running into the off ramp". A junction is a
@@ -203,6 +216,14 @@ func rebuild() -> void:
 	for i in bays:
 		var from := float(i) * step + collar * 0.5
 		var to := float(i + 1) * step - collar * 0.5
+		# The glazing runs to the vertex collar's own face rather than stopping half a
+		# rib short of an end that has no rib on it.
+		if i == 0 and end_inset.x > 0.0:
+			from = end_inset.x
+		if i == bays - 1 and end_inset.y > 0.0:
+			to = span - end_inset.y
+		from = maxf(from, end_inset.x)
+		to = minf(to, span - end_inset.y)
 		# A bay is laid as one piece unless a ramp goes through it, and then as a solid
 		# piece either side of every opening. An opening is a STRETCH and may cross
 		# several bays, and more than one ramp can be in the same bay — at an
@@ -403,9 +424,26 @@ func barrier(point: Vector3, clearance: Vector2) -> HullBarrier:
 	if (_narrows_at_start and along <= flare) \
 			or (_narrows_at_end and along >= span - flare):
 		return null
-
 	var centre: Vector3 = found[1]
 	var tangent: Vector3 = found[2]
+	# AND A BUILDING DOES NOT ANSWER PAST ITS OWN ENDS. `RoadPath.closest` CLAMPS, so
+	# the offset measured from a clamped end has no along-component left in it: a box
+	# thirty kilometres behind the ship reports exactly the same two walls as the one
+	# the ship is inside, and ties with it on `room()`. One long building per route hid
+	# that; a lattice route is a dozen short ones in a line and it surfaced at once, as
+	# the HUD naming a shell 35 km behind the ship.
+	#
+	# The OVERSHOOT is what says so, not `along`: clamping makes "at the end" and
+	# "past the end" the same number, and the difference is which side of the end face
+	# the point is on. A point exactly ON the end face is still this building's, which
+	# is what keeps the last metre of a road inside the road.
+	#
+	# It leaves no gap at a joint either. Consecutive edges are MITRED past the vertex
+	# they share (ADR 0095), so a point at a vertex is strictly inside both boxes.
+	var overshoot := (point - centre).dot(tangent)
+	if (along <= 0.0 and overshoot < -0.001) \
+			or (along >= span and overshoot > 0.001):
+		return null
 	var frame := CruiseLane.frame_for(tangent)
 	var offset := point - centre
 	var across := offset.dot(frame[0])

@@ -6,7 +6,7 @@ SCENE ?= res://scenes/arena.tscn
 SHOTS ?= .shots
 
 .DEFAULT_GOAL := help
-.PHONY: help run fly sandbox check import assets shot editor apiref clean
+.PHONY: help run fly lattice sandbox check import assets shot editor apiref clean
 
 help:  ## Show this help
 	@grep -E '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
@@ -23,6 +23,11 @@ run:  ## Play the combat arena in a window (SCENE=... to override)
 # else, because only the pilot matters there. Two scenes means two commands.
 fly:  ## Play the exploration POC — systems, the corridor, the road, docking
 	@tools/play.sh $(GODOT) --scene res://scenes/exploration.tscn
+
+# The lattice road, beside the old one rather than instead of it (ADR 0095, plan
+# step B). Two scenes until step D swaps them, so both can be flown and compared.
+lattice:  ## Play the exploration POC with its roads laid on the lattice
+	@tools/play.sh $(GODOT) --scene res://scenes/lattice.tscn
 
 sandbox:  ## Open the asset harness with the debug fly-cam
 	@tools/play.sh $(GODOT) --scene res://scenes/sandbox.tscn

@@ -435,7 +435,9 @@ that cannot be flown is discovered; the derived fillet floor and its clamp;
 
 **ADR 0095** lands here (it is written; this step makes it true).
 
-### B. The mainline from routes
+### B. The mainline from routes ✅
+
+**Built 2026-09-06**; `make check` is 1489 checks. `make lattice` plays it.
 
 `scenes/lattice.tscn` and `make lattice`: the same scene script as exploration with a
 `LatticeLayout` instead of the leg-walking layout.
@@ -448,14 +450,44 @@ that cannot be flown is discovered; the derived fillet floor and its clamp;
 | `RoadStructure` | loses the bleed. `rebuild` is a straight step. `pierce` stays for one more step so the old scene still works |
 
 Ramps: none on the lattice scene yet. The lattice scene is a highway with no way onto
-it, flown with the debug teleport, which is enough to judge the vertex rule from the
-seat and the frame. `make shot` a vertex at 13.9° and one at 30°.
+it, so **a fresh run starts on the carriageway and the debug teleport walks the road's
+own vertices** instead of its systems — the drop is derived from the route data, so
+authoring a bend into `data/routes.json` adds a stop with no code change.
 
-Gate: every §5 bound on every vertex of every route in `data/routes.json`; the
-exploration suite unchanged; a new `_test_lattice_builds` asserting the node tree, that
-consecutive edges' boxes share their vertex, that the collar covers both box ends, and
-that every deck's `max_turn_deg_per_metre × cruise_speed ≤ turn rate` (the ADR 0070
-check, now passing on a filleted lane rather than a weave).
+`tools/shots/vertex_shot.gd` renders a bend from the seat at any distance
+(`VERTEX_SHOT_VERTEX`, `VERTEX_SHOT_APPROACH`). **The frame has to be taken from the
+road**, and that is not a limitation of the harness: off the road there is nothing
+playable — the corridor is on the combat plane and the highway rides 360 m above it,
+carrying only its own tube (ADR 0091) — so a camera swung out to admire the mitre from
+outside is 2 km past the boundary and the whole frame is the boundary's red.
+
+The map's bends are 15.3°, not the 13.9° and 30° this asked for: an `(8, 3)` edge is
+what the authored map wanted, and it is the closest thing on any lattice to the 15°
+nobody can have.
+
+Gate: every §5 bound on every vertex of every route in `data/routes.json` (step A);
+the exploration suite unchanged; a new `_test_lattice_builds` asserting the node tree,
+that consecutive edges' boxes both reach the mitre corner they share, that the collar
+covers both box ends, that every deck's `max_turn_deg_per_metre × cruise_speed ≤ turn
+rate` (the ADR 0070 check, now passing on a filleted lane rather than a weave), that
+every metre of every lane is inside a building **and that the building which answers is
+one the point is really inside**, that the two carriageways hold their separation
+through a bend, and that a fresh run starts on the road.
+
+**A `MultiMesh` cannot be read back headless** — the dummy renderer stores no instance
+data, so `get_instance_transform` returns the identity for a row that was written
+correctly. `RoadNetwork.collars()` returns the transforms as data, which is both
+readable there and the more honest assertion: it tests the geometry rather than the
+graphics server.
+
+**One bug the lattice surfaced, fixed here.** `RoadPath.closest` clamps, so the offset
+measured from a clamped end has no along-component left in it: a building thirty
+kilometres behind the ship reported exactly the same two walls as the one the ship was
+inside, and tied with it on `room()`. One long building per route hid that completely;
+a dozen short edges in a line surfaced it at once, as the HUD naming the wrong shell. A
+building now declines to answer past its own end face — measured as the **overshoot**,
+because clamping makes "at the end" and "past the end" the same number, and a point
+exactly on the end face is still that building's.
 
 ### C. Junctions and ramps
 

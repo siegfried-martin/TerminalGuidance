@@ -70,6 +70,11 @@ var _gates: Array[RampGate] = []
 ## The line the whole highway is laid on, in the map's frame. Not a road itself — the
 ## mainlines are this lifted to each deck, and the ramps branch off it.
 var _spine: RoadPath = RoadPath.new()
+## Every vertex collar on the network, as one layer. On the lattice a joint between
+## two edges is a single rib standing on their bisector (ADR 0095), and it belongs to
+## neither building — so it is placed here, where both are known.
+var _collars: MultiMeshInstance3D = null
+var _collar_rows: Array[Transform3D] = []
 ## A short, stable node-name prefix for a route, so two roads' carriageways and ramps
 ## do not collide in the tree. "A-377B" becomes "A377B".
 static func _tag(route_name: String) -> String:
@@ -91,6 +96,8 @@ func rebuild() -> void:
 	_route_buildings.clear()
 	_route_bases.clear()
 	_route_pairs.clear()
+	_collars = null
+	_collar_rows.clear()
 
 
 ## Lay one highway: a spine, a building over both carriageways, and a pair of ramps at
@@ -157,6 +164,205 @@ func add_route(spine: PackedVector3Array, centres: Array[Vector3],
 				names[ahead] if ahead >= 0 and ahead < names.size() else "",
 				names[behind] if behind >= 0 and behind < names.size() else "")
 	_route_pairs.append(carriageways)
+
+
+
+# --- The lattice road --------------------------------------------------------
+
+## Lay one route from `data/routes.json`: **one building per straight edge, one collar
+## per vertex, and two carriageways each filleted on its own line** (ADR 0095).
+##
+## This is the whole of what replaces `add_route`. Nothing here fits a curve and
+## nothing measures where anything ended up:
+##
+## - **A building is a straight box on a straight segment**, which is the case ADR
+##   0078's module system was always exact for and the case ADR 0094 proved a curve
+##   can never be. There is no bleed and there is nothing to hide.
+## - **A vertex is a mitre.** Each edge's building runs `h·tan(θ/2)` PAST the vertex,
+##   so the outer corner of the bend is closed; the two boxes overlap on the inside,
+##   and the collar standing on the bisector covers the overlap and both ends. The
+##   barrier needs no special case — `barrier()` already picks the building the hull is
+##   deepest inside of, and inside the overlap it is inside both (ADR 0087).
+## - **Each carriageway is offset and then filleted on its OWN line.** Filleting the
+##   spine and offsetting afterwards leaves the inner lane at `R − deck_separation/2`,
+##   which at the floor is 301 m and demands 47.6 deg/s of a ship that turns at 34.
+##   Both lanes get the same radius here, and both clear the floor.
+##
+## Ramps are step C. A route laid here is a highway with no way on to it yet, flown
+## with the debug drop.
+func add_lattice_route(spec: RouteSpec, lattice: HexLattice, limits: RoadLimits,
+		names: PackedStringArray) -> void:
+	var vertices := spec.world_vertices(lattice)
+	if vertices.size() < 2:
+		return
+	var route := RoadPath.new()
+	route.set_points(vertices)
+	var tag := _tag(spec.name)
+	var pair := Vector2(limits.half_width(spec.profile), limits.half_height())
+	var collar := Tuning.num("exploration/structure_rib_thickness")
+
+	var first: RoadStructure = null
+	for i in vertices.size() - 1:
+		var head := _mitre_at(vertices, i, limits, spec.profile)
+		var tail := _mitre_at(vertices, i + 1, limits, spec.profile)
+		var along := (vertices[i + 1] - vertices[i]).normalized()
+		var built := _make_structure("%sEdge%d" % [tag, i], false,
+			spec.profile == "pair")
+		# The ends are the vertices' business, and the vertex collar covers the whole
+		# mitre plus half a rib either side of it.
+		built.end_inset = Vector2(head * 2.0 + collar * 0.5,
+			tail * 2.0 + collar * 0.5)
+		built.follow(PackedVector3Array([vertices[i] - along * head,
+			vertices[i + 1] + along * tail]), pair, pair, false, false)
+		if first == null:
+			first = built
+
+	for i in vertices.size():
+		_collar_rows.append(_collar_at(vertices, i, limits, spec.profile, collar))
+	_place_collars()
+
+	_routes.append(route)
+	_route_buildings.append(first)
+	_route_bases.append(Vector3.ZERO)
+
+	var across := limits.deck_separation * 0.5
+	var carriageways: Array[RoadDeck] = []
+	for runs_forward in [true, false]:
+		var sense := 1.0 if runs_forward else -1.0
+		var deck := _make_deck(
+			tag + "Mainline" + ("Forward" if runs_forward else "Reverse"),
+			runs_forward, false, false)
+		deck.route_name = spec.name
+		deck.deck_name = "%s %s bound" % [spec.name,
+			names[names.size() - 1] if sense > 0.0 else names[0]]
+		deck.follow(_lattice_lane(vertices, sense, across,
+			limits.fillet_radius()), "", "")
+		carriageways.append(deck)
+	_route_pairs.append(carriageways)
+
+
+## How far one edge's building runs past a vertex: `h · tan(θ/2)`, which reaches
+## exactly the mitre's outer corner. Zero at the two ends of a route, which have no
+## bend in them.
+static func _mitre_at(vertices: PackedVector3Array, i: int, limits: RoadLimits,
+		profile: String) -> float:
+	return limits.mitre_extension(profile, _deflection_at(vertices, i))
+
+
+## The angle the road turns through at a vertex, in the plane of its two edges — so a
+## change of pitch is the same rule turned on its side.
+static func _deflection_at(vertices: PackedVector3Array, i: int) -> float:
+	if i <= 0 or i >= vertices.size() - 1:
+		return 0.0
+	var back := vertices[i] - vertices[i - 1]
+	var ahead := vertices[i + 1] - vertices[i]
+	if back.length_squared() < 0.000001 or ahead.length_squared() < 0.000001:
+		return 0.0
+	return back.normalized().angle_to(ahead.normalized())
+
+
+## One carriageway's lane line: offset from the spine, then filleted.
+##
+## THE ORDER IS THE POINT. Offset first and each lane is filleted at the radius the
+## floor was computed for; fillet first and the inner one comes out tighter than the
+## ship can fly.
+static func _lattice_lane(vertices: PackedVector3Array, sense: float,
+		across: float, radius: float) -> PackedVector3Array:
+	var offset := PackedVector3Array()
+	for i in vertices.size():
+		offset.append(vertices[i] + _offset_at(vertices, i) * (sense * across))
+	var lane := RoadPath.fillet(offset, radius, RoadPath.FILLET_SEGMENT_METRES)
+	if sense >= 0.0:
+		return lane
+	var back := PackedVector3Array()
+	for i in lane.size():
+		back.append(lane[lane.size() - 1 - i])
+	return back
+
+
+## The rightward offset at a vertex, scaled so the offset line's edges stay exactly
+## `across` from the spine's.
+##
+## A polyline offset by moving each vertex along the UNIT bisector is short by
+## `1 / cos(θ/2)` — a 0.9 per cent error at 15 degrees, which is metres of median and
+## exactly the kind of thing that is invisible until it is a seam. The scale is free
+## here, so it is taken.
+static func _offset_at(vertices: PackedVector3Array, i: int) -> Vector3:
+	var last := vertices.size() - 1
+	var back := _right_of(vertices, maxi(i - 1, 0), i)
+	var ahead := _right_of(vertices, i, mini(i + 1, last))
+	if i == 0:
+		return ahead
+	if i == last:
+		return back
+	var mid := back + ahead
+	if mid.length_squared() < 0.000001:
+		return ahead
+	mid = mid.normalized()
+	var cosine := back.dot(mid)
+	return mid if cosine < 0.001 else mid / cosine
+
+
+static func _right_of(vertices: PackedVector3Array, a: int, b: int) -> Vector3:
+	var travel := vertices[b] - vertices[a]
+	var side := travel.cross(Vector3.UP)
+	return Vector3.RIGHT if side.length_squared() < 0.000001 else side.normalized()
+
+
+## The collar at a vertex: a rib standing on the bisector, long enough that both
+## edges' mitred ends are inside it and wide enough to reach both outer corners.
+static func _collar_at(vertices: PackedVector3Array, i: int, limits: RoadLimits,
+		profile: String, thickness: float) -> Transform3D:
+	var last := vertices.size() - 1
+	var back := (vertices[i] - vertices[maxi(i - 1, 0)])
+	var ahead := (vertices[mini(i + 1, last)] - vertices[i])
+	var bisector := ahead.normalized() if i == 0 else (
+		back.normalized() if i == last else (back.normalized()
+			+ ahead.normalized()).normalized())
+	var theta := _deflection_at(vertices, i)
+	var spread := 1.0 / maxf(cos(theta * 0.5), 0.2)
+	var reach := limits.mitre_extension(profile, theta)
+	var frame := CruiseLane.frame_for(bisector)
+	return Transform3D(
+		Basis(frame[0] * limits.half_width(profile) * 2.0 * spread,
+			frame[1] * limits.half_height() * 2.0 * spread,
+			-bisector * (reach * 2.0 + thickness)),
+		vertices[i])
+
+
+func _place_collars() -> void:
+	if _collars == null:
+		var multi := MultiMesh.new()
+		multi.transform_format = MultiMesh.TRANSFORM_3D
+		multi.mesh = load(RoadStructure.MODULE_PATH % "rib") as Mesh
+		_collars = MultiMeshInstance3D.new()
+		_collars.name = "VertexCollars"
+		_collars.multimesh = multi
+		_collars.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_collars.material_override = StandardMaterial3D.new()
+		add_child(_collars)
+	_collars.multimesh.instance_count = _collar_rows.size()
+	for i in _collar_rows.size():
+		_collars.multimesh.set_instance_transform(i, _collar_rows[i])
+	_paint_collars()
+
+
+## Every vertex collar, as transforms.
+##
+## For the gate, and it exists because a `MultiMesh` CANNOT BE READ BACK HEADLESS —
+## the dummy renderer stores no instance data, so `get_instance_transform` returns the
+## identity for a row that was written correctly. Asserting against the list we placed
+## is both readable there and the more honest check: it tests the geometry rather than
+## the graphics server.
+func collars() -> Array[Transform3D]:
+	return _collar_rows
+
+
+func _paint_collars() -> void:
+	if _collars == null:
+		return
+	var mat := _collars.material_override as StandardMaterial3D
+	mat.albedo_color = Tuning.color("exploration/structure_metal_color")
 
 
 ## Where routes cross, join them.
@@ -942,3 +1148,4 @@ func repaint() -> void:
 		sign.rebuild()
 	for gate in _gates:
 		gate.rebuild()
+	_paint_collars()

@@ -22,9 +22,10 @@ extends Node3D
 
 ## The legs, in order. One key per leg; systems are legs + 1, and the layout walks
 ## the list — so adding a system is adding a leg rather than editing a topology.
-const LEG_KEYS: PackedStringArray = ["exploration/local_leg_length",
-	"exploration/trunk_leg_length", "exploration/cross_inbound_leg_length",
-	"exploration/cross_outbound_leg_length"]
+## Aliases. The layout arithmetic moved to `LegacyLayout` when the lattice arrived
+## (ADR 0095) and both go in step D; these keep every existing reader pointing at one
+## definition rather than two that can drift.
+const LEG_KEYS := LegacyLayout.LEG_KEYS
 ## Placeholder identity. The POC doc calls them A, B and C; D and E arrived with the
 ## crossing highway, and naming them anything more is content this POC does not test.
 const NAMES: PackedStringArray = ["SYSTEM A", "SYSTEM B", "SYSTEM C",
@@ -38,12 +39,11 @@ const LETTERS: PackedStringArray = ["A", "B", "C", "D", "E"]
 ## Each route is anchored on one system whose position is already fixed: route 0
 ## anchors A at the origin and lays the rest out from it; route 1 anchors on B, which
 ## route 0 has already placed, so the two can never drift apart.
-const ROUTE_SYSTEMS := [[0, 1, 2], [3, 1, 4]]
-const ROUTE_LEGS := [[0, 1], [2, 3]]
-const ROUTE_ANCHORS := [0, 1]
-const ROUTE_BEARING_KEYS: PackedStringArray = ["", "exploration/crossing_bearing_deg"]
-const ROUTE_HEIGHT_KEYS: PackedStringArray = ["exploration/road_height",
-	"exploration/crossing_road_height"]
+const ROUTE_SYSTEMS := LegacyLayout.ROUTE_SYSTEMS
+const ROUTE_LEGS := LegacyLayout.ROUTE_LEGS
+const ROUTE_ANCHORS := LegacyLayout.ROUTE_ANCHORS
+const ROUTE_BEARING_KEYS := LegacyLayout.ROUTE_BEARING_KEYS
+const ROUTE_HEIGHT_KEYS := LegacyLayout.ROUTE_HEIGHT_KEYS
 ## ROADS HAVE NAMES. "Stay on highway A-377B" is a sentence a player can act on;
 ## "stay on this road" is not, and while berthed the routing readout is the only thing
 ## telling them what happens if they do nothing (ADR 0083).
@@ -101,6 +101,10 @@ var _berth: RoadBerth = null
 ## `Mothership.reads_input`: a capture harness renders into a real window, and a map
 ## that polls the keyboard in one is not reproducible. Harness switch only.
 var reads_input: bool = true
+## Which layout places the systems and shapes the roads. `make fly` leaves this alone
+## and gets the legs; `LatticeScene` sets it and gets `data/routes.json`. Read once per
+## relayout and in exactly one place, because both branches go in step D.
+var on_lattice: bool = false
 ## One-shot presses a harness queues instead. Consumed by the next observation, so a
 ## harness sets one the way a player taps a key rather than holding a flag down.
 var pressed_dock: bool = false
@@ -116,6 +120,10 @@ func _ready() -> void:
 	_build()
 	relayout()
 	Tuning.reloaded.connect(relayout)
+	# Saving `data/routes.json` relays the map out under the ship, the way saving
+	# `tuning.cfg` re-tunes it. The road is data now, and data you cannot nudge while
+	# looking at it is a worse instrument than a slider (ADR 0095).
+	Routes.reloaded.connect(relayout)
 
 
 func _build() -> void:
@@ -173,96 +181,42 @@ func _build() -> void:
 ## Called on every tuning reload, because the diameter, the leg lengths and the
 ## aperture bearing are all sliders and every one of them moves the map.
 func relayout() -> void:
-	var radius := Tuning.num("exploration/system_diameter") * 0.5
-	var bearing := Tuning.num("exploration/aperture_bearing_deg")
-	# Apertures accumulate across routes: a system on two roads has a mouth facing
-	# each way along each of them, which is what makes B an interchange rather than a
-	# place two roads happen to pass.
-	var facings: Array[Array] = []
-	for i in _discs.size():
-		facings.append([] as Array[float])
-	var spines: Array[PackedVector3Array] = []
-	var link_index := 0
-
-	for route in ROUTE_SYSTEMS.size():
-		var on_route: Array = ROUTE_SYSTEMS[route]
-		var key: String = ROUTE_BEARING_KEYS[route]
-		var route_bearing := bearing \
-			+ (0.0 if key.is_empty() else Tuning.num(key))
-		var step := SystemDisc.bearing_to_direction(route_bearing)
-		var anchor: int = ROUTE_ANCHORS[route]
-
-		# Walk BACK from the anchor and then forward from it, so a route hung on a
-		# system another route already placed cannot move it.
-		var here: Vector3 = _discs[on_route[anchor]].position
-		var legs: Array[PackedVector3Array] = []
-		var lengths := PackedFloat32Array()
-		for i in on_route.size() - 1:
-			lengths.append(Tuning.num(LEG_KEYS[(ROUTE_LEGS[route] as Array)[i]]))
-		var at := here
-		for i in range(anchor - 1, -1, -1):
-			at -= step * (lengths[i] + radius * 2.0)
-			_discs[on_route[i]].position = at
-		at = here
-		for i in range(anchor, on_route.size() - 1):
-			at += step * (lengths[i] + radius * 2.0)
-			_discs[on_route[i + 1]].position = at
-
-		# The legs, once every system on the route is placed.
-		for i in on_route.size() - 1:
-			var from_at: Vector3 = _discs[on_route[i]].position
-			legs.append(RoadPath.weave(from_at + step * radius, step, lengths[i],
-				Tuning.num("exploration/road_curve_deg"),
-				Tuning.num("exploration/road_curve_period"),
-				Tuning.num("exploration/road_rise_deg"),
-				Tuning.num("exploration/road_rise_period")))
-			# The CORRIDOR is mouth to mouth: the bounded space between two systems,
-			# handed the leg's own centre-line rather than two endpoints, so the
-			# corridor and the highway inside it cannot drift apart.
-			_links[link_index].follow(legs[i])
-			link_index += 1
-			(facings[on_route[i]] as Array[float]).append(route_bearing)
-			(facings[on_route[i + 1]] as Array[float]).append(route_bearing + 180.0)
-
-		# The SPINE: behind the first system on the route, through every centre, along
-		# every leg, and out past the last. The road is laid on this and the deep field
-		# is scattered around it, so one polyline per route is the only place a route
-		# is written down.
-		var spine := PackedVector3Array()
-		spine.append(_discs[on_route[0]].position - step * radius)
-		for i in on_route.size():
-			spine.append(_discs[on_route[i]].position)
-			if i < legs.size():
-				for point: Vector3 in legs[i]:
-					spine.append(point)
-		spine.append(_discs[on_route[on_route.size() - 1]].position + step * radius)
-		spines.append(spine)
-
+	var layout := _layout()
 	for i in _discs.size():
 		var disc := _discs[i]
+		disc.position = layout.positions[i]
 		disc.system_name = NAMES[i]
-		disc.bearings = facings[i] as Array[float]
+		disc.bearings = layout.bearings[i] as Array[float]
 		disc.rebuild()
 		_planets[i].base = disc.position
 		_planets[i].rebuild()
 		_approaches[i].position = _planets[i].position
 		_approaches[i].rebuild()
+	for i in mini(_links.size(), layout.corridors.size()):
+		_links[i].follow(layout.corridor(i))
 
 	# THE ROAD NETWORK. Each route spans its whole run in one piece, through every
 	# system on it — a highway that stops at each system is the thing ADR 0065 exists
 	# to forbid — and the routes are joined afterwards, where they cross (ADR 0085).
-	_spine = spines[0]
+	_spine = layout.spine
 	_road.rebuild()
-	for route in ROUTE_SYSTEMS.size():
-		var on_route: Array = ROUTE_SYSTEMS[route]
-		var centres: Array[Vector3] = []
+	for route in layout.route_count():
 		var names := PackedStringArray()
-		for index: int in on_route:
-			centres.append(_discs[index].position)
+		var centres: Array[Vector3] = []
+		for index in layout.systems_on(route):
+			centres.append(layout.positions[index])
 			names.append(NAMES[index])
-		_road.add_route(spines[route], centres, names, ROUTE_NAMES[route],
-			Tuning.num(ROUTE_HEIGHT_KEYS[route]))
-	_road.link_routes()
+		if layout.on_lattice:
+			_road.add_lattice_route(layout.spec_of(route), Routes.make_lattice(),
+				Routes.limits(), names)
+		else:
+			_road.add_route(layout.line_of(route), centres, names,
+				layout.route_names[route], layout.route_heights[route])
+	# Interchanges are step C on the lattice: there, two roads crossing are joined by
+	# authored junction tiles and a lane route between them, which closes exactly
+	# rather than being fitted and then measured.
+	if not layout.on_lattice:
+		_road.link_routes()
 
 	_field.regions.clear()
 	for disc in _discs:
@@ -288,6 +242,16 @@ func relayout() -> void:
 	# around the spine and rejected wherever the boundary says the point is still
 	# playable space, so it cannot exist until the field is composed.
 	_deep.rebuild(_spine, _field)
+
+
+## Where the systems go and what shape each road is. The ONE place the two layouts
+## differ, and the branch goes in step D with the legs.
+func _layout() -> MapLayout:
+	if on_lattice:
+		return LatticeLayout.build(Routes.all_routes(), Routes.anchors(),
+			Routes.make_lattice(), Routes.limits(), NAMES,
+			Tuning.num("exploration/system_diameter") * 0.5)
+	return LegacyLayout.build(NAMES, ROUTE_NAMES)
 
 
 ## The bounded space around one carriageway. Radius is DERIVED — the lane's own
@@ -734,6 +698,41 @@ func place_ship(ship: Node3D, index: int) -> void:
 	var out := (mouth - home).normalized()
 	ship.global_position = to_global(home - out * disc.radius() * 0.45)
 	ship.look_at(to_global(mouth), Vector3.UP)
+
+
+## DEBUG ONLY, and only until step C: put the ship on a carriageway, pointing along
+## it, `along` metres in.
+##
+## The lattice road has no ramps yet — junctions are authored tiles and they land in
+## step C — so without this the new road can be looked at and not flown, and the
+## vertex rule is the one thing in it that has to be judged from the seat. It is the
+## debug teleport's rule, applied to a lane instead of to a system: the ship is taken
+## off whatever it was on first, because arriving somewhere else with a lane sample
+## from the old road still attached is an engine running in open space.
+func drop_on_road(ship: Mothership, deck: RoadDeck, along: float) -> void:
+	if ship == null or deck == null or deck.length() <= 0.0:
+		return
+	_berth.release(ship)
+	_riding = null
+	ship.cruise = null
+	ship.leave_road()
+	ship.reset_reticle()
+	var at := clampf(along, 0.0, deck.length())
+	var centre := deck.path().point_at(at)
+	ship.global_position = to_global(centre)
+	ship.look_at(to_global(centre + deck.path().tangent_at(at) * 1000.0), Vector3.UP)
+	_has_previous = false
+	_previous = centre
+
+
+## Every mainline carriageway that runs forward, in route order. The debug drop picks
+## from these; nothing in the game reads them.
+func forward_mainlines() -> Array[RoadDeck]:
+	var found: Array[RoadDeck] = []
+	for deck in _road.decks():
+		if not deck.is_ramp and deck.runs_forward:
+			found.append(deck)
+	return found
 
 
 ## THE DEBUG TELEPORT (POC step 7). It exists so fuel and route choices can be tested

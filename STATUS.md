@@ -14,11 +14,11 @@ the human's explicit direction.
 
 | | |
 |---|---|
-| Branch | `feat/lattice-a`, pushed |
-| Gate | `make check` — 1409 checks, 0 failed |
-| Run it | `make fly` — **unchanged**: lattice step A is pure code, tools and data, and nothing lays the new road out until step B |
-| Built | Exploration POC steps 1–8, highway rebuild steps A–D, **lattice step A**, plus six play-session passes (ADRs 0062–0095) |
-| **Do next** | **`docs/HIGHWAY_LATTICE_PLAN.md`, step B: the mainline from routes.** `scenes/lattice.tscn` and `make lattice` beside the existing scene, `LatticeLayout` in place of the leg-walking layout, one `RoadStructure` per edge with the mitre at each vertex, two `RoadDeck`s per route each filleted on its own line. Flown with the debug teleport — no ramps until C. The old road keeps working until D swaps them. |
+| Branch | `feat/lattice-b`, pushed |
+| Gate | `make check` — 1489 checks, 0 failed |
+| Run it | **`make lattice`** for the new road, `make fly` for the old one — both work, and both will until step D swaps them |
+| Built | Exploration POC steps 1–8, highway rebuild steps A–D, **lattice steps A and B**, plus six play-session passes (ADRs 0062–0095) |
+| **Do next** | **`docs/HIGHWAY_LATTICE_PLAN.md`, step C: junctions and ramps.** `RoadStructure.follow_tile`, `RoadNetwork.add_ramp`, the planet ramps for all five systems and the four interchange ramps at B, as `lane` routes in `data/routes.json`. That is what gives the lattice road a way on to it. |
 | **Waiting on you** | **Two feel calls.** `ship/max_pitch_deg` (78) and `camera/ship_pitch_ceiling_deg` (42) are the pitch pair — how steeply the nose may point, and how far the boom follows it there. They are tuned together and they are yours. Also `exploration/junction_wall_opening_metres` (500), which is how much wall an exit opens. Still not diagnosed: the undock on the far highway that put the ship in the other lane. Then the fourth checkpoint: success criterion 1, ten minutes on the trunk road. |
 
 ### The lattice, step A — built
@@ -56,8 +56,40 @@ road, unchanged, and it stays that way until step D.
   human can act on.
 
 **Two feel calls that are now live**: `exploration/road_fillet_radius` (900 m, floor
-421) is how a vertex feels to fly, and it is yours the moment step B puts a vertex in
-front of you. `road_pitch_max_deg` (7) migrated off `road_rise_deg`.
+421) is how a vertex feels to fly. `road_pitch_max_deg` (7) migrated off `road_rise_deg`.
+
+### The lattice, step B — built, and it is flyable
+
+**`make lattice`.** The same scene as `make fly` — same systems, corridors, planets,
+boundary, HUD and controls — with `SystemMap` reading `data/routes.json` instead of
+walking a list of tuned leg lengths. The old road is untouched and both run.
+
+**There is no way ON to it yet** (junctions are step C), so a fresh run starts on the
+trunk carriageway and **J walks the road's own vertices** rather than its systems. The
+stops are derived from the route data, so authoring a bend into `data/routes.json` adds
+a stop with no code change — and saving that file relays the map out under you.
+
+- **One building per straight edge**, mitred `h·tan(θ/2)` past each vertex so the outer
+  corner is closed and the inside overlaps; **one collar per vertex** standing on the
+  bisector, covering both boxes' ends. No bleed, and nothing to hide.
+- **Each carriageway is offset and then filleted on its own line.** The order is the
+  whole point, and it is the correction found reviewing the plan.
+- `LegacyLayout` and `LatticeLayout` both produce a `MapLayout`, so everything
+  downstream of `SystemMap` is identical for the two. Both branches go in step D.
+
+**One bug the lattice surfaced, and it was live on the old road too.** `RoadPath.closest`
+clamps, so the offset measured from a clamped end has no along-component left in it: a
+building thirty kilometres behind the ship reported exactly the same two walls as the
+one the ship was inside, and tied with it on `room()`. One long building per route hid
+it; a dozen short edges in a line surfaced it at once, as the HUD naming the wrong
+shell. A building now declines to answer past its own end face.
+
+**Waiting on you, and it is the thing step B exists to ask:** fly `make lattice`, press
+J to the first bend, and say whether a 15.3° corner in a hard-edged 480 m building reads
+as a road bending or as a road with a kink in it. The plan's §12.1 says this is where
+it is most likely to be wrong, and the fix if it is — a generated elbow tile per angle —
+is more generator output and no architecture change. `road_fillet_radius` is the slider
+while you are there.
 
 ### The road goes on a lattice — decided, and step A built
 

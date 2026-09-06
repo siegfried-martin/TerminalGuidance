@@ -76,6 +76,21 @@ func _ready() -> void:
 	_apply_mouse_mode()
 
 
+## Whether this scene lays its roads on the lattice (ADR 0095). `LatticeScene` says
+## yes and `make fly` says no, and that is the only difference between the two until
+## step D deletes the question.
+func uses_lattice() -> bool:
+	return false
+
+
+## Where a fresh run starts: in system A, on the combat plane, back from the aperture
+## and facing down the leg — so the first thing on screen is the way out of the system
+## and the trip that is being measured. The map owns the rule, because the debug
+## teleport has to land the ship the same way a fresh run does.
+func place_start() -> void:
+	_map.place_ship(_ship, 0)
+
+
 # --- construction ------------------------------------------------------------
 
 func _build_environment() -> void:
@@ -111,6 +126,7 @@ func _build_world() -> void:
 
 	_map = SystemMap.new()
 	_map.name = "SystemMap"
+	_map.on_lattice = uses_lattice()
 	_root.add_child(_map)
 	_map.arrived.connect(_on_arrived)
 	_map.departed.connect(_on_departed)
@@ -133,11 +149,7 @@ func _build_ship() -> void:
 	# the autopilot — which is what happens when nobody is flying — never runs.
 	_ship.set_autopilot(false)
 	_ship.piloted = true
-	# Started in system A, on the combat plane, back from the aperture and facing
-	# down the leg — so the first thing on screen is the way out of the system and
-	# the trip that is being measured. The map owns the rule, because the debug
-	# teleport has to land the ship the same way a fresh run does.
-	_map.place_ship(_ship, 0)
+	place_start()
 
 	_camera = ChaseCamera.new()
 	_camera.name = "ChaseCamera"
