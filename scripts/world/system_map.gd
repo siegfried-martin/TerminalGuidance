@@ -701,14 +701,26 @@ func place_ship(ship: Node3D, index: int) -> void:
 
 
 ## DEBUG ONLY, and only until step C: put the ship on a carriageway, pointing along
-## it, `along` metres in.
+## it, `along` metres in, **with the cruise drive running**.
 ##
 ## The lattice road has no ramps yet — junctions are authored tiles and they land in
-## step C — so without this the new road can be looked at and not flown, and the
-## vertex rule is the one thing in it that has to be judged from the seat. It is the
-## debug teleport's rule, applied to a lane instead of to a system: the ship is taken
-## off whatever it was on first, because arriving somewhere else with a lane sample
-## from the old road still attached is an engine running in open space.
+## step C — so there is no portal to fly and therefore no way to engage. Without this
+## the new road can be looked at and not flown, and the vertex rule is the one thing in
+## it that has to be judged from the seat: a bend at 30 m/s and the same bend at 250
+## are not the same question.
+##
+## **It stands in for a portal and does exactly what the portal branch does** — adopt
+## the road's axis, take a lane sample, reset the reticle — rather than inventing a
+## second way on to a road. When step C lands, the ramps are the way on and this goes
+## with the scene it serves. It engages only for a hull that HAS a drive, because the
+## speed ladder is keyed by class and a fighter on the road is still a fighter
+## (ADR 0059); a dry tank is not checked, because a dry tank is slow and not stranded
+## (ADR 0086) and being stuck at hull speed with no explanation is the thing this
+## exists to stop.
+##
+## The ship is taken off whatever it was on first, the way the teleport does: arriving
+## somewhere else with a lane sample from the old road still attached is an engine
+## running in open space.
 func drop_on_road(ship: Mothership, deck: RoadDeck, along: float) -> void:
 	if ship == null or deck == null or deck.length() <= 0.0:
 		return
@@ -721,8 +733,17 @@ func drop_on_road(ship: Mothership, deck: RoadDeck, along: float) -> void:
 	var centre := deck.path().point_at(at)
 	ship.global_position = to_global(centre)
 	ship.look_at(to_global(centre + deck.path().tangent_at(at) * 1000.0), Vector3.UP)
-	_has_previous = false
+	# `_previous` is the swept portal test's other end, and there is no portal here —
+	# but it is also what `_ride_the_road` refuses to run without, so it is set to
+	# where the ship now is rather than left a system away.
 	_previous = centre
+	_has_previous = true
+	if not ship.has_cruise_drive():
+		return
+	_riding = deck
+	ship.cruise = deck.sample(centre, ship.lane_clearance())
+	ship.adopt_road_axis(ship.cruise.axis)
+	ship.reset_reticle()
 
 
 ## Every mainline carriageway that runs forward, in route order. The debug drop picks

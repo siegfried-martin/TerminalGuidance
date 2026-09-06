@@ -450,9 +450,18 @@ that cannot be flown is discovered; the derived fillet floor and its clamp;
 | `RoadStructure` | loses the bleed. `rebuild` is a straight step. `pierce` stays for one more step so the old scene still works |
 
 Ramps: none on the lattice scene yet. The lattice scene is a highway with no way onto
-it, so **a fresh run starts on the carriageway and the debug teleport walks the road's
-own vertices** instead of its systems — the drop is derived from the route data, so
-authoring a bend into `data/routes.json` adds a stop with no code change.
+it, so **a fresh run starts on the carriageway with the drive running, and the debug
+teleport walks the road's own vertices** instead of its systems — the drop is derived
+from the route data, so authoring a bend into `data/routes.json` adds a stop with no
+code change.
+
+**The drop has to ENGAGE, not just place.** Engaging is crossing a ramp's start portal
+and there are no ramps until step C, so a drop that only moved the ship left it sitting
+on the highway at hull speed with the HUD saying *"fly a portal to engage"* — and a
+bend at 30 m/s is not the bend anyone is being asked about. It does exactly what the
+portal branch does (adopt the road's axis, take a lane sample, reset the reticle)
+rather than inventing a second way on to a road, and it goes with the scene when the
+ramps land.
 
 `tools/shots/vertex_shot.gd` renders a bend from the seat at any distance
 (`VERTEX_SHOT_VERTEX`, `VERTEX_SHOT_APPROACH`). **The frame has to be taken from the

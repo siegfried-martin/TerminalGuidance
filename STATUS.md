@@ -65,9 +65,16 @@ boundary, HUD and controls — with `SystemMap` reading `data/routes.json` inste
 walking a list of tuned leg lengths. The old road is untouched and both run.
 
 **There is no way ON to it yet** (junctions are step C), so a fresh run starts on the
-trunk carriageway and **J walks the road's own vertices** rather than its systems. The
-stops are derived from the route data, so authoring a bend into `data/routes.json` adds
-a stop with no code change — and saving that file relays the map out under you.
+trunk carriageway **with the cruise drive already running**, and **J walks the road's
+own vertices** rather than its systems. The stops are derived from the route data, so
+authoring a bend into `data/routes.json` adds a stop with no code change — and saving
+that file relays the map out under you.
+
+The drop engages rather than just placing you, and it has to: engaging is crossing a
+ramp's start portal, and there are no ramps yet, so a drop that only moved the ship left
+it on the highway at hull speed with the HUD saying *"fly a portal to engage"*. Merging
+on is the right answer and it is what step C builds; until then this stands in for the
+portal and does exactly what the portal branch does.
 
 - **One building per straight edge**, mitred `h·tan(θ/2)` past each vertex so the outer
   corner is closed and the inside overlaps; **one collar per vertex** standing on the

@@ -3020,6 +3020,16 @@ func _test_lattice_builds() -> void:
 	_expect(map.forward_mainlines().size() == specs.size(),
 		"the debug drop has a carriageway per route to put you on",
 		"got %d" % map.forward_mainlines().size())
+	# …AND WITH THE DRIVE RUNNING. Engaging is crossing a ramp's start portal, and
+	# this road has no ramps until step C — so a drop that only placed the ship left
+	# it on the highway at hull speed with the HUD saying "fly a portal to engage",
+	# which is a road you cannot judge a bend on.
+	_expect(map.riding() != null and scene.ship().cruise != null,
+		"…and the drop leaves the ship riding, because there is no portal to fly yet",
+		"the ship is on the road at hull speed")
+	_expect(scene.ship().road_axis().length_squared() > 0.5,
+		"…having adopted the road's axis, so the first frame does not slew",
+		"the ship kept the axis of wherever it was before")
 
 	# The systems landed on their cells, and the corridors still join them.
 	for i in ["SYSTEM A", "SYSTEM B", "SYSTEM C", "SYSTEM D", "SYSTEM E"]:
