@@ -168,6 +168,8 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/lane_corner_roundness",
 	"exploration/lane_hull_clearance_cap", "exploration/ramp_curve_tightness",
 	"exploration/road_curve_deg", "exploration/road_curve_period",
+	"exploration/lattice_cell_metres", "exploration/lattice_level_metres",
+	"exploration/road_fillet_radius", "exploration/road_pitch_max_deg",
 	"exploration/road_rise_deg", "exploration/road_rise_period",
 	"exploration/bounds_grid_spacing", "exploration/bounds_grid_alpha_scale",
 	"exploration/bounds_grid_alpha", "exploration/road_height",
@@ -284,6 +286,7 @@ func _ready() -> void:
 	_test_tuning_writer()
 	_test_debug_panel()
 	_test_autopilot_holds_standoff()
+	_test_lattice()
 	await _test_sandbox_builds()
 	await _test_arena_builds()
 	await _test_exploration_builds()
@@ -2482,6 +2485,369 @@ func _walk(dir_path: String, out: PackedStringArray) -> void:
 		entry = dir.get_next()
 	dir.list_dir_end()
 
+
+
+## THE LATTICE (ADR 0095), step A: the basis, the fillet, the route data and the
+## junction tiles. Everything here is pure or on disk — no scene is built — because
+## the point of this step is that a road that cannot be flown is rejected by name
+## before anything lays it out.
+func _test_lattice() -> void:
+	var lattice := HexLattice.new(600.0, 120.0)
+
+	# Section 3.2 of the plan, and the whole argument for the design: every vector
+	# between two cells is a straight road, so a short edge already points as finely
+	# as any map wants. 15 degrees EXACTLY is on no lattice — its tangent is
+	# irrational in both the hex and the square basis — and 13.9 or 15.3 is not
+	# distinguishable from it in a frame.
+	var table: Array[Array] = [
+		[Vector2i(1, 0), 90.0, 1.0],
+		[Vector2i(4, 1), 79.1066, 4.58258],
+		[Vector2i(3, 1), 76.1021, 3.60555],
+		[Vector2i(2, 1), 70.8934, 2.64575],
+		[Vector2i(3, 2), 66.5868, 4.35890],
+		[Vector2i(1, 1), 60.0, 1.73205],
+		[Vector2i(8, 3), 74.7036, 9.84886],
+		[Vector2i(11, 4), 75.0870, 13.45362],
+	]
+	for row in table:
+		var cell: Vector2i = row[0]
+		var bearing := lattice.bearing_of(cell)
+		var cells := lattice.length_of(cell) / 600.0
+		_expect(absf(bearing - float(row[1])) < 0.01,
+			"(%d,%d) bears %.4f deg" % [cell.x, cell.y, float(row[1])],
+			"got %.4f" % bearing)
+		_expect(absf(cells - float(row[2])) < 0.0001,
+			"(%d,%d) is %.5f cells long" % [cell.x, cell.y, float(row[2])],
+			"got %.5f" % cells)
+
+	# The round trip, and it is CUBE ROUNDING that makes it hold near a boundary.
+	# Rounding q and r independently picks the wrong cell there, and the failure is
+	# invisible — a system snapped one cell over, and a route that no longer closes.
+	var exact := true
+	var nearest := true
+	for q in range(-6, 7):
+		for r in range(-6, 7):
+			var cell := Vector2i(q, r)
+			if lattice.from_world(lattice.to_world(cell, 0)) != cell:
+				exact = false
+			# A point three fifths of the way to a neighbour is past the boundary, so
+			# the answer must be the neighbour and not the cell it started from.
+			for step in HexLattice.STEPS:
+				var drifted: Vector3 = lattice.to_world(cell, 0).lerp(
+					lattice.to_world(cell + step, 0), 0.6)
+				var answered := lattice.from_world(drifted)
+				var best := INF
+				for candidate in lattice.neighbours(cell) + [cell]:
+					best = minf(best, drifted.distance_to(lattice.to_world(candidate, 0)))
+				if drifted.distance_to(lattice.to_world(answered, 0)) > best + 0.001:
+					nearest = false
+	_expect(exact, "every cell round-trips through world space", "one did not")
+	_expect(nearest, "a point off a cell centre snaps to the NEAREST cell",
+		"cube rounding is picking a further one")
+	_expect(lattice.to_world(Vector2i(0, 0), 3).y == 360.0,
+		"the mainline's level 3 is 360 m above the combat plane",
+		"%.1f" % lattice.to_world(Vector2i(0, 0), 3).y)
+	_expect(lattice.to_world(Vector2i(0, 0), 5).y
+			- lattice.to_world(Vector2i(0, 0), 3).y == 240.0,
+		"the crossing rides two levels — 240 m — above the trunk", "it does not")
+
+	# A rotation of the lattice onto itself, which is what lets one junction mesh
+	# serve six directions and its socket still land on a cell.
+	var turns_back := true
+	var keeps_length := true
+	for q in range(-4, 5):
+		for r in range(-4, 5):
+			var cell := Vector2i(q, r)
+			if HexLattice.rotate60(cell, 6) != cell:
+				turns_back = false
+			for steps in 6:
+				if HexLattice.cells_of(HexLattice.rotate60(cell, steps)) \
+						!= HexLattice.cells_of(cell):
+					keeps_length = false
+	_expect(turns_back, "six 60-degree turns is the identity", "it is not")
+	_expect(keeps_length, "a 60-degree turn preserves a vector's length", "it does not")
+	_expect(HexLattice.rotation_between(Vector2i(3, 0), Vector2i(0, 3)) == 1,
+		"(0,3) is (3,0) turned once", "it is not")
+	_expect(HexLattice.rotation_between(Vector2i(3, 0), Vector2i(2, 1)) == -1,
+		"(2,1) is no rotation of (3,0), so no tile may sit on it", "it matched")
+	_expect(HexLattice.is_axial_family(Vector2i(0, 6))
+			and HexLattice.is_axial_family(Vector2i(-3, 3))
+			and not HexLattice.is_axial_family(Vector2i(2, 1)),
+		"the (n, 0) family is the six axial directions and nothing else", "it is not")
+
+	# --- The fillet ----------------------------------------------------------
+	# The road does not curve; the LANE does, at each vertex, and that is what makes
+	# a direction change flyable inside a hard-cornered building.
+	var corner := PackedVector3Array([
+		Vector3(-2000.0, 0.0, 0.0), Vector3.ZERO, Vector3(0.0, 0.0, -2000.0)])
+	var lane := RoadPath.fillet(corner, 500.0, RoadPath.FILLET_SEGMENT_METRES)
+	_expect(lane[0] == corner[0] and lane[lane.size() - 1] == corner[2],
+		"a fillet leaves the first and last vertex exactly where they were",
+		"%s .. %s" % [lane[0], lane[lane.size() - 1]])
+	_expect((lane[1] - lane[0]).normalized().distance_to(Vector3.RIGHT) < 0.001,
+		"…and leaves along the first edge", str((lane[1] - lane[0]).normalized()))
+	var landing := (lane[lane.size() - 1] - lane[lane.size() - 2]).normalized()
+	_expect(landing.distance_to(Vector3.FORWARD) < 0.001,
+		"…and arrives along the second", str(landing))
+	# The centre sits on the interior bisector at R / cos(theta/2): a 90-degree
+	# turn at 500 m puts it 707 m from the vertex, not 500.
+	var centre := Vector3(-500.0, 0.0, -500.0)
+	var off := 0.0
+	for i in range(1, lane.size() - 1):
+		off = maxf(off, absf(lane[i].distance_to(centre) - 500.0))
+	_expect(off < 0.5, "…and every point of the arc is 500 m from its centre",
+		"off by %.3f m" % off)
+	var arc := RoadPath.new()
+	arc.set_points(lane)
+	_expect(absf(arc.max_turn_deg_per_metre() - rad_to_deg(1.0) / 500.0) < 0.003,
+		"…and its curvature is 1/R, which is what the ADR 0070 check reads",
+		"%.5f deg/m against %.5f" % [arc.max_turn_deg_per_metre(),
+			rad_to_deg(1.0) / 500.0])
+
+	var straight_on := PackedVector3Array([
+		Vector3.ZERO, Vector3(1000.0, 0.0, 0.0), Vector3(3000.0, 0.0, 0.0)])
+	_expect(RoadPath.fillet(straight_on, 900.0, RoadPath.FILLET_SEGMENT_METRES).size() == 3,
+		"a vertex with no turn in it is left alone — it is a plain rib",
+		"the fillet added points to a straight")
+
+	# The backstop: asked for more tangent than the edge has, the radius is reduced
+	# rather than two fillets overlapping. The gate rejects a route that needs it,
+	# but the geometry must not fold either way.
+	var tight := PackedVector3Array([
+		Vector3(-1000.0, 0.0, 0.0), Vector3.ZERO, Vector3(0.0, 0.0, -1000.0)])
+	var held := RoadPath.new()
+	held.set_points(RoadPath.fillet(tight, 900.0, RoadPath.FILLET_SEGMENT_METRES))
+	_expect(absf(held.max_turn_deg_per_metre() - rad_to_deg(1.0) / 500.0) < 0.003,
+		"a fillet too big for its edges is reduced to fit, not folded",
+		"%.5f deg/m" % held.max_turn_deg_per_metre())
+
+	# --- The derived floor ---------------------------------------------------
+	var limits := Routes.limits()
+	var floor_metres := Tuning.num("exploration/cruise_speed") \
+		/ deg_to_rad(Tuning.num("exploration/cruise_turn_rate_deg_per_sec"))
+	_expect(absf(limits.fillet_floor() - maxf(floor_metres,
+			Tuning.num("exploration/deck_separation"))) < 0.01,
+		"the fillet floor is cruise_speed / turn_rate, or the deck separation",
+		"%.1f m against %.1f" % [limits.fillet_floor(), floor_metres])
+	_expect(limits.fillet_radius() >= limits.fillet_floor(),
+		"the tuned fillet radius is at or above its floor",
+		"%.0f m against a floor of %.0f" % [limits.fillet_radius(),
+			limits.fillet_floor()])
+	var dragged := RoadLimits.new({
+		"cruise_speed": 250.0, "cruise_turn_rate_deg_per_sec": 34.0,
+		"deck_separation": 240.0, "road_fillet_radius": 300.0})
+	_expect(dragged.clamped() and dragged.fillet_radius() == dragged.fillet_floor(),
+		"a radius dragged under the floor is CLAMPED at the point of use, and says so",
+		"it was not")
+
+	# --- Bad routes ----------------------------------------------------------
+	# Each rejected by name, because "the map does not build" is not an error a
+	# human can act on and "K-999 vertex 2 doubles back" is.
+	_bad_route("a road that doubles back",
+		{"vertices": [{"cell": [0, 0]}, {"cell": [5, 0]}, {"cell": [0, 0]}]},
+		"doubles back")
+	_bad_route("an edge with no length",
+		{"vertices": [{"cell": [0, 0]}, {"cell": [0, 0]}, {"cell": [5, 0]}]},
+		"has no length")
+	_bad_route("a junction whose edge is not its footprint",
+		{"vertices": [{"cell": [0, 0], "junction": "diverge_right"}, {"cell": [5, 0]}]},
+		"the edge must be exactly the tile")
+	_bad_route("a junction on an oblique edge",
+		{"vertices": [{"cell": [0, 0], "junction": "diverge_right"}, {"cell": [2, 1]}]},
+		"(n, 0) family")
+	_bad_route("a junction on the last vertex",
+		{"vertices": [{"cell": [0, 0]}, {"cell": [3, 0], "junction": "diverge_right"}]},
+		"no edge leaving it")
+	_bad_route("a junction tile that does not exist",
+		{"vertices": [{"cell": [0, 0], "junction": "loop_the_loop"}, {"cell": [3, 0]}]},
+		"make assets")
+	_bad_route("an edge too steep to fly",
+		{"vertices": [{"cell": [0, 0], "level": 0}, {"cell": [1, 0], "level": 3}]},
+		"road_pitch_max_deg")
+	_bad_route("a turn whose fillet would pass the next vertex",
+		{"vertices": [{"cell": [0, 0]}, {"cell": [1, 0]}, {"cell": [1, -1]}]},
+		"past half the")
+	_bad_route("a profile nobody builds",
+		{"profile": "triple", "vertices": [{"cell": [0, 0]}, {"cell": [3, 0]}]},
+		"is not one of")
+	_bad_route("a ramp with no junction to leave from",
+		{"profile": "lane", "vertices": [{"cell": [0, 0]}, {"cell": [3, 0]}]},
+		"needs a \"from\"")
+	_bad_route("a vertex naming an anchor the map has not got",
+		{"vertices": [{"at": "SYSTEM Z"}, {"cell": [3, 0]}]},
+		"no anchor named")
+
+	# --- The junction catalogue ----------------------------------------------
+	var tiles := Routes.tiles()
+	for wanted in ["diverge_right", "merge_below"]:
+		_expect(tiles.has(wanted), "the catalogue carries %s" % wanted,
+			"missing — run `make assets`")
+	for tile_name: String in tiles:
+		var tile := tiles[tile_name] as RoadTile
+		_expect(tile.parse_errors.is_empty(),
+			"%s's sidecar parses" % tile_name, " | ".join(tile.parse_errors))
+		_expect(HexLattice.is_axial_family(tile.footprint)
+				and tile.footprint != Vector2i.ZERO,
+			"%s's footprint (%d,%d) is a lattice vector tiles are generated for"
+				% [tile_name, tile.footprint.x, tile.footprint.y], "it is not")
+		_expect(tile.section_matches(Routes.tuned_section()).is_empty(),
+			"%s was generated against the tuned section" % tile_name,
+			" | ".join(tile.section_matches(Routes.tuned_section())))
+		var socket := lattice.to_world(tile.socket_cell, tile.socket_level)
+		var ramp := tile.run("ramp")
+		var miss := minf(ramp[0].distance_to(socket),
+			ramp[ramp.size() - 1].distance_to(socket))
+		_expect(miss < 0.001,
+			"%s's ramp run meets its socket to the millimetre" % tile_name,
+			"off by %.3f m" % miss)
+		_expect(lattice.is_lattice_vector(socket),
+			"%s's ramp socket is a lattice cell" % tile_name, str(socket))
+		for housed in tile.buildings:
+			var housed_run := RoadPath.new()
+			housed_run.set_points(tile.run(String(housed["run"])))
+			_expect(float(housed["to"]) <= housed_run.length() + 0.001
+					and float(housed["from"]) >= -0.001,
+				"%s's %s building lies inside its own run"
+					% [tile_name, housed["name"]],
+				"%.0f..%.0f of %.0f m" % [housed["from"], housed["to"],
+					housed_run.length()])
+
+	# ADR 0080, now a property of the catalogue rather than a measurement: you leave
+	# a road sideways or over the top and you join it from below. Nothing exits down.
+	var exit_tile := tiles["diverge_right"] as RoadTile
+	var entry_tile := tiles["merge_below"] as RoadTile
+	var exit_face := int((exit_tile.apertures[0] as Dictionary)["face"])
+	_expect(exit_face == RoadStructure.Face.RIGHT or exit_face == RoadStructure.Face.ABOVE,
+		"an exit opens a wall or a roof, never a floor (ADR 0080)",
+		"face %d" % exit_face)
+	_expect(exit_tile.has_gate,
+		"an exit carries the gate you take it through", "it has none")
+	var troughs := false
+	for aperture in entry_tile.apertures:
+		if String(aperture["building"]) == "mainline" \
+				and int(aperture["face"]) == RoadStructure.Face.BELOW:
+			troughs = true
+	_expect(troughs, "an entry opens the roadway it rises through (ADR 0091)",
+		"the mainline's floor stays shut")
+	var unroofed := false
+	for aperture in entry_tile.apertures:
+		if String(aperture["building"]) == "ramp" \
+				and int(aperture["face"]) == RoadStructure.Face.ABOVE:
+			unroofed = true
+	_expect(unroofed, "…and over the same stretch the ramp loses its roof",
+		"the ramp keeps a roof it has to come up through")
+	_expect(float((exit_tile.building("ramp") as Dictionary)["from"]) > 1.0,
+		"an exit's building starts where it CLEARS the highway (ADR 0092)",
+		"it starts in the lane")
+	_expect(float((entry_tile.building("ramp") as Dictionary)["from"]) < 1.0,
+		"…and an entry's troughs the whole way", "it does not")
+
+	for model in ["road_junction_diverge_right_metal",
+			"road_junction_diverge_right_glass",
+			"road_junction_merge_below_metal", "road_junction_merge_below_glass"]:
+		var mesh := load("res://assets/models/%s.obj" % model) as Mesh
+		_expect(mesh != null and mesh.get_surface_count() > 0,
+			"%s.obj imports as a Mesh" % model, "import failed — run `make assets`")
+
+	# --- The map on disk -----------------------------------------------------
+	_expect(Routes.load_error().is_empty(), "data/routes.json parses",
+		Routes.load_error())
+	_expect(Routes.errors().is_empty(),
+		"every route on the map satisfies every bound in plan section 5",
+		" | ".join(Routes.errors()))
+	for system in ["SYSTEM A", "SYSTEM B", "SYSTEM C", "SYSTEM D", "SYSTEM E"]:
+		_expect(Routes.anchors().has(system), "%s is on the lattice" % system,
+			"missing from anchors")
+	var trunk := Routes.route("A-377B")
+	var crossing := Routes.route("K-112")
+	_expect(trunk != null and crossing != null,
+		"the map carries both roads (ADR 0081)", "one is missing")
+	if trunk == null or crossing == null:
+		return
+
+	# The legs, against the numbers the retiring `*_leg_length` keys carried: a leg
+	# plus a disc at each end. Within a per cent, which is a cell either way.
+	for leg: Array in [["SYSTEM A", "SYSTEM B", 11500.0], ["SYSTEM B", "SYSTEM C", 21500.0]]:
+		var ran := _leg_metres(trunk, String(leg[0]), String(leg[1]))
+		_expect(absf(ran - float(leg[2])) / float(leg[2]) < 0.02,
+			"A-377B runs %s to %s in about %.1f km" % [leg[0], leg[1], float(leg[2]) / 1000.0],
+			"%.0f m against %.0f" % [ran, float(leg[2])])
+	for leg: Array in [["SYSTEM D", "SYSTEM B", 13100.0], ["SYSTEM B", "SYSTEM E", 10100.0]]:
+		var ran := _leg_metres(crossing, String(leg[0]), String(leg[1]))
+		_expect(absf(ran - float(leg[2])) / float(leg[2]) < 0.02,
+			"K-112 runs %s to %s in about %.1f km" % [leg[0], leg[1], float(leg[2]) / 1000.0],
+			"%.0f m against %.0f" % [ran, float(leg[2])])
+	var legs: Array[float] = [
+		_leg_metres(trunk, "SYSTEM A", "SYSTEM B"),
+		_leg_metres(trunk, "SYSTEM B", "SYSTEM C"),
+		_leg_metres(crossing, "SYSTEM D", "SYSTEM B"),
+		_leg_metres(crossing, "SYSTEM B", "SYSTEM E")]
+	var unequal := true
+	for i in legs.size():
+		for j in range(i + 1, legs.size()):
+			if absf(legs[i] - legs[j]) < 500.0:
+				unequal = false
+	_expect(unequal, "no two legs are the same length (ADR 0085)",
+		"two of %s match" % str(legs))
+
+	# 55 degrees is not a lattice angle and 60 is — and 60 is the better interchange
+	# angle anyway. This is a deliberate change to the map's shape (plan section 7).
+	var at_b_trunk := _edge_at(trunk, "SYSTEM B")
+	var at_b_crossing := _edge_at(crossing, "SYSTEM B")
+	var crossed := absf(lattice.bearing_of(at_b_trunk) - lattice.bearing_of(at_b_crossing))
+	_expect(absf(minf(crossed, 360.0 - crossed) - 60.0) < 0.001,
+		"the two roads cross at SYSTEM B at exactly 60 degrees",
+		"%.4f deg" % crossed)
+	_expect(trunk.level == 3 and crossing.level == 5,
+		"the trunk rides at level 3 and the crossing at level 5",
+		"%d and %d" % [trunk.level, crossing.level])
+
+	# And the whole point of the exercise: a filleted lane on this map never asks the
+	# ship for more than it can give (ADR 0070), measured rather than asserted.
+	var limit := Tuning.num("exploration/cruise_turn_rate_deg_per_sec")
+	for spec in Routes.all_routes():
+		var path := RoadPath.new()
+		path.set_points(RoadPath.fillet(spec.world_vertices(lattice),
+			limits.fillet_radius(), RoadPath.FILLET_SEGMENT_METRES))
+		var demanded := limits.demanded_turn_rate(path.max_turn_deg_per_metre())
+		_expect(demanded <= limit,
+			"%s demands %.1f deg/s of a ship that turns at %.0f" % [
+				spec.name, demanded, limit],
+			"it demands more than the ship has")
+
+
+## A route that must not build, and the words the human needs to see when it does not.
+func _bad_route(what: String, data: Dictionary, fragment: String) -> void:
+	var spec := RouteSpec.parse("K-999", data, {})
+	var errors := spec.validate(HexLattice.new(600.0, 120.0), 900.0, 240.0, 75.0,
+		7.0, Routes.tiles())
+	var joined := " | ".join(errors)
+	_expect(joined.contains(fragment), "the gate rejects " + what,
+		"expected \"%s\", got: %s" % [fragment, joined if not joined.is_empty()
+			else "no error at all"])
+
+
+## How far along a route it is from one anchor to the next, summing its edges.
+## Leg lengths are DERIVED on the lattice — a leg is the sum of its edges — which is
+## what retires the four `*_leg_length` keys.
+func _leg_metres(spec: RouteSpec, from_anchor: String, to_anchor: String) -> float:
+	var lattice := Routes.make_lattice()
+	var first := spec.anchor_names.find(from_anchor)
+	var last := spec.anchor_names.find(to_anchor)
+	if first < 0 or last < 0:
+		return 0.0
+	var run := 0.0
+	for i in range(mini(first, last), maxi(first, last)):
+		run += lattice.length_of(spec.edge(i))
+	return run
+
+
+## The edge leaving the vertex an anchor sits on.
+func _edge_at(spec: RouteSpec, anchor: String) -> Vector2i:
+	var at := spec.anchor_names.find(anchor)
+	if at < 0 or at >= spec.vertex_count() - 1:
+		return Vector2i.ZERO
+	return spec.edge(at)
 
 func _expect(condition: bool, what: String, detail: String) -> void:
 	_checks += 1
