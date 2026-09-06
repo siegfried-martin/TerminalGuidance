@@ -1,6 +1,6 @@
 extends Node3D
 ## The sandbox scene. Everything visible here is constructed in code from
-## tuning.json — the .tscn is an empty shell holding this script and nothing
+## tuning.cfg — the .tscn is an empty shell holding this script and nothing
 ## else. That is the project's scene policy: the editor is a viewer, and a
 ## scene diff should never be the place a design decision hides.
 ##
@@ -35,8 +35,8 @@ func _build_environment() -> void:
 	env.background_mode = Environment.BG_COLOR
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.glow_enabled = true
-	env.glow_intensity = 0.35
+	env.glow_enabled = Tuning.flag("arena/glow_enabled")
+	env.glow_intensity = Tuning.num("arena/glow_intensity")
 
 	var world_env := WorldEnvironment.new()
 	world_env.name = "WorldEnvironment"

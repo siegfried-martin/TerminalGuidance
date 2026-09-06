@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3]
+
+; Capture harness shell. See tools/shots/bounds_shot.gd.
+
+[ext_resource type="Script" path="res://tools/shots/bounds_shot.gd" id="1"]
+
+[node name="BoundsShot" type="Node"]
+script = ExtResource("1")

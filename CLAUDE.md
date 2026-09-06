@@ -11,6 +11,12 @@ session; the rules below are not suggestions.
 | Decisions already made, and what each one forbids | `decisions/` |
 | What is built, what is next, open feel questions | `STATUS.md` |
 | What is being built first, and its scope boundary | `docs/COMBAT_POC_IMPLEMENTATION.md` |
+| What is being built *right now*, in detail | `docs/EXPLORATION_POC_IMPLEMENTATION.md` |
+| The travel layer's locked decisions — roads, portals, the speed ladder, crew | `docs/EXPLORATION_DESIGN.md` |
+| **The road as straight edges on a lattice — the plan of record, steps A–E** | `docs/HIGHWAY_LATTICE_PLAN.md` |
+| The highway's rebuild as a built structure (section, glass, docking; its construction half is superseded) | `docs/HIGHWAY_STRUCTURE_PLAN.md` |
+| The combat bet, now built | `docs/TURRET_MODE_IMPLEMENTATION.md` |
+| What comes after the combat bet, and in what order | `docs/ROADMAP.md` |
 | The full design of record | `docs/PROJECT_OVERVIEW.md` |
 
 Before proposing anything that changes how the game behaves, check `decisions/` —
@@ -39,10 +45,10 @@ would reach for by reflex are forbidden there deliberately.
 
 **No gameplay-feel constant may appear in code.** Every feel value — turn rates,
 fuse times, camera lag, boost curves, easing, cooldowns, interrupt frequency,
-cruise speeds, spool times, light angles, FOV — lives in `tuning.json` and is read
+cruise speeds, spool times, light angles, FOV — lives in `tuning.cfg` and is read
 through the `Tuning` autoload at the point of use.
 
-- Adding a feel parameter means: add it to `tuning.json`, read it via
+- Adding a feel parameter means: add it to `tuning.cfg`, read it via
   `Tuning.num()` / `vec3()` / `color()` / `flag()`, add it to
   `REQUIRED_TUNING_KEYS` in `tools/tests/test_runner.gd`, and surface it in the
   debug HUD if it is something the human will want to watch. Same change, not a
@@ -50,9 +56,24 @@ through the `Tuning` autoload at the point of use.
 - `Tuning` getters take **no default argument**, on purpose. A default is a feel
   constant hiding in code, and it makes a typo'd key behave plausibly. A missing
   key errors, turns the HUD's tuning line red, and fails `make check`.
-- Saving `tuning.json` hot-reloads it into the running game. Systems that cache a
+- Saving `tuning.cfg` hot-reloads it into the running game. Systems that cache a
   derived value must rebuild on the `Tuning.reloaded` signal (see
   `GrayBoxArena.rebuild()`).
+- `tuning.cfg` is a Godot `ConfigFile` (ADR 0033). Comments start with `;` and may
+  sit at the end of a value line; **`#` is not a comment character** and silently
+  corrupts the next key. Values are Godot literals — `Vector3(x, y, z)` is real,
+  colours are hex strings.
+- **Values are edited in-game with the F2 panel** (ADR 0036), and Save writes back
+  to `tuning.cfg` preserving every comment. The comments are the panel's labels,
+  tooltips and slider ranges:
+
+  ```ini
+  ;; Long-form description, shown as the tooltip. As many lines as it needs.
+  base_speed = 70.0        ; [20..400] m/s. Short label, shown on the row
+  ```
+
+  So **every new value needs a comment**, and a `[min..max]` marker if it should
+  get a slider. Adding the value and documenting it are one action, not two.
 - Infrastructure constants (poll intervals, buffer sizes, layer numbers) are not
   feel values and belong in code as `const`. If the human would ever want to nudge
   it while looking at the screen, it is a feel value.
@@ -125,9 +146,22 @@ protect is not implemented yet.
   and it is deliberately rejected here.
 - **Autopilot is a heading hold.** It points the nose at a designated object; the
   player owns the throttle. It does not path, avoid, arrive, or make decisions.
-  Do not grow it.
-- **Speed hierarchy** is structural: lasers > missiles > ships. Nothing may violate
-  it by construction.
+  Do not grow it. `EXPLORATION_DESIGN.md`'s "autopilot is your own character flying"
+  describes **what it already is** — every station is a person who keeps working,
+  worse, while the player is elsewhere. A better hired pilot is a better *number*,
+  never more authority, and is still worse than the player (ADR 0058). "Hiring a
+  better pilot" is not a reason to add pathfinding, avoidance, or arrival.
+- **Speed hierarchy** is structural: lasers > missiles > ships. It is now **keyed by
+  hull class** — one global fraction cannot express a taxi at 0.27 of missile speed
+  and a fighter at 0.67 — so what it guarantees is *"a missile outruns its intended
+  targets"* (ADR 0059). Read ship numbers through `HullClass`, never straight out of
+  `Tuning` at a site that knows the class, and never express a speed relationship
+  between two ships as an absolute.
+- **The highway is a place, not a mode** (ADR 0057, superseding 0009). The cruise
+  drive works on the road and nowhere else, and there is no personal equivalent for
+  open space. Inside the tube: no camera cut, no scene load, no non-interactive
+  transit, the surrounding space stays rendered, and floating origin and
+  LOD/collision rules apply exactly as everywhere else.
 
 ## Testing convention
 
@@ -141,21 +175,35 @@ protect is not implemented yet.
 - `make shot` renders frames to `.shots/` via the movie writer, so a visual change
   can be verified from the command line without opening a window or the editor.
   Use it; do not ask the human to look at something you have not looked at.
+- `make run` plays the combat arena, `make fly` the exploration POC, `make sandbox`
+  the asset harness. One command per scene rather than a `SCENE=` argument to
+  remember: the scenes are separate because they carry different stations, and
+  telling the human the wrong one wastes a session.
 - Systems logic is verified by tests. Physics and feel are verified by the human.
 
 ## Project layout
 
 ```
 project.godot          minimal; autoloads and window config only
-tuning.json            every feel value in the game
+tuning.cfg             every feel value in the game, with inline comments
 data/input_map.json    input bindings
-scenes/                .tscn shells only
+scenes/arena.tscn      main scene: the combat POC arena (shell only)
+scenes/sandbox.tscn    asset/harness scene with the debug fly-cam (shell only)
 scripts/autoload/      Tuning, Bindings
-scripts/sandbox/       the sandbox harness
-scripts/world/         arena and world construction
-scripts/debug/         HUD, debug camera
+scripts/arena/         the combat arena builder
+scripts/ships/         mothership, target ship
+scripts/weapons/       missile, turret rounds, and the one shot resolver
+scripts/view/          camera/control state machine, chase camera, the gun station
+scripts/world/         marker lattice, reference field, the system map and road
+scripts/effects/       detonation flash, pulse-beam tracer
+scripts/lib/           pure helpers — no scene tree, no disk, unit tested:
+                       FlightGeometry, ReticleSteering, Damage, HullClass,
+                       BoundaryField and its regions, CruiseLane, RoadPath,
+                       EnvelopeMeter, TuningSchema, TuningWriter
+scripts/sandbox/       the asset harness scene
+scripts/debug/         HUD, debug fly-cam, the F2 tuning panel
 assets/                models and textures (+ committed .import files)
-tools/                 asset generators, test harness
+tools/                 asset generators, test harness, screenshot harnesses
 docs/                  design and POC docs (source of truth for intent)
 .apiref/               generated, gitignored: this build's class reference
 ```

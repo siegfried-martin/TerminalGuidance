@@ -172,7 +172,7 @@ The player chooses, at any time, which station to occupy — and hires NPCs for 
 - *"I want four excellent turrets and four skilled gunners, and I'll pilot while they wreck everything."*
 - *"I'll pilot to get the range, switch to the turret, switch to the missile, then back to the helm because I want more control than the autopilot gives me."*
 
-**Competence ceiling.** NPC gunners can be genuinely excellent — turret work is tracking and prediction, and skilled hired guns are a satisfying fantasy. NPC missile use is dumb fire-and-forget with a mediocre hit rate. A manually flown missile is the one thing in the universe nobody can do for the player. This preserves both fantasies: the summoner build is viable and pleasant, and hands-on is stronger.
+**Competence ceiling.** NPCs are worse than an engaged player at *every* station, gunners included (ADR 0058) — the best affordable gunner is roughly a mediocre player, and by the time you can afford one you have improved past it. Crew is convenience, never superiority. NPC missile use is dumb fire-and-forget with a mediocre hit rate, permanently. A manually flown missile is the one thing in the universe nobody can do for the player. This preserves both fantasies: the summoner build is viable and pleasant, and hands-on is stronger.
 
 *Parked: generated crew dialogue.* The risk is not generation quality, it is authority — a world with real state produces generated lines that drift from it, and players catch that instantly and prefer repetition. If revisited, the workable shape is generation over a tightly-specified state snapshot, flavor only, with anything load-bearing authored. Not before the world sim can describe itself.
 

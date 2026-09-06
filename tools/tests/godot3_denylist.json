@@ -1,25 +1,69 @@
 {
   "_note": "Godot 3.x APIs that a model trained on years of Godot 3 tutorials will confidently emit. A hit is a hard failure in `make check`. Add a rule the first time any Godot-3-ism gets past review. Escape hatch: put 'godot4-lint: ignore' on the line. Lives in a data file, not in the linter, so the linter does not flag its own patterns.",
-
   "rules": [
     {
       "pattern": "\\bextends\\s+(Spatial|KinematicBody|KinematicBody2D|Area|Camera|MeshInstance|CollisionShape|RayCast|StaticBody|RigidBody|Particles|Position3D|Navigation|VisibilityNotifier)\\b",
       "why": "Godot 3 node name — Godot 4 suffixes dimension (Node3D, Camera3D, MeshInstance3D, Area3D, CharacterBody3D)"
     },
-    { "pattern": "\\b(Spatial|KinematicBody|VisualServer|Quat|PoolStringArray|PoolVector3Array|PoolVector2Array|PoolIntArray|PoolRealArray|PoolByteArray|PoolColorArray)\\b",
-      "why": "Godot 3 type — use Node3D / RenderingServer / Quaternion / PackedXArray" },
-    { "pattern": "\\byield\\s*\\(", "why": "Godot 3 yield() — use await" },
-    { "pattern": "^\\s*export\\s+var\\b", "why": "Godot 3 export — use @export" },
-    { "pattern": "^\\s*onready\\s+var\\b", "why": "Godot 3 onready — use @onready" },
-    { "pattern": "^\\s*tool\\s*$", "why": "Godot 3 tool — use @tool" },
-    { "pattern": "\\bsetget\\b", "why": "Godot 3 setget — use a property with get:/set:" },
-    { "pattern": "\\.instance\\s*\\(\\s*\\)", "why": "Godot 3 PackedScene.instance() — use instantiate()" },
-    { "pattern": "\\bconnect\\s*\\(\\s*[\"'][^\"']+[\"']\\s*,\\s*self\\s*,", "why": "Godot 3 connect(name, self, method) — use signal.connect(callable)" },
-    { "pattern": "\\b(File|Directory)\\.new\\s*\\(", "why": "Godot 3 File/Directory — use FileAccess / DirAccess" },
-    { "pattern": "\\b(deg2rad|rad2deg|rand_range|stepify|linear2db|db2linear)\\s*\\(", "why": "Godot 3 math helper — deg_to_rad, rad_to_deg, randf_range, snapped, linear_to_db, db_to_linear" },
-    { "pattern": "\\bOS\\.(window_size|get_screen_size|set_window_fullscreen|get_window_size|get_real_window_size)\\b", "why": "Godot 3 OS window API — use DisplayServer" },
-    { "pattern": "get_tree\\(\\)\\.set_input_as_handled\\s*\\(", "why": "Godot 3 — use get_viewport().set_input_as_handled()" },
-    { "pattern": "^\\s*(remote|master|puppet|remotesync|mastersync)\\s+func\\b", "why": "Godot 3 RPC keyword — use @rpc" },
-    { "pattern": "\\bintersect_ray\\s*\\(\\s*(?!.*PhysicsRayQuery)[^)]*,", "why": "Godot 3 raycast signature — Godot 4 takes a PhysicsRayQueryParameters3D" }
+    {
+      "pattern": "\\b(Spatial|KinematicBody|VisualServer|Quat|PoolStringArray|PoolVector3Array|PoolVector2Array|PoolIntArray|PoolRealArray|PoolByteArray|PoolColorArray)\\b",
+      "why": "Godot 3 type — use Node3D / RenderingServer / Quaternion / PackedXArray"
+    },
+    {
+      "pattern": "\\byield\\s*\\(",
+      "why": "Godot 3 yield() — use await"
+    },
+    {
+      "pattern": "^\\s*export\\s+var\\b",
+      "why": "Godot 3 export — use @export"
+    },
+    {
+      "pattern": "^\\s*onready\\s+var\\b",
+      "why": "Godot 3 onready — use @onready"
+    },
+    {
+      "pattern": "^\\s*tool\\s*$",
+      "why": "Godot 3 tool — use @tool"
+    },
+    {
+      "pattern": "\\bsetget\\b",
+      "why": "Godot 3 setget — use a property with get:/set:"
+    },
+    {
+      "pattern": "\\.instance\\s*\\(\\s*\\)",
+      "why": "Godot 3 PackedScene.instance() — use instantiate()"
+    },
+    {
+      "pattern": "\\bconnect\\s*\\(\\s*[\"'][^\"']+[\"']\\s*,\\s*self\\s*,",
+      "why": "Godot 3 connect(name, self, method) — use signal.connect(callable)"
+    },
+    {
+      "pattern": "\\b(File|Directory)\\.new\\s*\\(",
+      "why": "Godot 3 File/Directory — use FileAccess / DirAccess"
+    },
+    {
+      "pattern": "\\b(deg2rad|rad2deg|rand_range|stepify|linear2db|db2linear)\\s*\\(",
+      "why": "Godot 3 math helper — deg_to_rad, rad_to_deg, randf_range, snapped, linear_to_db, db_to_linear"
+    },
+    {
+      "pattern": "\\bOS\\.(window_size|get_screen_size|set_window_fullscreen|get_window_size|get_real_window_size)\\b",
+      "why": "Godot 3 OS window API — use DisplayServer"
+    },
+    {
+      "pattern": "get_tree\\(\\)\\.set_input_as_handled\\s*\\(",
+      "why": "Godot 3 — use get_viewport().set_input_as_handled()"
+    },
+    {
+      "pattern": "^\\s*(remote|master|puppet|remotesync|mastersync)\\s+func\\b",
+      "why": "Godot 3 RPC keyword — use @rpc"
+    },
+    {
+      "pattern": "\\bintersect_ray\\s*\\(\\s*(?!.*PhysicsRayQuery)[^)]*,",
+      "why": "Godot 3 raycast signature — Godot 4 takes a PhysicsRayQueryParameters3D"
+    },
+    {
+      "pattern": "(?<![A-Za-z0-9_])Geometry\\s*\\.",
+      "why": "Godot 3 Geometry singleton — split into Geometry2D / Geometry3D in Godot 4 (this project's own helpers are FlightGeometry)"
+    }
   ]
 }

@@ -2,6 +2,13 @@
 
 *Status: accepted · 2026-08-23 · recorded from `docs/PROJECT_OVERVIEW.md` v3 and `docs/COMBAT_POC_IMPLEMENTATION.md` v3; the decision predates this repo*
 
+> **The open rim and the outbound clamp are superseded by ADR 0062.** The rim is a
+> boundary now, opening only where a road attaches, because ADR 0057 moved
+> departure onto the highway and left an open rim leading nowhere rendered. The
+> clamp became heading-proportional and reaches zero. Everything else here — the
+> disc shape, height as the sneak dimension, the Bannerlord treatment, magnitude
+> never direction, and bounds being the player's alone — stands unchanged.
+
 ## Decision
 
 Each system is a self-contained, origin-local arena shaped like a disc —
@@ -28,5 +35,7 @@ makes camping non-viable.
 ## What this forbids
 
 - Never clamp or redirect the player's heading. Magnitude only.
-- Do not put a wall, threshold, or prompt at the rim.
+- ~~Do not put a wall, threshold, or prompt at the rim.~~ — superseded by ADR 0062;
+  the rim is closed except at an aperture. No threshold or prompt at the aperture,
+  though.
 - Do not eject NPCs from the out-of-bounds volume; have them avoid it.

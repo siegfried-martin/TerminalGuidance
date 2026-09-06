@@ -18,6 +18,12 @@ a landing sequence without the theft.
 Combat spilling into the envelope is *good*: missiles cratering into a planet gives
 fuse-as-range a spatial dimension.
 
+> *Narrowed by ADR 0082, and this decision is unchanged.* The abort-on-any-input rule
+> governs a THRESHOLD — a countdown to a commitment you might not have meant to make,
+> which is what a planet's envelope is. A berth on the roadway is a place you
+> deliberately entered and then sit inside, and it is left with the key that took it.
+> The planet is untouched by that and still aborts on anything.
+
 ## What this forbids
 
 - No auto-steer, ever, for any reason, in any system.

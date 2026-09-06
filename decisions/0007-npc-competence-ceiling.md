@@ -1,5 +1,7 @@
 # ADR 0007 — Crew can gun; crew cannot ride missiles
 
+*Status: superseded by ADR 0058 — gunners are no longer "genuinely excellent"; the missile clause stands*
+
 *Status: accepted · 2026-08-23 · recorded from `docs/PROJECT_OVERVIEW.md` v3 and `docs/COMBAT_POC_IMPLEMENTATION.md` v3; the decision predates this repo*
 
 ## Decision
