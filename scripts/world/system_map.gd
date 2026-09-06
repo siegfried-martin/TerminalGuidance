@@ -215,7 +215,19 @@ func relayout() -> void:
 	# Interchanges are step C on the lattice: there, two roads crossing are joined by
 	# authored junction tiles and a lane route between them, which closes exactly
 	# rather than being fitted and then measured.
-	if not layout.on_lattice:
+	if layout.on_lattice:
+		# The ways on and off. A ramp is a lane route: it starts at a junction's socket
+		# cell and ends at a mouth, and nothing about where it meets the road is
+		# measured (ADR 0095).
+		var lattice := Routes.make_lattice()
+		var limits := Routes.limits()
+		for spec in Routes.all_routes():
+			if not spec.is_lane():
+				continue
+			var host := Routes.route(spec.from_route)
+			if host != null:
+				_road.add_ramp(spec, host, lattice, limits, spec.to_portal, host.name)
+	else:
 		_road.link_routes()
 
 	_field.regions.clear()

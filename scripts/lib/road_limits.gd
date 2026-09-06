@@ -47,9 +47,10 @@ func fillet_floor() -> float:
 	return maxf(by_turn_rate, deck_separation)
 
 
-## The radius to actually build with.
-func fillet_radius() -> float:
-	return maxf(tuned_fillet_radius, fillet_floor())
+## The radius to actually build with. `asked` is a route's own request, or 0 for the
+## tuned one; either way the floor wins.
+func fillet_radius(asked: float = 0.0) -> float:
+	return maxf(asked if asked > 0.0 else tuned_fillet_radius, fillet_floor())
 
 
 ## Whether the floor is currently holding the tuned value up. The debug HUD says so,

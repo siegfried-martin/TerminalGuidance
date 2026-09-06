@@ -30,6 +30,10 @@ extends Node3D
 ## Geometry is built in the MAP'S frame with the node left at identity, as with
 ## `RoadDeck`: there is no rotation to get backwards that way.
 
+## Where a junction tile's meshes live. `<tile>_<part>_<layer>.obj`, emitted with its
+## sidecar by `tools/gen_road_junctions.py`.
+const TILE_PATH := "res://assets/models/road_junction_%s_%s_%s.obj"
+
 ## Where the module meshes live. Generated, not authored — see the header of
 ## `tools/gen_road_modules.py` for the unit-section contract they are built to.
 const MODULE_PATH := "res://assets/models/road_%s.obj"
@@ -114,6 +118,12 @@ var _pierced_at: PackedFloat32Array = PackedFloat32Array()
 ## Every layer of modules by name. The `open_*` layers are the same bay with one face
 ## left out, and they are empty on a road nothing leaves.
 var _layers: Dictionary = {}
+## A junction's authored mesh, when this building is a tile rather than a run of
+## modules. Two instances, metal and glass, so the per-layer material split that makes
+## the glass a diffuser (ADR 0079) holds for a tile too.
+var _tile_metal: MeshInstance3D
+var _tile_glass: MeshInstance3D
+var _is_tile: bool = false
 
 
 func _ready() -> void:
@@ -155,6 +165,86 @@ func _make_layer(node_name: String, module: String,
 	layer.material_override = mat
 	add_child(layer)
 	return layer
+
+
+## Lay this structure as ONE AUTHORED TILE: its mesh is the tile's, and its openings
+## are the tile's sidecar rather than anything measured (ADR 0095).
+##
+## This is the whole of what a junction is now. `crossing`, `overlap`, `_facing`,
+## `_opposite`, span piercing and per-face trimming each stood in for a decision and
+## each was wrong at least once; the decision is in the sidecar, made once by the
+## generator against the same bounds the gate re-checks.
+##
+## **The shell is still the path and the section, never the mesh.** `barrier()` below
+## does not know this building is a tile, so a junction can be dressed as far as anyone
+## likes and can never change where the player may fly.
+##
+## `part` is "mainline" or "ramp"; `placement` puts the tile's local frame on the edge
+## it occupies.
+func follow_tile(tile: RoadTile, part: String, placement: Transform3D,
+		full: Vector2, mouth: Vector2, narrows_at_start: bool,
+		narrows_at_end: bool) -> void:
+	var housed := tile.building(part)
+	if housed.is_empty():
+		push_error("RoadStructure: tile %s has no %s building" % [tile.name, part])
+		return
+	var run := tile.run(String(housed["run"]))
+	var line := RoadPath.new()
+	line.set_points(run)
+	var trimmed := line.section(float(housed["from"]), float(housed["to"]))
+	var world := PackedVector3Array()
+	for point in trimmed:
+		world.append(placement * point)
+	_path.set_points(world)
+	_full = full
+	_mouth = mouth
+	_narrows_at_start = narrows_at_start
+	_narrows_at_end = narrows_at_end
+	_is_tile = true
+
+	# THE OPENINGS ARE DECLARED. Measured from the start of this building's own run,
+	# which is where the sidecar measures them from too.
+	_pierced_from = PackedFloat32Array()
+	_pierced_to = PackedFloat32Array()
+	_pierced_face = PackedInt32Array()
+	_pierced_at = PackedFloat32Array()
+	var offset := float(housed["from"])
+	for aperture in tile.apertures:
+		if String(aperture["building"]) != part:
+			continue
+		var from := float(aperture["from"]) - offset
+		var to := float(aperture["to"]) - offset
+		_pierced_from.append(minf(from, to))
+		_pierced_to.append(maxf(from, to))
+		_pierced_face.append(int(aperture["face"]))
+		_pierced_at.append((from + to) * 0.5)
+
+	_show_tile(tile.name, part, placement)
+	if not _layers.is_empty():
+		rebuild()
+
+
+## Swap the module layers out for the tile's own mesh.
+func _show_tile(tile_name: String, part: String, placement: Transform3D) -> void:
+	if _tile_metal == null:
+		_tile_metal = MeshInstance3D.new()
+		_tile_metal.name = "TileMetal"
+		_tile_metal.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_tile_metal.material_override = StandardMaterial3D.new()
+		add_child(_tile_metal)
+		_tile_glass = MeshInstance3D.new()
+		_tile_glass.name = "TileGlass"
+		_tile_glass.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var glass := StandardMaterial3D.new()
+		glass.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		glass.cull_mode = BaseMaterial3D.CULL_DISABLED
+		_tile_glass.material_override = glass
+		add_child(_tile_glass)
+	_tile_metal.mesh = load(TILE_PATH % [tile_name, part, "metal"]) as Mesh
+	_tile_glass.mesh = load(TILE_PATH % [tile_name, part, "glass"]) as Mesh
+	_tile_metal.transform = placement
+	_tile_glass.transform = placement
 
 
 ## Lay this structure along a path, in the map's frame.
@@ -263,6 +353,12 @@ func rebuild() -> void:
 
 	# One more bay than there are joints when phased: the run starts before the first
 	# collar and ends after the last, and both part-bays are real road.
+	# A TILE PROVIDES ITS OWN WALLS, FLOOR AND GLAZING — that is what authoring it
+	# means — but not its collars, which belong to the road's rhythm and are laid
+	# above. Nothing else here applies to one.
+	if _is_tile:
+		_place(placed)
+		return
 	for i in (bays + 2 if phased else bays):
 		var from := (lead + float(i - 1) * module if phased
 			else float(i) * step) + collar * 0.5
@@ -601,6 +697,11 @@ func repaint() -> void:
 	# can tell which road leaves the highway (ADR 0076); the ring is the opposite job —
 	# it is the thing that says "the way through is here", and a dimmed signpost is a
 	# worse signpost. Steel, at full brightness, on a mainline and a ramp alike.
+	# A tile takes the same two colours, so a junction and the road either side of it
+	# are visibly the same building.
+	if _tile_metal != null:
+		(_tile_metal.material_override as StandardMaterial3D).albedo_color = metal
+		(_tile_glass.material_override as StandardMaterial3D).albedo_color = glass
 	for key: String in _layers:
 		var mat := (_layers[key] as MultiMeshInstance3D).material_override \
 			as StandardMaterial3D

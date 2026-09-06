@@ -201,40 +201,8 @@ func add_lattice_route(spec: RouteSpec, lattice: HexLattice, limits: RoadLimits,
 	var pair := Vector2(limits.half_width(spec.profile), limits.half_height())
 	var collar := Tuning.num("exploration/structure_rib_thickness")
 
-	var first: RoadStructure = null
-	var travelled := 0.0
-	for i in vertices.size() - 1:
-		var head := _mitre_at(vertices, i, limits, spec.profile)
-		var tail := _mitre_at(vertices, i + 1, limits, spec.profile)
-		var along := (vertices[i + 1] - vertices[i]).normalized()
-		var built := _make_structure("%sEdge%d" % [tag, i], false,
-			spec.profile == "pair")
-		# WHERE THIS EDGE SITS IN THE ROUTE, so the collars land on one rhythm from
-		# end to end. Each edge dividing its own span into a whole number of bays gave
-		# consecutive edges of the trunk steps of 450, 400, 427 and 458 m — and
-		# `structure_module_length` is the road's strongest speed cue, so a step that
-		# changes at every bend reads from the seat as the ship being shifted.
-		built.module_phase = travelled - head
-		travelled += vertices[i].distance_to(vertices[i + 1])
-		# The ends are the vertices' business, and the vertex collar covers the whole
-		# mitre plus half a rib either side of it.
-		# ONLY A REAL JOINT GETS A COLLAR. A vertex where the road does not change
-		# direction is an authoring boundary — the seam between a junction's edge and
-		# the straight beside it — and the two buildings there are flush, so a collar
-		# standing on it marks nothing and breaks the rhythm twice over. Eleven of the
-		# trunk's thirteen vertices are that. The two ends of a route are real: the
-		# road stops there.
-		built.end_inset = Vector2(
-			head * 2.0 + collar * 0.5 if _wants_collar(vertices, i) else 0.0,
-			tail * 2.0 + collar * 0.5 if _wants_collar(vertices, i + 1) else 0.0)
-		built.follow(PackedVector3Array([vertices[i] - along * head,
-			vertices[i + 1] + along * tail]), pair, pair, false, false)
-		if first == null:
-			first = built
-
-	for i in vertices.size():
-		if _wants_collar(vertices, i):
-			_collar_rows.append(_collar_at(vertices, i, limits, spec.profile, collar))
+	var first := _lay_edges(tag, vertices, limits, spec.profile, false, false, false,
+		spec)
 	_place_collars()
 
 	_routes.append(route)
@@ -252,7 +220,7 @@ func add_lattice_route(spec: RouteSpec, lattice: HexLattice, limits: RoadLimits,
 		deck.deck_name = "%s %s bound" % [spec.name,
 			names[names.size() - 1] if sense > 0.0 else names[0]]
 		deck.follow(_lattice_lane(vertices, sense, across,
-			limits.fillet_radius()), "", "")
+			limits.fillet_radius(spec.fillet)), "", "")
 		carriageways.append(deck)
 	_route_pairs.append(carriageways)
 
@@ -263,6 +231,211 @@ static func _wants_collar(vertices: PackedVector3Array, i: int) -> bool:
 	if i <= 0 or i >= vertices.size() - 1:
 		return true
 	return _deflection_at(vertices, i) > RoadPath.FILLET_MIN_ANGLE_RAD
+
+
+
+
+## Lay a chain of vertices as one building per straight edge, mitred at every vertex
+## it turns at, with a collar on every real joint. Shared by a mainline and a ramp,
+## because a ramp on the lattice is the same thing with one lane in it.
+##
+## `spec` is the route whose junction annotations select authored tiles, or null for a
+## chain that has none (a ramp's own run).
+func _lay_edges(tag: String, vertices: PackedVector3Array, limits: RoadLimits,
+		profile: String, ramp: bool, narrows_at_start: bool, narrows_at_end: bool,
+		spec: RouteSpec) -> RoadStructure:
+	var section := Vector2(limits.half_width(profile), limits.half_height())
+	var mouth := _mouth_section() if ramp else section
+	var collar := Tuning.num("exploration/structure_rib_thickness")
+	var lattice := Routes.make_lattice()
+	var first: RoadStructure = null
+	var travelled := 0.0
+	for i in vertices.size() - 1:
+		var head := _mitre_at(vertices, i, limits, profile)
+		var tail := _mitre_at(vertices, i + 1, limits, profile)
+		var along := (vertices[i + 1] - vertices[i]).normalized()
+		var built := _make_structure("%sEdge%d" % [tag, i], ramp,
+			profile == "pair")
+		# WHERE THIS EDGE SITS IN THE ROUTE, so the collars land on one rhythm from
+		# end to end. Each edge dividing its own span into a whole number of bays gave
+		# consecutive edges of the trunk steps of 450, 400, 427 and 458 m — and
+		# `structure_module_length` is the road's strongest speed cue, so a step that
+		# changes at every bend reads from the seat as the ship being shifted.
+		built.module_phase = travelled - head
+		travelled += vertices[i].distance_to(vertices[i + 1])
+		# ONLY A REAL JOINT GETS A COLLAR. A vertex where the road does not change
+		# direction is an authoring boundary — the seam between a junction's edge and
+		# the straight beside it — and the two buildings there are flush, so a collar
+		# standing on it marks nothing and breaks the rhythm twice over.
+		built.end_inset = Vector2(
+			head * 2.0 + collar * 0.5 if _wants_collar(vertices, i) else 0.0,
+			tail * 2.0 + collar * 0.5 if _wants_collar(vertices, i + 1) else 0.0)
+		var junction: RoadTile = null
+		if spec != null and i < spec.junctions.size():
+			junction = Routes.tile(spec.junctions[i])
+		if junction != null:
+			# AN AUTHORED EDGE. Its walls, floor and glazing are the tile's and its
+			# openings are the tile's sidecar; its collars are still the road's, laid
+			# on the same phase as the straights either side.
+			built.follow_tile(junction, "mainline",
+				tile_placement(spec, i, lattice), section, mouth, false, false)
+		else:
+			built.follow(PackedVector3Array([vertices[i] - along * head,
+				vertices[i + 1] + along * tail]), section, mouth,
+				narrows_at_start and i == 0,
+				narrows_at_end and i == vertices.size() - 2)
+		if first == null:
+			first = built
+	for i in vertices.size():
+		if _wants_collar(vertices, i):
+			_collar_rows.append(_collar_at(vertices, i, limits, profile, collar))
+	return first
+
+
+## Lay one RAMP: a lane route that starts at a junction's socket and ends at a portal
+## or at another junction's socket (ADR 0095).
+##
+## **Closure is free and nothing is measured.** The old ramp was a cubic fitted between
+## two points worked out from the mainline, and where it crossed the building it left
+## had to be found afterwards — `crossing`, `overlap`, `_facing`, `_opposite`, each of
+## which was wrong at least once. Here the ramp's first stretch IS the tile's declared
+## run, its socket is a lattice cell, and every opening it makes is in the sidecar.
+##
+## The deck runs the way traffic does: out of the carriageway for an exit, into it for
+## an entry. That is the tile's `kind`, declared, and the portal goes on the end the
+## ramp meets the planet at.
+func add_ramp(spec: RouteSpec, host: RouteSpec, lattice: HexLattice,
+		limits: RoadLimits, place: String, beyond: String) -> void:
+	var tile := Routes.tile(host.junctions[spec.from_vertex])
+	if tile == null or spec.vertex_count() < 1:
+		return
+	var placement := tile_placement(host, spec.from_vertex, lattice)
+	var socket := lattice.to_world(socket_cell(host, spec.from_vertex, tile),
+		host.levels[spec.from_vertex] + tile.socket_level)
+
+	var inside := PackedVector3Array()
+	for point in tile.run("ramp"):
+		inside.append(placement * point)
+	var run := RoadPath.new()
+	run.set_points(inside)
+
+	# THE SOCKET IS AN INTERIOR VERTEX, not the ramp's start. The tile's run arrives
+	# along the edge (ADR 0070's tangential rule, authored into the tile) and the lane
+	# leaves at whatever angle the map needs, so the corner between them is a corner
+	# and has to be filleted like any other. Forcing the lane's first edge to run along
+	# the road instead would be a rule that distorts the map to spare the geometry: an
+	# off-ramp turns as it leaves, and every mouth would otherwise be pushed a
+	# kilometre past the system it serves.
+	#
+	# `toward` is the direction of travel at the socket measured OUTWARD from the tile,
+	# so one construction serves an exit and an entry; a lead-in along it makes the
+	# socket interior, and the straight part of the result is then spliced back onto
+	# the tile's own run, which it is exactly collinear with.
+	var toward := (inside[inside.size() - 1] - inside[inside.size() - 2]).normalized() \
+		if tile.is_exit() else -(inside[1] - inside[0]).normalized()
+	var chain := PackedVector3Array([socket - toward * (limits.fillet_radius(
+		spec.fillet) * 2.0 + 600.0), socket])
+	chain.append_array(spec.world_vertices(lattice))
+	var lane := RoadPath.fillet(chain, limits.fillet_radius(spec.fillet),
+		RoadPath.FILLET_SEGMENT_METRES)
+
+	# Where the arc begins: the last point still on the lead-in line. Found rather
+	# than derived, because `fillet` reduces its radius when an edge is too short and
+	# the splice has to land wherever it actually put the tangent point.
+	var arc := 0
+	for i in lane.size():
+		var off := lane[i] - socket
+		if (off - toward * off.dot(toward)).length() > 0.01:
+			arc = maxi(i - 1, 0)
+			break
+	# Clamped to the straight the tile guarantees at its socket. Past that the splice
+	# would land on the tile's own curve and step sideways; the gate catches a route
+	# whose fillet asks for more tangent than the socket has straight.
+	var trim := clampf(-(lane[arc] - socket).dot(toward), 0.0,
+		minf(tile.socket_straight, run.length()))
+
+	var line := PackedVector3Array()
+	if tile.is_exit():
+		# Out of the carriageway, through the tile, and away to the mouth.
+		line.append_array(run.section(0.0, run.length() - trim))
+		for i in range(arc, lane.size()):
+			line.append(lane[i])
+	else:
+		# In from the mouth, through the tile, and up into the carriageway.
+		for i in range(lane.size() - 1, arc - 1, -1):
+			line.append(lane[i])
+		line.append_array(run.section(trim, run.length()))
+
+	var tag := _tag(spec.name)
+	var deck := _make_deck(tag, host.junctions[spec.from_vertex] == "" ,
+		not tile.is_exit(), tile.is_exit(), true)
+	deck.name = tag
+	deck.runs_forward = spec.from_carriageway == "forward"
+	deck.route_name = host.name
+	deck.deck_name = "%s %s" % [place, "off-ramp" if tile.is_exit() else "on-ramp"]
+	deck.follow(line, place if tile.is_exit() else beyond,
+		beyond if tile.is_exit() else place)
+
+	# THE RAMP'S OWN BUILDING, in two parts: the stretch inside the junction is the
+	# tile's (a trough for an entry, cut clear for an exit — ADR 0091 and 0092, both
+	# declared rather than measured), and the rest is stepped along its own edges.
+	_make_structure(tag + "Tile", true, false).follow_tile(
+		tile, "ramp", placement, _lane_section(), _mouth_section(),
+		false, false)
+	var outside := PackedVector3Array([socket])
+	outside.append_array(spec.world_vertices(lattice))
+	_lay_edges(tag, outside, limits, "lane", true, false,
+		not spec.to_portal.is_empty(), null)
+
+	# The gate, where the tile says it is. An entry has none: you are joining, not
+	# choosing (ADR 0084's refusal is a thing you meet on the way OUT).
+	var built := building_for_edge(host.name, spec.from_vertex)
+	if tile.has_gate and built != null:
+		var openings := built.apertures()
+		if not openings.is_empty():
+			var opening: Array = openings[0]
+			_gate_for(built, deck, [opening[0], opening[1]])
+			_sign_for(built, deck, place, _mainline_of(host.name,
+				spec.from_carriageway), [opening[0], opening[1]])
+
+
+## The building on one edge of a route, by the route's name and the edge's index.
+func building_for_edge(route_name: String, edge: int) -> RoadStructure:
+	var wanted := "%sEdge%d" % [_tag(route_name), edge]
+	for built in _structures:
+		if built.structure_name == wanted:
+			return built
+	return null
+
+
+## One route's carriageway, by name and direction.
+func _mainline_of(route_name: String, carriageway: String) -> RoadDeck:
+	var wanted := _tag(route_name) + "Mainline" \
+		+ ("Forward" if carriageway == "forward" else "Reverse")
+	for deck in _decks:
+		if deck.name == wanted:
+			return deck
+	return null
+
+
+## Where a junction tile's local frame sits on the edge it occupies.
+##
+## The tile is authored for an edge running due east and rotated onto the one it is
+## placed on. Because a junction only ever sits on the `(n, 0)` family, that rotation
+## is a multiple of 60 degrees — an exact rotation of the lattice onto itself — so the
+## tile's ramp socket, written as a cell offset, still lands on a cell (ADR 0095).
+static func tile_placement(spec: RouteSpec, i: int,
+		lattice: HexLattice) -> Transform3D:
+	var direction := lattice.offset_of(spec.edge(i)).normalized()
+	return Transform3D(
+		Basis(Vector3.UP, atan2(-direction.z, direction.x)),
+		lattice.to_world(spec.cells[i], spec.levels[i]))
+
+
+## The cell a junction's ramp socket lands on, in the route's own frame.
+static func socket_cell(spec: RouteSpec, i: int, tile: RoadTile) -> Vector2i:
+	var turns := HexLattice.rotation_between(tile.footprint, spec.edge(i))
+	return spec.cells[i] + tile.socket_in(maxi(turns, 0))
 
 
 ## How far one edge's building runs past a vertex: `h · tan(θ/2)`, which reaches

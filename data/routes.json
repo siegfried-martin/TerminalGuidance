@@ -9,13 +9,17 @@
     "r steps 30 degrees east of north by the same. A level is lattice_level_metres of",
     "height, level 0 being the combat plane. 'junction' on a vertex means THE EDGE",
     "LEAVING THAT VERTEX is that tile, and the edge must be exactly the tile's",
-    "footprint: diverge_right is 3 cells, merge_below is 6. Junction tiles are",
+    "footprint: diverge_right is 3 cells, merge_below is 7. Junction tiles are",
     "generated for the (n, 0) direction family only, which includes (0, n).",
     "",
-    "Saving this file relays the map out under the ship, the way saving tuning.cfg",
-    "re-tunes it. Legs are unequal on purpose (ADR 0085).",
+    "A RAMP is a lane route. Its first vertex is NOT written here: it is the junction's",
+    "socket, which the tile declares. 'from' names the junction, 'to' names the mouth.",
+    "A ramp may ask for a tighter 'fillet' than the mainline's, and on a 600 m lattice",
+    "it has to — a 60 degree turn at the mainline's 900 m wants more tangent than half",
+    "an edge. The derived floor still holds it at 421.",
     "",
-    "Ramps are lane routes and land with step C of the plan; these are the mainlines."
+    "Saving this file relays the map out under the ship, the way saving tuning.cfg",
+    "re-tunes it. Legs are unequal on purpose (ADR 0085)."
   ],
 
   "anchors": {
@@ -41,16 +45,16 @@
         { "cell": [-25, 0] },
         { "cell": [-22, 0], "junction": "diverge_right" },
         { "at": "SYSTEM A", "junction": "merge_below" },
-        { "cell": [-13, 0] },
+        { "cell": [-12, 0] },
         { "cell": [-3, 0], "junction": "diverge_right" },
         { "at": "SYSTEM B", "junction": "merge_below" },
-        { "cell": [6, 0] },
+        { "cell": [7, 0] },
         { "cell": [20, 0] },
         { "cell": [28, 3] },
         { "cell": [31, 3], "junction": "diverge_right" },
         { "at": "SYSTEM C", "junction": "merge_below" },
-        { "cell": [40, 3] },
-        { "cell": [43, 3] }
+        { "cell": [41, 3] },
+        { "cell": [44, 3] }
       ]
     },
 
@@ -67,15 +71,30 @@
         { "cell": [0, -28] },
         { "cell": [0, -25], "junction": "diverge_right" },
         { "at": "SYSTEM D", "junction": "merge_below" },
-        { "cell": [0, -16] },
+        { "cell": [0, -15] },
         { "cell": [0, -3], "junction": "diverge_right" },
         { "at": "SYSTEM B", "junction": "merge_below" },
-        { "cell": [0, 6] },
+        { "cell": [0, 7] },
         { "cell": [0, 14], "junction": "diverge_right" },
         { "at": "SYSTEM E", "junction": "merge_below" },
-        { "cell": [0, 23] },
-        { "cell": [0, 26] }
+        { "cell": [0, 24] },
+        { "cell": [0, 27] }
       ]
+    },
+
+    "A-377B/off-A": {
+      "_comment": [
+        "SYSTEM A's off-ramp, and the first ramp on the lattice. It leaves at the",
+        "diverge_right on vertex 1, whose socket is (-19,-1) — 300 m short of A and",
+        "600 m to the right of the spine — and turns 60 degrees onto a mouth 1.0 km",
+        "from A's centre, well inside the disc."
+      ],
+      "profile": "lane",
+      "level": 3,
+      "fillet": 450.0,
+      "from": { "route": "A-377B", "vertex": 1, "carriageway": "forward" },
+      "vertices": [ { "cell": [-18, -2] } ],
+      "to": { "portal": "SYSTEM A" }
     }
   }
 }

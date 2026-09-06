@@ -24,6 +24,14 @@ var profile: String = "pair"
 ## The route's default level. A vertex may override it; an edge between two levels
 ## is a pitched straight.
 var level: int = 0
+## This route's own fillet radius, or 0 to use the tuned one.
+##
+## A RAMP TURNS HARDER THAN A MAINLINE, and on a 600 m lattice it has to: a 60-degree
+## turn at the mainline's 900 m wants 520 m of tangent, which is more than half of any
+## edge a ramp is short enough to use. Anticipated by the plan (section 12.2). It is
+## still CLAMPED to the derived floor, so a route can ask to be tighter than the
+## mainline and never tighter than the ship can fly.
+var fillet: float = 0.0
 
 ## One entry per vertex, all the same length.
 var cells: Array[Vector2i] = []
@@ -82,6 +90,8 @@ static func parse(route_name: String, data: Dictionary,
 		spec.profile = String(data["profile"])
 	if data.has("level"):
 		spec.level = int(data["level"])
+	if data.has("fillet"):
+		spec.fillet = float(data["fillet"])
 
 	var listed: Variant = data.get("vertices", null)
 	if typeof(listed) != TYPE_ARRAY:
@@ -165,9 +175,11 @@ func validate(lattice: HexLattice, fillet_radius: float, half_width: float,
 		errors.append("%s: profile \"%s\" is not one of %s" % [
 			name, profile, ", ".join(PROFILES)])
 		return errors
-	if cells.size() < 2:
-		errors.append("%s: a route needs at least two vertices, has %d" % [
-			name, cells.size()])
+	# A LANE ROUTE'S FIRST VERTEX IS ITS JUNCTION'S SOCKET, which is the tile's to
+	# declare and not the file's to repeat, so one authored vertex is a whole ramp.
+	if cells.size() < (1 if is_lane() else 2):
+		errors.append("%s: a %s route needs at least %d vertices, has %d" % [
+			name, profile, 1 if is_lane() else 2, cells.size()])
 		return errors
 
 	_check_ends(errors)
@@ -241,14 +253,38 @@ func _check_junctions(errors: PackedStringArray, lattice: HexLattice,
 		if levels[i] != levels[i + 1]:
 			errors.append("%s vertex %d at %s: junction \"%s\" spans a level change, and a tile is authored flat"
 				% [name, i, _cell_text(i), junction])
+		# A TILE IS AUTHORED STRAIGHT, over its whole footprint. A bend at either end
+		# of it would leave the mitre's outer corner open, because a tile's building
+		# does not run past the vertex the way a stepped edge's does.
+		if _turns_at(lattice, i) or _turns_at(lattice, i + 1):
+			errors.append("%s vertex %d at %s: junction \"%s\" has the road turning at one of its ends, and a tile is authored straight"
+				% [name, i, _cell_text(i), junction])
 		if tile.profile != profile:
 			errors.append("%s vertex %d at %s: junction \"%s\" is a \"%s\" tile on a \"%s\" route"
 				% [name, i, _cell_text(i), junction, tile.profile, profile])
 
 
+## Whether the road changes direction at a vertex.
+func _turns_at(lattice: HexLattice, i: int) -> bool:
+	if i <= 0 or i >= cells.size() - 1:
+		return false
+	var world := world_vertices(lattice)
+	var back := world[i] - world[i - 1]
+	var ahead := world[i + 1] - world[i]
+	if back.length_squared() < 0.000001 or ahead.length_squared() < 0.000001:
+		return false
+	return back.normalized().angle_to(ahead.normalized()) > RoadPath.FILLET_MIN_ANGLE_RAD
+
+
 func _check_vertices(errors: PackedStringArray, lattice: HexLattice,
 		fillet_radius: float, half_width: float, half_height: float) -> void:
 	var world := world_vertices(lattice)
+	# A LANE ROUTE'S FIRST VERTEX IS ITS SOCKET, and the socket is the tile's. With one
+	# authored vertex there is no interior vertex here to bound, and the geometry that
+	# does exist — the splice onto the tile's run — is checked where both halves are
+	# known, in the scene.
+	if world.size() < 3:
+		return
 	for i in range(1, world.size() - 1):
 		var back := world[i] - world[i - 1]
 		var ahead := world[i + 1] - world[i]

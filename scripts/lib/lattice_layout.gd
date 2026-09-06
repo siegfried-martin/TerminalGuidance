@@ -48,7 +48,7 @@ static func build(specs: Array[RouteSpec], anchors: Dictionary,
 		# The line the road is laid on is the FILLETED spine. The buildings are built
 		# per edge from the vertices and never see this; what reads it is the deep
 		# field, the map's own "where does this road go", and the gate.
-		layout.route_lines.append(RoadPath.fillet(world, limits.fillet_radius(),
+		layout.route_lines.append(RoadPath.fillet(world, limits.fillet_radius(spec.fillet),
 			RoadPath.FILLET_SEGMENT_METRES))
 
 		# Which systems this route serves, in the order it meets them. A vertex that

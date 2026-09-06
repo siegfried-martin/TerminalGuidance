@@ -162,7 +162,7 @@ func _revalidate() -> void:
 		_errors.append_array(_check_tile(tile, lattice, limits))
 	for route_name in _order:
 		var spec := _routes[route_name] as RouteSpec
-		_errors.append_array(spec.validate(lattice, limits.fillet_radius(),
+		_errors.append_array(spec.validate(lattice, limits.fillet_radius(spec.fillet),
 			limits.half_width(spec.profile), limits.half_height(),
 			limits.pitch_max_deg, _tiles))
 		_errors.append_array(_check_links(spec))

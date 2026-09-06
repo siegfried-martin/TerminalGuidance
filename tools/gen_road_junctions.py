@@ -58,6 +58,13 @@ VERTICAL_RADIUS_METRES = 3000.0
 ## What a ramp's lateral S-curve aims for. Raised to the fillet floor if the floor is
 ## higher, so a ramp can never turn tighter than the road is allowed to.
 RAMP_RADIUS_METRES = 900.0
+## How much straight run a tile leaves at its socket. The lane route that continues
+## from there is filleted, and its arc has to be spliced onto something with a known
+## shape: splicing it onto a curve leaves a step of `trim^2 / 2R` at the join, which
+## for a 260 m tangent on a 900 m ramp is 37 m of sideways jump. A straight makes the
+## splice exact, and it is what "the socket's heading is along the edge" (ADR 0070)
+## actually requires of the geometry rather than only of the declaration.
+SOCKET_STRAIGHT_METRES = 500.0
 ## How much of the tile is left as plain road after a merge rejoins, so the merge
 ## finishes inside the tile rather than at its seam.
 TAIL_CELLS = 1.0
@@ -192,19 +199,26 @@ def climb_at(u, run, rise, radius):
     return sign * (lift + (along - tangent) * math.tan(sigma))
 
 
-def ramp_run(start, end, radius, samples):
+def ramp_run(start, end, radius, samples, straight_at_end, straight_at_start):
     """A ramp's polyline: a lateral S and a rounded climb over the same run, both
-    leaving and arriving parallel to the edge."""
-    run = end[0] - start[0]
+    leaving and arriving parallel to the edge, with a straight reserved at the socket
+    end so a lane route's fillet can be spliced onto it exactly."""
+    lead = SOCKET_STRAIGHT_METRES if straight_at_start else 0.0
+    tail = SOCKET_STRAIGHT_METRES if straight_at_end else 0.0
+    run = (end[0] - start[0]) - lead - tail
     offset = end[2] - start[2]
     rise = end[1] - start[1]
     points = []
+    if lead > 0.0:
+        points.append((start[0], start[1], start[2]))
     for i in range(samples + 1):
         u = i / samples
         along, across = lateral_at(u, run, offset)
-        points.append((start[0] + along,
+        points.append((start[0] + lead + along,
                        start[1] + climb_at(u, run, rise, radius),
                        start[2] + across))
+    if tail > 0.0:
+        points.append((end[0], end[1], end[2]))
     return points
 
 
@@ -411,8 +425,9 @@ def solve(entry, tune):
             # picked: a ramp that peels away at the tile's seam is flush with the
             # wall for its whole length, and that is the highway losing a side
             # (ADR 0093).
-            run = min(lateral_run_for(socket[2] - forward_z, radius_target), socket[0])
-            start = (socket[0] - run, 0.0, forward_z)
+            run = min(lateral_run_for(socket[2] - forward_z, radius_target),
+                  socket[0] - SOCKET_STRAIGHT_METRES)
+            start = (socket[0] - run - SOCKET_STRAIGHT_METRES, 0.0, forward_z)
             end = socket
         else:
             # An entry arrives at the socket and climbs to the carriageway, finishing
@@ -420,12 +435,15 @@ def solve(entry, tune):
             start = socket
             end = (length - TAIL_CELLS * cell, 0.0, forward_z)
             run = end[0] - start[0]
-        if run <= cell * 0.5:
+        if run <= cell * 0.5 or run <= SOCKET_STRAIGHT_METRES:
             cells += 1
             continue
 
         samples = max(int(math.ceil(run / SAMPLE_METRES)), 8)
-        ramp = ramp_run(start, end, VERTICAL_RADIUS_METRES, samples)
+        # The socket end gets the straight: an exit's socket is where its run ENDS,
+        # an entry's is where it starts.
+        ramp = ramp_run(start, end, VERTICAL_RADIUS_METRES, samples,
+                        entry["kind"] == "exit", entry["kind"] == "entry")
         pitch = steepest_pitch(ramp)
         demanded = max_turn_deg_per_metre(ramp) * speed
         # A margin, so a tile is not one tuning nudge away from failing the gate it
@@ -491,14 +509,23 @@ def _assemble(entry, ramp, spine, carriage_f, carriage_r, socket, length, cells,
         target.setdefault(aperture["face"], []).append(
             (low, aperture["to"] - (0.0 if aperture["building"] == "mainline" else ramp_from)))
 
-    metal, glass = building_mesh(spine, main_half, half_h, open_main)
-    metal += collars(spine, main_half, half_h, rib, cell)
+    # THE TWO BUILDINGS ARE EMITTED SEPARATELY, and that is not tidiness. A junction
+    # edge carries one mainline building and one ramp, and the game places them as two
+    # `RoadStructure`s with two paths, two sections and two sets of apertures. Merged
+    # into one mesh there would be no way to give the ramp its own shell.
+    parts = {}
+    parts["main_metal"], parts["main_glass"] = building_mesh(
+        spine, main_half, half_h, open_main)
+    # NO COLLARS IN THE MESH. The rhythm is the route's, not the tile's (a tile does
+    # not know where along its road it sits), so the game lays ribs across a junction
+    # from the same global phase as the straights either side — and skips the ones
+    # that would stand inside an opening, which is ADR 0092's rule for free.
     ramp_building = slice_run(ramp, ramp_from)
+    parts["ramp_metal"], parts["ramp_glass"] = ([], [])
     if len(ramp_building) >= 2:
-        ramp_metal, ramp_glass = building_mesh(ramp_building, ramp_half, half_h, open_ramp)
-        metal += ramp_metal
-        glass += ramp_glass
-        metal += collars(ramp_building, ramp_half, half_h, rib, cell)
+        parts["ramp_metal"], parts["ramp_glass"] = building_mesh(
+            ramp_building, ramp_half, half_h, open_ramp)
+
 
     sidecar = {
         "tile": entry["name"],
@@ -506,6 +533,12 @@ def _assemble(entry, ramp, spine, carriage_f, carriage_r, socket, length, cells,
         "footprint": [cells, 0],
         "profile": "pair",
         "ramp_profile": "lane",
+        # WHICH WAY THE RAMP GOES, declared rather than inferred. An exit's deck runs
+        # carriageway-to-socket and carries its portal at the far end; an entry's runs
+        # socket-to-carriageway and carries it at the near one. ADR 0080's rule — you
+        # leave sideways or over the top and you join from below — is checked against
+        # this rather than against the geometry.
+        "kind": entry["kind"],
         "sockets": {"ramp": {"cell": list(entry["socket"]),
                              "level": entry["socket_level"],
                              "heading": [1, 0]}},
@@ -528,12 +561,16 @@ def _assemble(entry, ramp, spine, carriage_f, carriage_r, socket, length, cells,
     }
     if gate is not None:
         sidecar["gate"] = gate
+    # Where the ramp's own building starts, in its own run's coordinates, so the game
+    # can lay the ramp's shell exactly where the mesh has one.
+    sidecar["ramp_building_from"] = ramp_from
+    sidecar["socket_straight"] = SOCKET_STRAIGHT_METRES
     print("  %-14s footprint (%d,0) = %.0f m, ramp %.0f m, pitch %.2f deg, "
           "demands %.1f deg/s, socket at (%d,%d) level %d"
           % (entry["name"], cells, length, ramp_length, pitch, demanded,
              entry["socket"][0], entry["socket"][1], entry["socket_level"]))
     del socket
-    return sidecar, metal, glass
+    return sidecar, parts
 
 
 def main():
@@ -542,12 +579,13 @@ def main():
           % (tune["lane_width"], tune["lane_height"], tune["deck_separation"],
              tune["lattice_cell_metres"]))
     for entry in CATALOGUE:
-        sidecar, metal, glass = solve(entry, tune)
+        sidecar, parts = solve(entry, tune)
         stem = "road_junction_%s" % entry["name"]
-        write_obj(OUT / ("%s_metal.obj" % stem), "%s_metal" % stem, metal,
-                  "gen_road_junctions.py", uv_scale=1.0 / 400.0)
-        write_obj(OUT / ("%s_glass.obj" % stem), "%s_glass" % stem, glass,
-                  "gen_road_junctions.py", uv_scale=1.0 / 400.0)
+        for part, pieces in sorted(parts.items()):
+            if not pieces:
+                continue
+            write_obj(OUT / ("%s_%s.obj" % (stem, part)), "%s_%s" % (stem, part),
+                      pieces, "gen_road_junctions.py", uv_scale=1.0 / 400.0)
         (OUT / ("%s.json" % stem)).write_text(json.dumps(sidecar, indent=2) + "\n")
         print("wrote %s" % (OUT / ("%s.json" % stem)))
 

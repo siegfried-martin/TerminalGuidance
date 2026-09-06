@@ -36,6 +36,10 @@ var footprint: Vector2i = Vector2i.ZERO
 ## The profile of the road the tile carries, and of the ramp inside it.
 var profile: String = "pair"
 var ramp_profile: String = "lane"
+## "exit" or "entry". An exit's deck runs from the carriageway out to a portal; an
+## entry's runs from a portal in to the carriageway. Declared, so ADR 0080's rule is a
+## property of the catalogue rather than something measured off a curve.
+var kind: String = "exit"
 
 ## The ramp socket: a cell offset from the edge's start, a level offset, and a
 ## heading. The heading is ALWAYS along the edge (ADR 0070's tangential rule),
@@ -43,6 +47,10 @@ var ramp_profile: String = "lane"
 var socket_cell: Vector2i = Vector2i.ZERO
 var socket_level: int = 0
 var socket_heading: Vector2i = Vector2i.ZERO
+## How much straight run the tile leaves at its socket, for a lane route's fillet to
+## be spliced onto. Splicing an arc onto a curve leaves a step; onto a straight it is
+## exact.
+var socket_straight: float = 0.0
 
 ## One polyline per carriageway and one for the ramp, in the local frame, socket to
 ## socket. `RoadDeck` gets these; the ramp's is followed by the lane route's own
@@ -77,6 +85,11 @@ static func parse(tile_name: String, data: Dictionary) -> RoadTile:
 	tile.footprint = tile._cell(data, "footprint")
 	tile.profile = String(data.get("profile", "pair"))
 	tile.ramp_profile = String(data.get("ramp_profile", "lane"))
+	tile.kind = String(data.get("kind", "exit"))
+	tile.socket_straight = float(data.get("socket_straight", 0.0))
+	if tile.kind != "exit" and tile.kind != "entry":
+		tile._note("%s: \"kind\" must be \"exit\" or \"entry\", got \"%s\""
+			% [tile_name, tile.kind])
 
 	var sockets: Variant = data.get("sockets", null)
 	if typeof(sockets) != TYPE_DICTIONARY or not (sockets as Dictionary).has("ramp"):
@@ -187,6 +200,10 @@ func building(building_name: String) -> Dictionary:
 		if String(housed["name"]) == building_name:
 			return housed
 	return {}
+
+
+func is_exit() -> bool:
+	return kind == "exit"
 
 
 func run(run_name: String) -> PackedVector3Array:

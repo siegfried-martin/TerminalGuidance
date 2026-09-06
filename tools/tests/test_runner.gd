@@ -2743,9 +2743,17 @@ func _test_lattice() -> void:
 	_expect(float((entry_tile.building("ramp") as Dictionary)["from"]) < 1.0,
 		"…and an entry's troughs the whole way", "it does not")
 
-	for model in ["road_junction_diverge_right_metal",
-			"road_junction_diverge_right_glass",
-			"road_junction_merge_below_metal", "road_junction_merge_below_glass"]:
+	# Four meshes per tile: a junction edge carries a mainline building and a ramp,
+	# and the game lays them as two structures with two sections and two sets of
+	# openings, so they cannot be one merged mesh.
+	for model in ["road_junction_diverge_right_main_metal",
+			"road_junction_diverge_right_main_glass",
+			"road_junction_diverge_right_ramp_metal",
+			"road_junction_diverge_right_ramp_glass",
+			"road_junction_merge_below_main_metal",
+			"road_junction_merge_below_main_glass",
+			"road_junction_merge_below_ramp_metal",
+			"road_junction_merge_below_ramp_glass"]:
 		var mesh := load("res://assets/models/%s.obj" % model) as Mesh
 		_expect(mesh != null and mesh.get_surface_count() > 0,
 			"%s.obj imports as a Mesh" % model, "import failed — run `make assets`")
@@ -2907,26 +2915,43 @@ func _test_lattice_builds() -> void:
 	var edges := 0
 	for spec in specs:
 		edges += spec.vertex_count() - 1
-	_expect(road.structures().size() == edges,
-		"one building per straight edge — %d of them" % edges,
-		"got %d" % road.structures().size())
-	_expect(road.decks().size() == specs.size() * 2,
-		"two carriageways per route and no ramps yet",
-		"got %d decks" % road.decks().size())
+	var mainline_buildings := 0
+	for built in road.structures():
+		if not built.is_ramp:
+			mainline_buildings += 1
+	var mainline_decks := 0
+	for deck in road.decks():
+		if not deck.is_ramp:
+			mainline_decks += 1
+	_expect(mainline_buildings == edges,
+		"one mainline building per straight edge — %d of them" % edges,
+		"got %d" % mainline_buildings)
+	_expect(mainline_decks == specs.size() * 2,
+		"two carriageways per route", "got %d" % mainline_decks)
 	# Read as DATA, not off the MultiMesh: the headless renderer stores no instance
 	# transforms, so a row written correctly reads back as the identity.
+	# EVERY COLLAR STANDS ON A VERTEX. Stated as a place rather than as a count,
+	# because ramps put vertices on the map too and a count would have to be kept in
+	# step with the authoring rather than with the rule.
 	var collars := road.collars()
-	var joints := 0
-	for spec in specs:
-		joints += 2
-		var turns := spec.world_vertices(lattice)
-		for i in range(1, turns.size() - 1):
-			if _deflection(turns, i) > RoadPath.FILLET_MIN_ANGLE_RAD:
-				joints += 1
-	_expect(collars.size() == joints,
-		"a collar at each end of each route and at each vertex it TURNS at — %d"
-			% joints,
-		"got %d" % collars.size())
+	var vertices := PackedVector3Array()
+	for spec in Routes.all_routes():
+		vertices.append_array(spec.world_vertices(lattice))
+		if spec.is_lane():
+			var host := Routes.route(spec.from_route)
+			var tile := Routes.tile(host.junctions[spec.from_vertex])
+			vertices.append(lattice.to_world(
+				RoadNetwork.socket_cell(host, spec.from_vertex, tile),
+				host.levels[spec.from_vertex] + tile.socket_level))
+	var adrift := PackedStringArray()
+	for row in collars:
+		var nearest := INF
+		for at in vertices:
+			nearest = minf(nearest, row.origin.distance_to(at))
+		if nearest > 1.0:
+			adrift.append("%s is %.0f m from any vertex" % [row.origin, nearest])
+	_expect(adrift.is_empty(), "every collar stands on a vertex of some route",
+		" | ".join(adrift))
 
 	# THE MITRE. Two consecutive edges' boxes both run PAST the vertex they share, by
 	# `h·tan(theta/2)` each, so the outer corner of the bend is closed and the inside
@@ -2974,9 +2999,15 @@ func _test_lattice_builds() -> void:
 
 	# THE LANE IS INSIDE ITS OWN BUILDING, at the vertex most of all — the place the
 	# fillet cuts the corner and the two boxes are the only thing there (ADR 0087).
+	# MAINLINES ONLY, and that is the rule rather than a convenience. An exit's
+	# building is CUT where it clears the highway (ADR 0092) and a mouth's flare is a
+	# threshold the shell deliberately lets go of (ADR 0064), so a ramp is legitimately
+	# outside a building over two stretches. What a mainline has is no such stretch.
 	var clearance := Vector2(20.0, 20.0)
 	var outside := PackedStringArray()
 	for deck in road.decks():
+		if deck.is_ramp:
+			continue
 		var span := deck.length()
 		for step in 60:
 			var point := deck.path().point_at(span * float(step) / 59.0)
@@ -2993,6 +3024,8 @@ func _test_lattice_builds() -> void:
 	# dozen short edges in a line the HUD named a shell 35 km behind the ship.
 	var misnamed := PackedStringArray()
 	for deck in road.decks():
+		if deck.is_ramp:
+			continue
 		for step in 40:
 			var sampled := deck.length() * float(step) / 39.0
 			var point := deck.path().point_at(sampled)
@@ -3018,7 +3051,10 @@ func _test_lattice_builds() -> void:
 	# The two carriageways stay their own width apart through a bend, which is what the
 	# 1/cos(theta/2) on the offset buys: offset by the unit bisector instead and the
 	# median narrows by metres at every vertex.
-	var pairs := road.decks()
+	var pairs: Array[RoadDeck] = []
+	for deck in road.decks():
+		if not deck.is_ramp:
+			pairs.append(deck)
 	var drift := 0.0
 	for i in range(0, pairs.size(), 2):
 		var forward := pairs[i]
@@ -3065,9 +3101,16 @@ func _test_lattice_builds() -> void:
 			travelled += world[i].distance_to(world[i + 1])
 		placed.append(travelled)
 		placed.sort()
+		# A GAP IS A WHOLE NUMBER OF MODULES. That is the invariant, not "every gap is
+		# one module": a collar inside a junction's opening is omitted (ADR 0092), so a
+		# gap of two or three modules is the rhythm being kept while a frame is left
+		# out. A gap that is not a multiple is the rhythm being MOVED, which is the
+		# thing that reads as the ship being shifted.
 		var off_rhythm := 0
 		for i in range(1, placed.size()):
-			if absf(placed[i] - placed[i - 1] - module) > 1.0:
+			var gap := placed[i] - placed[i - 1]
+			var slack := fmod(gap, module)
+			if minf(slack, module - slack) > 1.0:
 				off_rhythm += 1
 		# One irregular gap per vertex at most: a vertex that does not land on the
 		# rhythm gets a collar of its own, which is a real joint and reads as one.
