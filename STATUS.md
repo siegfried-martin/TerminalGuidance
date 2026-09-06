@@ -18,6 +18,7 @@ the human's explicit direction.
 | Gate | `make check` — 1489 checks, 0 failed |
 | Run it | **`make lattice`** for the new road, `make fly` for the old one — both work, and both will until step D swaps them |
 | Built | Exploration POC steps 1–8, highway rebuild steps A–D, **lattice steps A and B**, plus six play-session passes (ADRs 0062–0095) |
+| **NOT SIGNED OFF** | The three drive fixes below are implemented and measured but **not verified from the seat** — you were away from the machine. The station finding in particular is *diagnosed and deliberately not fixed*, because what to do about it is a feel call. |
 | **Do next** | **`docs/HIGHWAY_LATTICE_PLAN.md`, step C: junctions and ramps.** `RoadStructure.follow_tile`, `RoadNetwork.add_ramp`, the planet ramps for all five systems and the four interchange ramps at B, as `lane` routes in `data/routes.json`. That is what gives the lattice road a way on to it. |
 | **Waiting on you** | **Two feel calls.** `ship/max_pitch_deg` (78) and `camera/ship_pitch_ceiling_deg` (42) are the pitch pair — how steeply the nose may point, and how far the boom follows it there. They are tuned together and they are yours. Also `exploration/junction_wall_opening_metres` (500), which is how much wall an exit opens. Still not diagnosed: the undock on the far highway that put the ship in the other lane. Then the fourth checkpoint: success criterion 1, ten minutes on the trunk road. |
 
@@ -107,6 +108,52 @@ building thirty kilometres behind the ship reported exactly the same two walls a
 one the ship was inside, and tied with it on `room()`. One long building per route hid
 it; a dozen short edges in a line surfaced it at once, as the HUD naming the wrong
 shell. A building now declines to answer past its own end face.
+
+### The first drive of the lattice road — three findings, none signed off
+
+Reported from the seat, fixed or diagnosed, and **none of it confirmed by you yet**.
+
+1. **"Stuck at normal speed."** Correct: engaging is crossing a ramp's start portal and
+   there are no ramps until step C. The debug drop engages now. *Unverified.*
+2. **"About every 6 segments the ship gets shifted backwards."** Real, and a regression
+   this rebuild introduced: each edge divided its own span into a whole number of bays,
+   so the collar step changed at every vertex — 450, 400, 427, 458 m on consecutive
+   edges of the trunk. Phased to the route now, and measured over 12.5 km of flight:
+   **collars pass at 400.0 m every time, no anomalies**; ship and camera steps are flat
+   to five decimal places. *Unverified.*
+3. **"It skips to discrete angles around turns."** `RoadPath.tangent_at` is piecewise
+   constant. `heading_at` is a centred difference; the lane and the berth steer by it.
+   **You confirmed this one is fixed.**
+
+### Still there, diagnosed, and NOT fixed — it is your call
+
+After the rhythm fix you still read *"a distinct bump back, about every 7.5 collars,
+periodic and regular"*. Measured, by autocorrelating the frame-to-frame image
+difference over 1500 rendered frames of flight: **one dominant period, 2000 m, r =
+0.94.** That is `structure_station_spacing` — five joints of 400 m.
+
+The mechanism is that a station and a collar are both centred on the joint but are not
+the same length:
+
+| | length | leading face |
+|---|---|---|
+| collar | 60 m | joint − 30 |
+| station | 190 m | joint − **95** |
+
+The joints are perfectly even; the faces you read the beat from are not. Between
+leading faces you get `400, 400, 400, 335, 465` and repeat — every fifth frame arrives
+**65 m early** and the one after it 65 m late. At cruise that is 0.26 s early then
+0.26 s late.
+
+**The immediate knob, no code:** `structure_station_spacing = 0` in the F2 panel turns
+stations off and the beat goes perfectly even — one flight confirms or kills the
+diagnosis. `structure_station_length` shortens them short of that.
+
+**The design fix, if you want stations AND an unbroken beat:** a station should replace
+a BAY rather than a collar. Collars stay at every joint, every fifth bay is a heavy
+segment instead of glass, the landmarks survive and nothing moves the beat. Not done,
+because it is a feel decision on shipped behaviour (ADR 0078) and it would change the
+old road too.
 
 **Waiting on you, and it is the thing step B exists to ask:** fly `make lattice`, press
 J to the first bend, and say whether a 15.3° corner in a hard-edged 480 m building reads
