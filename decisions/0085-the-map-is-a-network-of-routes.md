@@ -2,6 +2,8 @@
 
 *Status: accepted · 2026-08-31 · from the human: "you will need an additional 2 systems for this"*
 
+**The two-sweep interchange and the measured crossing are superseded by ADR 0095.** An interchange is two junction tiles and a lane route between them, closing exactly on the lattice. The five-system map, "a route is the unit" and the unequal legs stand.
+
 ## Decision
 
 **The map is five systems on two crossing highways.** A-377B runs A, B, C; K-112 runs

@@ -2,6 +2,8 @@
 
 *Status: accepted · 2026-09-05 · from a play session · authoring fixes inside ADR 0078*
 
+**Superseded by ADR 0095.** There is no curved stretch any more: every edge is straight, so a box reaches its neighbour with no bleed, and the median kerb is an authoring rule that still holds.
+
 ## Decision
 
 Two authoring bugs in the module system, both structural rather than incidental.

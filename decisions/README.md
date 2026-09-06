@@ -116,7 +116,7 @@ The reasoning, including what the alternative was and why it lost.
 | [0067](0067-lanes-unite-there-are-no-junctions.md) | Getting on and off the road is a union of lanes, not a junction |
 | [0068](0068-the-lane-is-measured-against-the-hull.md) | The lane is measured against the hull, not against the ship's centre |
 | [0069](0069-the-space-past-the-edge-is-furnished.md) | The space past the edge is furnished, in three layers |
-| [0070](0070-no-road-out-turns-the-ship.md) | No road out-turns the ship, and a ramp is tangential at both ends |
+| [0070](0070-no-road-out-turns-the-ship.md) | No road out-turns the ship — the weave and the cubic ramp are superseded by 0095 |
 | [0071](0071-a-ceiling-that-drops-does-not-drop-the-ship.md) | A ceiling that drops does not drop the ship with it |
 | [0072](0072-the-road-axis-is-followed-not-adopted.md) | The road's direction is followed at a bounded rate, and a handover cannot hand you a lane you could not steer onto |
 | [0073](0073-the-fighter-may-outrun-a-missile.md) | The fighter may outrun a missile; the classes a missile is *for* may not |
@@ -141,6 +141,7 @@ The reasoning, including what the alternative was and why it lost.
 | [0091](0091-a-junction-is-two-buildings-meeting.md) | A junction is two buildings meeting; the road is playable space; an exit is a button on a strip |
 | [0092](0092-a-hoop-marks-a-mouth-not-a-junction.md) | A hoop marks a mouth, not a junction; an exit's building starts where it clears the highway; a ramp hands the berth back |
 | [0093](0093-the-nose-never-reaches-the-vertical.md) | The nose never reaches the vertical and the boom follows it less and less; a wall opens where a ramp goes through it |
-| [0094](0094-a-straight-box-on-a-curve-does-not-meet-its-neighbour.md) | A straight box on a curve does not meet its neighbour, and coplanar faces flicker |
+| [0094](0094-a-straight-box-on-a-curve-does-not-meet-its-neighbour.md) | ~~A straight box on a curve does not meet its neighbour~~ — superseded by 0095; coplanar faces still flicker |
+| [0095](0095-the-road-is-straight-edges-on-a-lattice.md) | The road is straight edges on a lattice, and a direction change is an angle at a vertex — supersedes 0094 and the curves in 0070 and 0085 |
 
-*Next number: 0095.*
+*Next number: 0096.*

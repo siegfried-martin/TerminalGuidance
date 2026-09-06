@@ -2,6 +2,8 @@
 
 *Status: accepted · 2026-08-30 · from the human reporting the on-ramp was too steep*
 
+**The weave and the cubic ramp are superseded by ADR 0095.** A road is straight edges on a lattice; a leg no longer weaves and a ramp is no longer fitted. *The rule that no road out-turns the ship stands*, and is checked on the filleted lane at every vertex and on every junction tile.
+
 ## Decision
 
 **No road on the map may bend faster than the ship can be turned at cruise.**

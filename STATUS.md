@@ -1,6 +1,6 @@
 # STATUS
 
-*Updated 2026-09-05.*
+*Updated 2026-09-06.*
 
 ---
 
@@ -18,8 +18,32 @@ the human's explicit direction.
 | Gate | `make check` — 1311 checks, 0 failed |
 | Run it | `make fly` |
 | Built | Exploration POC steps 1–8 and **highway rebuild steps A–D**, plus six play-session passes (ADRs 0062–0094) |
-| **Do next** | **Another drive, against the 2026-09-05 fixes below.** Then the "over the top" left turn — `RoadPath.sweep` now exists and may be most of what it needed. Steps 9–10 are traffic, and rebuild step E folds into them. |
+| **Do next** | **Build the road on the lattice: `docs/HIGHWAY_LATTICE_PLAN.md`, step A.** Decided 2026-09-06 (ADR 0095) and not yet started. The drive against the 2026-09-05 fixes is still worth doing on the old road, but every highway bug it finds is one the lattice retires, so do not fix them in the old code. Steps 9–10 are traffic, and rebuild step E folds into them. |
 | **Waiting on you** | **Two feel calls.** `ship/max_pitch_deg` (78) and `camera/ship_pitch_ceiling_deg` (42) are the pitch pair — how steeply the nose may point, and how far the boom follows it there. They are tuned together and they are yours. Also `exploration/junction_wall_opening_metres` (500), which is how much wall an exit opens. Still not diagnosed: the undock on the far highway that put the ship in the other lane. Then the fourth checkpoint: success criterion 1, ten minutes on the trunk road. |
+
+### The road goes on a lattice — decided, not built
+
+**ADR 0095, 2026-09-06.** Two plans in one day. The first proposed a catalogue of curved
+tiles on a hex lattice; its review found that no curved tile serves both heading families
+of a hex lattice (it has 60° symmetry, not 30°), that a 30° turn cannot fit the (1,1)
+footprint it was given without a kink, and that the catalogue doubles for real art. Your
+own proposal, three hexes in a line and a fourth offset, turned out to be the lattice
+vector (3,1), a straight road at 13.9°, and it generalises: **every vector between two
+cells is a straight road**, so a long edge points as finely as anyone wants (15.3° on
+(8,3)). 15° exactly is on no lattice and is not worth chasing.
+
+So: a route is a polyline of lattice cells, every edge is a straight built from the
+modules that already exist and are exact on a straight, every direction change is an
+angle at a vertex with a filleted lane inside a mitred building, and a junction is an
+authored tile occupying an edge with its sockets at cells. Routes move to
+`data/routes.json` and hot-reload. Twenty-four keys retire, four arrive. The plan is
+`docs/HIGHWAY_LATTICE_PLAN.md`; §5 is the vertex rule in full, §10 is the build order.
+
+**Settled with this decision, not open:** the crossing at B goes to 60° (55° is not a
+lattice angle); the mainline rides at level 3 (360 m, was 320) and the crossing at level
+5 (600, was 560). The one thing left to you later is the feel of `road_fillet_radius`
+once there is a vertex to fly, and that is a slider with a gate floor of 421 m, not a
+decision.
 
 ### The seams and the flicker — and the case for authored tiles
 
@@ -46,6 +70,9 @@ bend with no number to maintain.
 > `length²`, so the bleed and shorter modules both hide it; neither removes it. A tile
 > authored *with its curvature baked in* is the only thing that does. See the note under
 > "Do next".
+>
+> *Overtaken the next day: ADR 0095 removes the curve instead. On a straight edge a rigid
+> box meets its neighbour exactly, and no curved tile is authored at all.*
 
 ### The pitch pair — your camera proposal, built
 
