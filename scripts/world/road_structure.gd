@@ -55,6 +55,36 @@ var is_ramp: bool = false
 ## for a ramp: a median divides two directions and a ramp has only one.
 var has_median: bool = false
 
+## How much of each end is covered by a collar the NETWORK places rather than by a
+## rib of this building's own — `x` at the start, `y` at the end.
+##
+## On the lattice a vertex is ONE collar shared by the two edges meeting there (ADR
+## 0095). Each edge is mitred past the vertex so the outer corner is closed, and a rib
+## of its own at that end would stand inside the collar and fight it. Zero, which is
+## every road that is not a lattice edge, means this building caps its own ends.
+var end_inset: Vector2 = Vector2.ZERO
+
+## How far along its ROUTE this building's start is, or negative to divide its own
+## span evenly the way a single-building road always has.
+##
+## `structure_module_length` is documented as the rhythm of the road — "at cruise
+## speed one module goes past every module_length / cruise_speed seconds, and that is
+## the strongest speed cue the tube has". One building per route made that automatic.
+## A lattice route is a dozen buildings in a line, and each dividing its own span into
+## a whole number of bays gave them each a different step — measured at 450, 400, 427
+## and 458 m on consecutive edges of the trunk — so the strongest speed cue on the
+## road changed every time the road changed direction, which reads from the seat as
+## the ship being shifted rather than as the road being built differently.
+##
+## Set it and the collars land on global multiples of the module instead, so the
+## rhythm runs unbroken from one end of a route to the other and the only thing that
+## interrupts it is the vertex collar, which is a joint and should.
+var module_phase: float = -1.0
+## Where this building actually put a collar, in metres along itself. For the gate,
+## which cannot read a `MultiMesh` back headless — the dummy renderer stores no
+## instance data — and which has to be able to hold the road's rhythm.
+var _joints: PackedFloat32Array = PackedFloat32Array()
+
 var _path: RoadPath = RoadPath.new()
 ## The full interior half-extents, and the narrower ones at a portal mouth. The
 ## structure narrows exactly where the lane does — `LaneProfile` answers for both, so
@@ -175,8 +205,21 @@ func rebuild() -> void:
 	var collar := clampf(Tuning.num("exploration/structure_rib_thickness"),
 		0.0, module)
 	var mouth := maxf(Tuning.num("exploration/ramp_ring_diameter"), 1.0)
-	var bays := maxi(int(span / module), 1)
-	var step := span / float(bays)
+	# THE RHYTHM IS THE ROUTE'S, NOT THIS BUILDING'S, wherever the network says so.
+	# `joint(i)` is where the i'th collar goes and `joints` is how many there are;
+	# phased, they are global multiples of the module with a part-bay at each end that
+	# the vertex collar covers.
+	var phased := module_phase >= 0.0
+	var lead := 0.0
+	var joints := 0
+	var step := module
+	if phased:
+		lead = fposmod(-module_phase, module)
+		joints = maxi(int(floor((span - lead) / module)), 0)
+	else:
+		joints = maxi(int(span / module), 1)
+		step = span / float(joints)
+	var bays := joints if phased else joints
 
 	# A bay fills the space BETWEEN two collars, and a collar sits on every joint
 	# including both ends. That is one more rib than there are bays, and it is what
@@ -188,21 +231,51 @@ func rebuild() -> void:
 	# stretch of it.
 	var every := maxi(int(Tuning.num("exploration/structure_station_spacing")), 0)
 	var station := maxf(Tuning.num("exploration/structure_station_length"), collar)
+	_joints = PackedFloat32Array()
 	for i in bays + 1:
+		var joint := lead + float(i) * module if phased else float(i) * step
+		# NO RIB WHERE THE NETWORK STANDS A COLLAR. On a lattice edge the joint at
+		# each end belongs to the vertex, not to this building.
+		if not phased and ((i == 0 and end_inset.x > 0.0)
+				or (i == bays and end_inset.y > 0.0)):
+			continue
+		# HALF-OPEN, and that is what stops two edges placing the same collar. A joint
+		# at the very start of an edge is this edge's; one at the very end belongs to
+		# the next. Where the network stands a vertex collar the inset is non-zero and
+		# both are skipped instead.
+		if phased and (joint < end_inset.x or joint >= span - end_inset.y):
+			continue
 		# NO COLLAR INSIDE AN OPENING. A rib is a frame across the whole section, so one
 		# standing in the middle of a junction is a hoop across the merging lane — the
 		# human's "assets of the highway running into the off ramp". A junction is a
 		# couple of joints long and reads as an open span without them (ADR 0092).
-		if _inside_an_opening(float(i) * step):
+		if _inside_an_opening(joint):
 			continue
-		if every > 0 and i > 0 and i < bays and i % every == 0:
-			placed["Stations"].append(_module(float(i) * step, station))
+		# The station count is global too, or a route's landmarks would restart at
+		# every bend and stop being landmarks.
+		var index := int(round((module_phase + joint) / module)) if phased else i
+		_joints.append(joint)
+		if every > 0 and index > 0 and index % every == 0 \
+				and (phased or (i > 0 and i < bays)):
+			placed["Stations"].append(_module(joint, station))
 		else:
-			placed["Ribs"].append(_module(float(i) * step, collar))
+			placed["Ribs"].append(_module(joint, collar))
 
-	for i in bays:
-		var from := float(i) * step + collar * 0.5
-		var to := float(i + 1) * step - collar * 0.5
+	# One more bay than there are joints when phased: the run starts before the first
+	# collar and ends after the last, and both part-bays are real road.
+	for i in (bays + 2 if phased else bays):
+		var from := (lead + float(i - 1) * module if phased
+			else float(i) * step) + collar * 0.5
+		var to := (lead + float(i) * module if phased
+			else float(i + 1) * step) - collar * 0.5
+		# The glazing runs to the vertex collar's own face rather than stopping half a
+		# rib short of an end that has no rib on it.
+		if not phased and i == 0 and end_inset.x > 0.0:
+			from = end_inset.x
+		if not phased and i == bays - 1 and end_inset.y > 0.0:
+			to = span - end_inset.y
+		from = maxf(from, end_inset.x)
+		to = minf(to, span - end_inset.y)
 		# A bay is laid as one piece unless a ramp goes through it, and then as a solid
 		# piece either side of every opening. An opening is a STRETCH and may cross
 		# several bays, and more than one ramp can be in the same bay — at an
@@ -403,9 +476,26 @@ func barrier(point: Vector3, clearance: Vector2) -> HullBarrier:
 	if (_narrows_at_start and along <= flare) \
 			or (_narrows_at_end and along >= span - flare):
 		return null
-
 	var centre: Vector3 = found[1]
 	var tangent: Vector3 = found[2]
+	# AND A BUILDING DOES NOT ANSWER PAST ITS OWN ENDS. `RoadPath.closest` CLAMPS, so
+	# the offset measured from a clamped end has no along-component left in it: a box
+	# thirty kilometres behind the ship reports exactly the same two walls as the one
+	# the ship is inside, and ties with it on `room()`. One long building per route hid
+	# that; a lattice route is a dozen short ones in a line and it surfaced at once, as
+	# the HUD naming a shell 35 km behind the ship.
+	#
+	# The OVERSHOOT is what says so, not `along`: clamping makes "at the end" and
+	# "past the end" the same number, and the difference is which side of the end face
+	# the point is on. A point exactly ON the end face is still this building's, which
+	# is what keeps the last metre of a road inside the road.
+	#
+	# It leaves no gap at a joint either. Consecutive edges are MITRED past the vertex
+	# they share (ADR 0095), so a point at a vertex is strictly inside both boxes.
+	var overshoot := (point - centre).dot(tangent)
+	if (along <= 0.0 and overshoot < -0.001) \
+			or (along >= span and overshoot > 0.001):
+		return null
 	var frame := CruiseLane.frame_for(tangent)
 	var offset := point - centre
 	var across := offset.dot(frame[0])
@@ -461,6 +551,11 @@ func apertures() -> Array:
 			else (_pierced_from[i] + _pierced_to[i]) * 0.5,
 			_pierced_face[i], _pierced_from[i], _pierced_to[i]])
 	return found
+
+
+## Where this building put a collar, in metres along itself.
+func joints() -> PackedFloat32Array:
+	return _joints
 
 
 func path() -> RoadPath:

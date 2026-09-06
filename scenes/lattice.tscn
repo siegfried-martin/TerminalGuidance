@@ -1,0 +1,10 @@
+[gd_scene load_steps=2 format=3]
+
+; Deliberately empty shell. All content is built in code by lattice_scene.gd, which
+; is exploration_scene.gd with its roads laid on the lattice (ADR 0095).
+; See CLAUDE.md, code-first scene policy, and ADR 0027.
+
+[ext_resource type="Script" path="res://scripts/exploration/lattice_scene.gd" id="1"]
+
+[node name="LatticeScene" type="Node3D"]
+script = ExtResource("1")

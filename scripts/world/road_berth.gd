@@ -140,7 +140,9 @@ func _sample(ship: Mothership) -> BerthHold:
 	var hold := BerthHold.new()
 	var along := clampf(_along, 0.0, _deck.length())
 	var centre := _deck.path().point_at(along)
-	var direction := _deck.path().tangent_at(along)
+	# Smoothed, because a berth is carried EXACTLY along this and has no slew of its
+	# own to hide the polyline's corners (`RoadPath.heading_at`).
+	var direction := _deck.path().heading_at(along)
 	var frame := CruiseLane.frame_for(direction)
 	var extents := _deck.profile(along)
 	hold.axis = direction

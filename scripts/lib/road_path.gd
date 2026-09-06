@@ -21,6 +21,11 @@ const WEAVE_SEGMENT_METRES := 250.0
 ## well `max_turn_deg_per_metre` reads the arc rather than the tessellation, and a
 ## 30-degree fillet at 900 m wants about six points at this setting.
 const FILLET_SEGMENT_METRES := 80.0
+## The window `heading_at` averages the direction over. Wide enough that a filleted
+## bend reads as a turn rather than as a stack of steps, narrow enough that a straight
+## approaching a bend is still straight. Infrastructure, not feel: it smooths the
+## POLYLINE, and how sharply the road may turn is `road_fillet_radius`.
+const TANGENT_BLEND_METRES := 90.0
 const FILLET_MIN_ANGLE_RAD := 0.0005
 
 var points: PackedVector3Array = PackedVector3Array()
@@ -92,6 +97,32 @@ func point_at(along: float) -> Vector3:
 	return points[points.size() - 1]
 
 
+## The direction the road runs at a point, **smoothed across the polyline's own
+## vertices**.
+##
+## `tangent_at` is the segment's raw direction and is piecewise CONSTANT, which is the
+## right answer for placing a module and the wrong one for anything that steers: a
+## filleted bend is half a dozen segments, so a ship or a berth pointed straight at
+## `tangent_at` snaps through the turn in that many discrete jumps. The berth showed it
+## first, because a berth is carried exactly along this and has no slew of its own to
+## hide it.
+##
+## A centred difference over `TANGENT_BLEND_METRES` rather than a special case at each
+## vertex: on a straight the two samples are on the same segment and the answer is
+## exact, at a vertex it blends over a fixed window, and at either end `point_at`
+## clamps so the direction is still right. Nothing has to know where the vertices are.
+func heading_at(along: float) -> Vector3:
+	if is_empty():
+		return Vector3.FORWARD
+	var half := TANGENT_BLEND_METRES * 0.5
+	var behind := point_at(along - half)
+	var ahead := point_at(along + half)
+	var run := ahead - behind
+	return tangent_at(along) if run.length_squared() < 0.000001 else run.normalized()
+
+
+## The raw direction of the segment at `along`. Piecewise constant — see `heading_at`
+## for the one that steers.
 func tangent_at(along: float) -> Vector3:
 	if is_empty():
 		return Vector3.FORWARD

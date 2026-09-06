@@ -290,6 +290,7 @@ func _ready() -> void:
 	await _test_sandbox_builds()
 	await _test_arena_builds()
 	await _test_exploration_builds()
+	await _test_lattice_builds()
 
 	# LAST, and it is a tripwire rather than a test of the game: see `MINIMUM_CHECKS`.
 	_expect(_checks >= MINIMUM_CHECKS,
@@ -2816,6 +2817,17 @@ func _test_lattice() -> void:
 			"it demands more than the ship has")
 
 
+## The angle a polyline turns through at one of its own vertices.
+func _deflection(line: PackedVector3Array, i: int) -> float:
+	if i <= 0 or i >= line.size() - 1:
+		return 0.0
+	var back := line[i] - line[i - 1]
+	var ahead := line[i + 1] - line[i]
+	if back.length_squared() < 0.000001 or ahead.length_squared() < 0.000001:
+		return 0.0
+	return back.normalized().angle_to(ahead.normalized())
+
+
 ## A route that must not build, and the words the human needs to see when it does not.
 func _bad_route(what: String, data: Dictionary, fragment: String) -> void:
 	var spec := RouteSpec.parse("K-999", data, {})
@@ -2848,6 +2860,258 @@ func _edge_at(spec: RouteSpec, anchor: String) -> Vector2i:
 	if at < 0 or at >= spec.vertex_count() - 1:
 		return Vector2i.ZERO
 	return spec.edge(at)
+
+
+## THE LATTICE ROAD, BUILT (ADR 0095, plan step B). The scene `make lattice` plays:
+## the same map with `data/routes.json` in place of the leg-walking layout.
+##
+## What is asserted here is the vertex, because the vertex is the only computed joint
+## left on the road. Everything else — a straight box on a straight segment — is exact
+## by construction, which is the whole point of the design.
+func _test_lattice_builds() -> void:
+	var packed := load("res://scenes/lattice.tscn") as PackedScene
+	_expect(packed != null, "lattice.tscn loads", "scene failed to load")
+	if packed == null:
+		return
+	var scene := packed.instantiate() as LatticeScene
+	scene.set_reads_input(false)
+	add_child(scene)
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	for path in ["SystemRoot/SystemMap", "SystemRoot/SystemMap/DiscA",
+			"SystemRoot/SystemMap/DiscE", "SystemRoot/SystemMap/PlanetC",
+			"SystemRoot/SystemMap/LinkAB", "SystemRoot/SystemMap/LinkBC",
+			"SystemRoot/SystemMap/Road",
+			"SystemRoot/SystemMap/Road/VertexCollars",
+			"SystemRoot/SystemMap/Road/A377BEdge0",
+			"SystemRoot/SystemMap/Road/A377BMainlineForward",
+			"SystemRoot/SystemMap/Road/A377BMainlineReverse",
+			"SystemRoot/SystemMap/Road/K112Edge0",
+			"SystemRoot/SystemMap/Road/K112MainlineForward",
+			"SystemRoot/Ship", "ChaseCamera", "DebugHud"]:
+		_expect(scene.has_node(path), "the lattice scene builds " + path,
+			"not constructed in _ready()")
+
+	var map := scene.map()
+	var road := map.road()
+	var lattice := Routes.make_lattice()
+	var limits := Routes.limits()
+	var specs: Array[RouteSpec] = []
+	for spec in Routes.all_routes():
+		if not spec.is_lane():
+			specs.append(spec)
+
+	# ONE BUILDING PER EDGE and two carriageways per route, and NOTHING ELSE yet:
+	# junctions and their ramps are step C, so this is a highway with no way on to it.
+	var edges := 0
+	for spec in specs:
+		edges += spec.vertex_count() - 1
+	_expect(road.structures().size() == edges,
+		"one building per straight edge — %d of them" % edges,
+		"got %d" % road.structures().size())
+	_expect(road.decks().size() == specs.size() * 2,
+		"two carriageways per route and no ramps yet",
+		"got %d decks" % road.decks().size())
+	# Read as DATA, not off the MultiMesh: the headless renderer stores no instance
+	# transforms, so a row written correctly reads back as the identity.
+	var collars := road.collars()
+	var joints := 0
+	for spec in specs:
+		joints += 2
+		var turns := spec.world_vertices(lattice)
+		for i in range(1, turns.size() - 1):
+			if _deflection(turns, i) > RoadPath.FILLET_MIN_ANGLE_RAD:
+				joints += 1
+	_expect(collars.size() == joints,
+		"a collar at each end of each route and at each vertex it TURNS at — %d"
+			% joints,
+		"got %d" % collars.size())
+
+	# THE MITRE. Two consecutive edges' boxes both run PAST the vertex they share, by
+	# `h·tan(theta/2)` each, so the outer corner of the bend is closed and the inside
+	# overlaps. This is what ADR 0094 says a curve can never give you.
+	var structures := road.structures()
+	var at := 0
+	for spec in specs:
+		var world := spec.world_vertices(lattice)
+		for i in range(1, world.size() - 1):
+			var before := structures[at + i - 1]
+			var after := structures[at + i]
+			var theta := before.path().tangent_at(before.length()).angle_to(
+				after.path().tangent_at(0.0))
+			var reach := limits.mitre_extension(spec.profile, theta)
+			var past := before.path().finish().distance_to(world[i])
+			var short := after.path().start().distance_to(world[i])
+			_expect(absf(past - reach) < 0.01 and absf(short - reach) < 0.01,
+				"%s vertex %d: both boxes reach the mitre corner, %.1f m past it"
+					% [spec.name, i, reach],
+				"%.2f m and %.2f m against %.2f" % [past, short, reach])
+			if theta <= RoadPath.FILLET_MIN_ANGLE_RAD:
+				continue
+			# The collar has to cover both of those ends, or the overlap on the inside
+			# of the bend is visible as a seam from the seat. Found by where it
+			# stands rather than by index: only a vertex the road turns at has one.
+			var half := -1.0
+			for row in collars:
+				if row.origin.distance_to(world[i]) < 1.0:
+					half = row.basis.z.length() * 0.5
+			_expect(half >= reach - 0.01,
+				"…and the collar standing on the bisector covers them both",
+				"%.1f m of collar against a %.1f m mitre" % [half, reach])
+		at += world.size() - 1
+
+	# ADR 0070, ON THE THING THAT REPLACED THE WEAVE. Both carriageways are filleted on
+	# their OWN lines, so the inner one is not `deck_separation/2` tighter than the
+	# radius the floor was computed for.
+	var limit := limits.turn_rate_deg_per_sec
+	for deck in road.decks():
+		var demanded := limits.demanded_turn_rate(deck.path().max_turn_deg_per_metre())
+		_expect(demanded <= limit,
+			"%s demands %.1f deg/s of a ship that turns at %.0f"
+				% [deck.name, demanded, limit],
+			"the road out-turns the ship")
+
+	# THE LANE IS INSIDE ITS OWN BUILDING, at the vertex most of all — the place the
+	# fillet cuts the corner and the two boxes are the only thing there (ADR 0087).
+	var clearance := Vector2(20.0, 20.0)
+	var outside := PackedStringArray()
+	for deck in road.decks():
+		var span := deck.length()
+		for step in 60:
+			var point := deck.path().point_at(span * float(step) / 59.0)
+			var held := road.barrier(point, clearance)
+			if held == null or not held.inside:
+				outside.append("%s at %.0f m" % [deck.name, span * float(step) / 59.0])
+	_expect(outside.is_empty(),
+		"every metre of every lane is inside a building, vertices included",
+		" | ".join(outside))
+
+	# …and it is the building the ship is ACTUALLY in that answers. `closest` clamps,
+	# so a box past its own end reports the same walls as the one you are inside and
+	# ties with it; with one long building per route that never showed, and with a
+	# dozen short edges in a line the HUD named a shell 35 km behind the ship.
+	var misnamed := PackedStringArray()
+	for deck in road.decks():
+		for step in 40:
+			var sampled := deck.length() * float(step) / 39.0
+			var point := deck.path().point_at(sampled)
+			var held := road.barrier(point, clearance)
+			if held == null:
+				continue
+			for built in road.structures():
+				if built.structure_name != held.shell_name:
+					continue
+				# "Really inside" measured as a distance, not as an index: at a
+				# route's very first and last point the answer IS the end face of
+				# the end box, and that is correct — the road has ended, and the
+				# last metre of it is still road.
+				var reach: float = point.distance_to(
+					built.path().closest(point)[1] as Vector3)
+				if reach > limits.half_width("pair") + limits.half_height():
+					misnamed.append("%s at %.0f m answered by %s, %.0f m away"
+						% [deck.name, sampled, held.shell_name, reach])
+	_expect(misnamed.is_empty(),
+		"…and the building that answers is one the point is really inside",
+		" | ".join(misnamed))
+
+	# The two carriageways stay their own width apart through a bend, which is what the
+	# 1/cos(theta/2) on the offset buys: offset by the unit bisector instead and the
+	# median narrows by metres at every vertex.
+	var pairs := road.decks()
+	var drift := 0.0
+	for i in range(0, pairs.size(), 2):
+		var forward := pairs[i]
+		var reverse := pairs[i + 1]
+		for step in 40:
+			var point := forward.path().point_at(
+				forward.length() * float(step) / 39.0)
+			var gap: float = point.distance_to(
+				reverse.path().closest(point)[1] as Vector3)
+			drift = maxf(drift, absf(gap - limits.deck_separation))
+	_expect(drift < 2.0,
+		"the two carriageways hold their separation through a bend",
+		"they drift by %.1f m" % drift)
+
+	# THE RHYTHM IS THE ROUTE'S. `structure_module_length` is the road's strongest
+	# speed cue — one collar goes past every `module / cruise_speed` seconds — and each
+	# edge dividing its own span into a whole number of bays gave consecutive edges of
+	# the trunk steps of 450, 400, 427 and 458 m. From the seat that is not a road
+	# built differently, it is the ship being shifted.
+	var module := Tuning.num("exploration/structure_module_length")
+	for route_at in specs.size():
+		var spec := specs[route_at]
+		var world := spec.world_vertices(lattice)
+		var placed := PackedFloat32Array()
+		var travelled := 0.0
+		var edge_at := 0
+		for other in specs:
+			if other == spec:
+				break
+			edge_at += other.vertex_count() - 1
+		var collared := 2
+		for i in spec.vertex_count() - 1:
+			var built := road.structures()[edge_at + i]
+			# `module_phase` is ALREADY where this building starts along the route.
+			for joint in built.joints():
+				placed.append(built.module_phase + joint)
+			# A vertex the road TURNS at is a joint and the network stands a collar on
+			# it. One it merely changes building at is not, and a collar there marks
+			# nothing while breaking the rhythm twice over.
+			if built.end_inset.x > 0.0:
+				placed.append(travelled)
+				if i > 0:
+					collared += 1
+			travelled += world[i].distance_to(world[i + 1])
+		placed.append(travelled)
+		placed.sort()
+		var off_rhythm := 0
+		for i in range(1, placed.size()):
+			if absf(placed[i] - placed[i - 1] - module) > 1.0:
+				off_rhythm += 1
+		# One irregular gap per vertex at most: a vertex that does not land on the
+		# rhythm gets a collar of its own, which is a real joint and reads as one.
+		# Two gaps per collared vertex at most: one that does not land on the rhythm
+		# splits a module into two short ones, and that reads as the joint it is.
+		_expect(off_rhythm <= collared * 2,
+			"%s's collars run on one rhythm end to end, broken only where it turns"
+				% spec.name,
+			"%d gaps are not %.0f m, against %d collared vertices" % [
+				off_rhythm, module, collared])
+
+	# THE MAP, from the seat. A fresh run starts ON the road, because there is no way
+	# on to it until step C, and the debug drop is what makes the vertex judgeable.
+	var shell := road.barrier(scene.ship().position, clearance)
+	_expect(shell != null and shell.inside,
+		"a fresh run starts inside the road, on a carriageway",
+		"the ship is in open space")
+	_expect(map.forward_mainlines().size() == specs.size(),
+		"the debug drop has a carriageway per route to put you on",
+		"got %d" % map.forward_mainlines().size())
+	# …AND WITH THE DRIVE RUNNING. Engaging is crossing a ramp's start portal, and
+	# this road has no ramps until step C — so a drop that only placed the ship left
+	# it on the highway at hull speed with the HUD saying "fly a portal to engage",
+	# which is a road you cannot judge a bend on.
+	_expect(map.riding() != null and scene.ship().cruise != null,
+		"…and the drop leaves the ship riding, because there is no portal to fly yet",
+		"the ship is on the road at hull speed")
+	_expect(scene.ship().road_axis().length_squared() > 0.5,
+		"…having adopted the road's axis, so the first frame does not slew",
+		"the ship kept the axis of wherever it was before")
+
+	# The systems landed on their cells, and the corridors still join them.
+	for i in ["SYSTEM A", "SYSTEM B", "SYSTEM C", "SYSTEM D", "SYSTEM E"]:
+		var index := SystemMap.NAMES.find(i)
+		var cell := Routes.anchor_cell(i)
+		_expect(map.system_center(index).distance_to(lattice.to_world(cell, 0)) < 0.01,
+			"%s sits on its cell (%d,%d)" % [i, cell.x, cell.y],
+			"%s" % map.system_center(index))
+	var disc := scene.get_node_or_null("SystemRoot/SystemMap/DiscB") as SystemDisc
+	_expect(disc != null and disc.bearings.size() == 4,
+		"SYSTEM B opens four ways — two roads, both directions on each",
+		"%d apertures" % (disc.bearings.size() if disc != null else -1))
+
+	scene.queue_free()
 
 func _expect(condition: bool, what: String, detail: String) -> void:
 	_checks += 1

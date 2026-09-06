@@ -435,7 +435,9 @@ that cannot be flown is discovered; the derived fillet floor and its clamp;
 
 **ADR 0095** lands here (it is written; this step makes it true).
 
-### B. The mainline from routes
+### B. The mainline from routes ✅
+
+**Built 2026-09-06**; `make check` is 1489 checks. `make lattice` plays it.
 
 `scenes/lattice.tscn` and `make lattice`: the same scene script as exploration with a
 `LatticeLayout` instead of the leg-walking layout.
@@ -448,14 +450,82 @@ that cannot be flown is discovered; the derived fillet floor and its clamp;
 | `RoadStructure` | loses the bleed. `rebuild` is a straight step. `pierce` stays for one more step so the old scene still works |
 
 Ramps: none on the lattice scene yet. The lattice scene is a highway with no way onto
-it, flown with the debug teleport, which is enough to judge the vertex rule from the
-seat and the frame. `make shot` a vertex at 13.9° and one at 30°.
+it, so **a fresh run starts on the carriageway with the drive running, and the debug
+teleport walks the road's own vertices** instead of its systems — the drop is derived
+from the route data, so authoring a bend into `data/routes.json` adds a stop with no
+code change.
 
-Gate: every §5 bound on every vertex of every route in `data/routes.json`; the
-exploration suite unchanged; a new `_test_lattice_builds` asserting the node tree, that
-consecutive edges' boxes share their vertex, that the collar covers both box ends, and
-that every deck's `max_turn_deg_per_metre × cruise_speed ≤ turn rate` (the ADR 0070
-check, now passing on a filleted lane rather than a weave).
+**The drop has to ENGAGE, not just place.** Engaging is crossing a ramp's start portal
+and there are no ramps until step C, so a drop that only moved the ship left it sitting
+on the highway at hull speed with the HUD saying *"fly a portal to engage"* — and a
+bend at 30 m/s is not the bend anyone is being asked about. It does exactly what the
+portal branch does (adopt the road's axis, take a lane sample, reset the reticle)
+rather than inventing a second way on to a road, and it goes with the scene when the
+ramps land.
+
+`tools/shots/vertex_shot.gd` renders a bend from the seat at any distance
+(`VERTEX_SHOT_VERTEX`, `VERTEX_SHOT_APPROACH`). **The frame has to be taken from the
+road**, and that is not a limitation of the harness: off the road there is nothing
+playable — the corridor is on the combat plane and the highway rides 360 m above it,
+carrying only its own tube (ADR 0091) — so a camera swung out to admire the mitre from
+outside is 2 km past the boundary and the whole frame is the boundary's red.
+
+The map's bends are 15.3°, not the 13.9° and 30° this asked for: an `(8, 3)` edge is
+what the authored map wanted, and it is the closest thing on any lattice to the 15°
+nobody can have.
+
+Gate: every §5 bound on every vertex of every route in `data/routes.json` (step A);
+the exploration suite unchanged; a new `_test_lattice_builds` asserting the node tree,
+that consecutive edges' boxes both reach the mitre corner they share, that the collar
+covers both box ends, that every deck's `max_turn_deg_per_metre × cruise_speed ≤ turn
+rate` (the ADR 0070 check, now passing on a filleted lane rather than a weave), that
+every metre of every lane is inside a building **and that the building which answers is
+one the point is really inside**, that the two carriageways hold their separation
+through a bend, and that a fresh run starts on the road.
+
+**A `MultiMesh` cannot be read back headless** — the dummy renderer stores no instance
+data, so `get_instance_transform` returns the identity for a row that was written
+correctly. `RoadNetwork.collars()` returns the transforms as data, which is both
+readable there and the more honest assertion: it tests the geometry rather than the
+graphics server.
+
+**Two things the road had to be told, found from the seat.**
+
+- **The rhythm is the ROUTE'S, not the building's.** `structure_module_length` is
+  documented as the road's strongest speed cue — one collar goes past every
+  `module / cruise_speed` seconds — and one building per route made that automatic.
+  Twelve buildings in a line, each dividing its own span into a whole number of bays,
+  gave consecutive edges of the trunk steps of **450, 400, 427 and 458 m**. From the
+  seat that does not read as a road built differently; it reads as the ship being
+  shifted. `RoadStructure.module_phase` puts the collars on global multiples of the
+  module instead: **102 of 106 gaps on the trunk are now exactly 400 m**, and the four
+  that are not are the two real bends, where a vertex collar splits one module in two.
+  The station index is global for the same reason, or a route's landmarks restart at
+  every bend and stop being landmarks.
+- **Only a real joint gets a collar.** Eleven of the trunk's thirteen vertices are
+  authoring boundaries — the seam between a junction's edge and the straight beside it
+  — where the road does not change direction and the two buildings are flush. A collar
+  there marks nothing and breaks the rhythm twice over. `end_inset` is zero at those,
+  and the joint rule is half-open so exactly one of the two edges places the collar
+  that lands there.
+
+**A polyline's tangent is piecewise constant, and that is the wrong thing to steer
+by.** A filleted bend is half a dozen segments, so a nose held against
+`RoadPath.tangent_at` turns through it in that many discrete jumps — worst in a berth,
+which is carried exactly along it and has no slew of its own to hide it.
+`RoadPath.heading_at` is a centred difference over a fixed window: exact on a straight,
+blended at a vertex, and nothing has to know where the vertices are. The lane's axis
+and the berth's rail both read it; module placement still reads the raw tangent,
+because a box wants the segment it sits on.
+
+**One bug the lattice surfaced, fixed here.** `RoadPath.closest` clamps, so the offset
+measured from a clamped end has no along-component left in it: a building thirty
+kilometres behind the ship reported exactly the same two walls as the one the ship was
+inside, and tied with it on `room()`. One long building per route hid that completely;
+a dozen short edges in a line surfaced it at once, as the HUD naming the wrong shell. A
+building now declines to answer past its own end face — measured as the **overshoot**,
+because clamping makes "at the end" and "past the end" the same number, and a point
+exactly on the end face is still that building's.
 
 ### C. Junctions and ramps
 

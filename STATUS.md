@@ -14,11 +14,12 @@ the human's explicit direction.
 
 | | |
 |---|---|
-| Branch | `feat/lattice-a`, pushed |
-| Gate | `make check` — 1409 checks, 0 failed |
-| Run it | `make fly` — **unchanged**: lattice step A is pure code, tools and data, and nothing lays the new road out until step B |
-| Built | Exploration POC steps 1–8, highway rebuild steps A–D, **lattice step A**, plus six play-session passes (ADRs 0062–0095) |
-| **Do next** | **`docs/HIGHWAY_LATTICE_PLAN.md`, step B: the mainline from routes.** `scenes/lattice.tscn` and `make lattice` beside the existing scene, `LatticeLayout` in place of the leg-walking layout, one `RoadStructure` per edge with the mitre at each vertex, two `RoadDeck`s per route each filleted on its own line. Flown with the debug teleport — no ramps until C. The old road keeps working until D swaps them. |
+| Branch | `feat/lattice-b`, pushed |
+| Gate | `make check` — 1489 checks, 0 failed |
+| Run it | **`make lattice`** for the new road, `make fly` for the old one — both work, and both will until step D swaps them |
+| Built | Exploration POC steps 1–8, highway rebuild steps A–D, **lattice steps A and B**, plus six play-session passes (ADRs 0062–0095) |
+| **NOT SIGNED OFF** | The three drive fixes below are implemented and measured but **not verified from the seat** — you were away from the machine. The station finding in particular is *diagnosed and deliberately not fixed*, because what to do about it is a feel call. |
+| **Do next** | **`docs/HIGHWAY_LATTICE_PLAN.md`, step C: junctions and ramps.** `RoadStructure.follow_tile`, `RoadNetwork.add_ramp`, the planet ramps for all five systems and the four interchange ramps at B, as `lane` routes in `data/routes.json`. That is what gives the lattice road a way on to it. |
 | **Waiting on you** | **Two feel calls.** `ship/max_pitch_deg` (78) and `camera/ship_pitch_ceiling_deg` (42) are the pitch pair — how steeply the nose may point, and how far the boom follows it there. They are tuned together and they are yours. Also `exploration/junction_wall_opening_metres` (500), which is how much wall an exit opens. Still not diagnosed: the undock on the far highway that put the ship in the other lane. Then the fourth checkpoint: success criterion 1, ten minutes on the trunk road. |
 
 ### The lattice, step A — built
@@ -56,8 +57,110 @@ road, unchanged, and it stays that way until step D.
   human can act on.
 
 **Two feel calls that are now live**: `exploration/road_fillet_radius` (900 m, floor
-421) is how a vertex feels to fly, and it is yours the moment step B puts a vertex in
-front of you. `road_pitch_max_deg` (7) migrated off `road_rise_deg`.
+421) is how a vertex feels to fly. `road_pitch_max_deg` (7) migrated off `road_rise_deg`.
+
+### The lattice, step B — built, and it is flyable
+
+**`make lattice`.** The same scene as `make fly` — same systems, corridors, planets,
+boundary, HUD and controls — with `SystemMap` reading `data/routes.json` instead of
+walking a list of tuned leg lengths. The old road is untouched and both run.
+
+**There is no way ON to it yet** (junctions are step C), so a fresh run starts on the
+trunk carriageway **with the cruise drive already running**, and **J walks the road's
+own vertices** rather than its systems. The stops are derived from the route data, so
+authoring a bend into `data/routes.json` adds a stop with no code change — and saving
+that file relays the map out under you.
+
+The drop engages rather than just placing you, and it has to: engaging is crossing a
+ramp's start portal, and there are no ramps yet, so a drop that only moved the ship left
+it on the highway at hull speed with the HUD saying *"fly a portal to engage"*. Merging
+on is the right answer and it is what step C builds; until then this stands in for the
+portal and does exactly what the portal branch does.
+
+- **One building per straight edge**, mitred `h·tan(θ/2)` past each vertex so the outer
+  corner is closed and the inside overlaps; **one collar per vertex** standing on the
+  bisector, covering both boxes' ends. No bleed, and nothing to hide.
+- **Each carriageway is offset and then filleted on its own line.** The order is the
+  whole point, and it is the correction found reviewing the plan.
+- `LegacyLayout` and `LatticeLayout` both produce a `MapLayout`, so everything
+  downstream of `SystemMap` is identical for the two. Both branches go in step D.
+
+**Two things found from the seat, on the first drive.** *"About every 6 segments the
+ship position looks like it gets shifted backwards"* and *"it skips to discrete angles
+around turns while in docked mode"*.
+
+- **The collar rhythm was per building, and there are twelve of them per route now.**
+  Each edge divided its own span into a whole number of bays, so consecutive edges of
+  the trunk stepped at 450, 400, 427 and 458 m — and `structure_module_length` is the
+  road's strongest speed cue. It is phased to the route now: 102 of 106 gaps on the
+  trunk are exactly 400 m, and the four that are not are its two real bends. A collar
+  also only stands where the road actually turns; eleven of the trunk's thirteen
+  vertices are authoring seams and a frame there marks nothing.
+- **A polyline's tangent is piecewise constant.** A filleted bend is half a dozen
+  segments, so a nose held against it turns in that many jumps — worst in a berth,
+  which is carried exactly along it. `RoadPath.heading_at` is a centred difference over
+  a fixed window; the lane and the berth steer by it, module placement still uses the
+  raw segment direction.
+
+**One bug the lattice surfaced, and it was live on the old road too.** `RoadPath.closest`
+clamps, so the offset measured from a clamped end has no along-component left in it: a
+building thirty kilometres behind the ship reported exactly the same two walls as the
+one the ship was inside, and tied with it on `room()`. One long building per route hid
+it; a dozen short edges in a line surfaced it at once, as the HUD naming the wrong
+shell. A building now declines to answer past its own end face.
+
+### The first drive of the lattice road — three findings, none signed off
+
+Reported from the seat, fixed or diagnosed, and **none of it confirmed by you yet**.
+
+1. **"Stuck at normal speed."** Correct: engaging is crossing a ramp's start portal and
+   there are no ramps until step C. The debug drop engages now. *Unverified.*
+2. **"About every 6 segments the ship gets shifted backwards."** Real, and a regression
+   this rebuild introduced: each edge divided its own span into a whole number of bays,
+   so the collar step changed at every vertex — 450, 400, 427, 458 m on consecutive
+   edges of the trunk. Phased to the route now, and measured over 12.5 km of flight:
+   **collars pass at 400.0 m every time, no anomalies**; ship and camera steps are flat
+   to five decimal places. *Unverified.*
+3. **"It skips to discrete angles around turns."** `RoadPath.tangent_at` is piecewise
+   constant. `heading_at` is a centred difference; the lane and the berth steer by it.
+   **You confirmed this one is fixed.**
+
+### Still there, diagnosed, and NOT fixed — it is your call
+
+After the rhythm fix you still read *"a distinct bump back, about every 7.5 collars,
+periodic and regular"*. Measured, by autocorrelating the frame-to-frame image
+difference over 1500 rendered frames of flight: **one dominant period, 2000 m, r =
+0.94.** That is `structure_station_spacing` — five joints of 400 m.
+
+The mechanism is that a station and a collar are both centred on the joint but are not
+the same length:
+
+| | length | leading face |
+|---|---|---|
+| collar | 60 m | joint − 30 |
+| station | 190 m | joint − **95** |
+
+The joints are perfectly even; the faces you read the beat from are not. Between
+leading faces you get `400, 400, 400, 335, 465` and repeat — every fifth frame arrives
+**65 m early** and the one after it 65 m late. At cruise that is 0.26 s early then
+0.26 s late.
+
+**The immediate knob, no code:** `structure_station_spacing = 0` in the F2 panel turns
+stations off and the beat goes perfectly even — one flight confirms or kills the
+diagnosis. `structure_station_length` shortens them short of that.
+
+**The design fix, if you want stations AND an unbroken beat:** a station should replace
+a BAY rather than a collar. Collars stay at every joint, every fifth bay is a heavy
+segment instead of glass, the landmarks survive and nothing moves the beat. Not done,
+because it is a feel decision on shipped behaviour (ADR 0078) and it would change the
+old road too.
+
+**Waiting on you, and it is the thing step B exists to ask:** fly `make lattice`, press
+J to the first bend, and say whether a 15.3° corner in a hard-edged 480 m building reads
+as a road bending or as a road with a kink in it. The plan's §12.1 says this is where
+it is most likely to be wrong, and the fix if it is — a generated elbow tile per angle —
+is more generator output and no architecture change. `road_fillet_radius` is the slider
+while you are there.
 
 ### The road goes on a lattice — decided, and step A built
 
