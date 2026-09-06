@@ -489,6 +489,35 @@ correctly. `RoadNetwork.collars()` returns the transforms as data, which is both
 readable there and the more honest assertion: it tests the geometry rather than the
 graphics server.
 
+**Two things the road had to be told, found from the seat.**
+
+- **The rhythm is the ROUTE'S, not the building's.** `structure_module_length` is
+  documented as the road's strongest speed cue — one collar goes past every
+  `module / cruise_speed` seconds — and one building per route made that automatic.
+  Twelve buildings in a line, each dividing its own span into a whole number of bays,
+  gave consecutive edges of the trunk steps of **450, 400, 427 and 458 m**. From the
+  seat that does not read as a road built differently; it reads as the ship being
+  shifted. `RoadStructure.module_phase` puts the collars on global multiples of the
+  module instead: **102 of 106 gaps on the trunk are now exactly 400 m**, and the four
+  that are not are the two real bends, where a vertex collar splits one module in two.
+  The station index is global for the same reason, or a route's landmarks restart at
+  every bend and stop being landmarks.
+- **Only a real joint gets a collar.** Eleven of the trunk's thirteen vertices are
+  authoring boundaries — the seam between a junction's edge and the straight beside it
+  — where the road does not change direction and the two buildings are flush. A collar
+  there marks nothing and breaks the rhythm twice over. `end_inset` is zero at those,
+  and the joint rule is half-open so exactly one of the two edges places the collar
+  that lands there.
+
+**A polyline's tangent is piecewise constant, and that is the wrong thing to steer
+by.** A filleted bend is half a dozen segments, so a nose held against
+`RoadPath.tangent_at` turns through it in that many discrete jumps — worst in a berth,
+which is carried exactly along it and has no slew of its own to hide it.
+`RoadPath.heading_at` is a centred difference over a fixed window: exact on a straight,
+blended at a vertex, and nothing has to know where the vertices are. The lane's axis
+and the berth's rail both read it; module placement still reads the raw tangent,
+because a box wants the segment it sits on.
+
 **One bug the lattice surfaced, fixed here.** `RoadPath.closest` clamps, so the offset
 measured from a clamped end has no along-component left in it: a building thirty
 kilometres behind the ship reported exactly the same two walls as the one the ship was

@@ -2817,6 +2817,17 @@ func _test_lattice() -> void:
 			"it demands more than the ship has")
 
 
+## The angle a polyline turns through at one of its own vertices.
+func _deflection(line: PackedVector3Array, i: int) -> float:
+	if i <= 0 or i >= line.size() - 1:
+		return 0.0
+	var back := line[i] - line[i - 1]
+	var ahead := line[i + 1] - line[i]
+	if back.length_squared() < 0.000001 or ahead.length_squared() < 0.000001:
+		return 0.0
+	return back.normalized().angle_to(ahead.normalized())
+
+
 ## A route that must not build, and the words the human needs to see when it does not.
 func _bad_route(what: String, data: Dictionary, fragment: String) -> void:
 	var spec := RouteSpec.parse("K-999", data, {})
@@ -2905,11 +2916,16 @@ func _test_lattice_builds() -> void:
 	# Read as DATA, not off the MultiMesh: the headless renderer stores no instance
 	# transforms, so a row written correctly reads back as the identity.
 	var collars := road.collars()
-	var vertices := 0
+	var joints := 0
 	for spec in specs:
-		vertices += spec.vertex_count()
-	_expect(collars.size() == vertices,
-		"one collar per vertex — %d of them" % vertices,
+		joints += 2
+		var turns := spec.world_vertices(lattice)
+		for i in range(1, turns.size() - 1):
+			if _deflection(turns, i) > RoadPath.FILLET_MIN_ANGLE_RAD:
+				joints += 1
+	_expect(collars.size() == joints,
+		"a collar at each end of each route and at each vertex it TURNS at — %d"
+			% joints,
 		"got %d" % collars.size())
 
 	# THE MITRE. Two consecutive edges' boxes both run PAST the vertex they share, by
@@ -2931,9 +2947,15 @@ func _test_lattice_builds() -> void:
 				"%s vertex %d: both boxes reach the mitre corner, %.1f m past it"
 					% [spec.name, i, reach],
 				"%.2f m and %.2f m against %.2f" % [past, short, reach])
+			if theta <= RoadPath.FILLET_MIN_ANGLE_RAD:
+				continue
 			# The collar has to cover both of those ends, or the overlap on the inside
-			# of the bend is visible as a seam from the seat.
-			var half: float = collars[at + i + specs.find(spec)].basis.z.length() * 0.5
+			# of the bend is visible as a seam from the seat. Found by where it
+			# stands rather than by index: only a vertex the road turns at has one.
+			var half := -1.0
+			for row in collars:
+				if row.origin.distance_to(world[i]) < 1.0:
+					half = row.basis.z.length() * 0.5
 			_expect(half >= reach - 0.01,
 				"…and the collar standing on the bisector covers them both",
 				"%.1f m of collar against a %.1f m mitre" % [half, reach])
@@ -3010,6 +3032,52 @@ func _test_lattice_builds() -> void:
 	_expect(drift < 2.0,
 		"the two carriageways hold their separation through a bend",
 		"they drift by %.1f m" % drift)
+
+	# THE RHYTHM IS THE ROUTE'S. `structure_module_length` is the road's strongest
+	# speed cue — one collar goes past every `module / cruise_speed` seconds — and each
+	# edge dividing its own span into a whole number of bays gave consecutive edges of
+	# the trunk steps of 450, 400, 427 and 458 m. From the seat that is not a road
+	# built differently, it is the ship being shifted.
+	var module := Tuning.num("exploration/structure_module_length")
+	for route_at in specs.size():
+		var spec := specs[route_at]
+		var world := spec.world_vertices(lattice)
+		var placed := PackedFloat32Array()
+		var travelled := 0.0
+		var edge_at := 0
+		for other in specs:
+			if other == spec:
+				break
+			edge_at += other.vertex_count() - 1
+		var collared := 2
+		for i in spec.vertex_count() - 1:
+			var built := road.structures()[edge_at + i]
+			# `module_phase` is ALREADY where this building starts along the route.
+			for joint in built.joints():
+				placed.append(built.module_phase + joint)
+			# A vertex the road TURNS at is a joint and the network stands a collar on
+			# it. One it merely changes building at is not, and a collar there marks
+			# nothing while breaking the rhythm twice over.
+			if built.end_inset.x > 0.0:
+				placed.append(travelled)
+				if i > 0:
+					collared += 1
+			travelled += world[i].distance_to(world[i + 1])
+		placed.append(travelled)
+		placed.sort()
+		var off_rhythm := 0
+		for i in range(1, placed.size()):
+			if absf(placed[i] - placed[i - 1] - module) > 1.0:
+				off_rhythm += 1
+		# One irregular gap per vertex at most: a vertex that does not land on the
+		# rhythm gets a collar of its own, which is a real joint and reads as one.
+		# Two gaps per collared vertex at most: one that does not land on the rhythm
+		# splits a module into two short ones, and that reads as the joint it is.
+		_expect(off_rhythm <= collared * 2,
+			"%s's collars run on one rhythm end to end, broken only where it turns"
+				% spec.name,
+			"%d gaps are not %.0f m, against %d collared vertices" % [
+				off_rhythm, module, collared])
 
 	# THE MAP, from the seat. A fresh run starts ON the road, because there is no way
 	# on to it until step C, and the debug drop is what makes the vertex judgeable.

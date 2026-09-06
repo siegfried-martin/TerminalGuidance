@@ -189,7 +189,10 @@ func sample(point: Vector3, clearance: Vector2 = Vector2.ZERO) -> CruiseLane:
 	var found := _path.closest(point)
 	var along: float = found[0]
 	var centre: Vector3 = found[1]
-	var direction: Vector3 = found[2]
+	# The SMOOTHED heading, not the segment's raw direction. A filleted bend is half a
+	# dozen segments and a nose held against a piecewise-constant axis turns through it
+	# in that many jumps (`RoadPath.heading_at`).
+	var direction: Vector3 = _path.heading_at(along)
 	var frame := CruiseLane.frame_for(direction)
 	var offset := point - centre
 	var extents := profile(along)

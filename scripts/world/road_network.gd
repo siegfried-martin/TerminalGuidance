@@ -202,23 +202,39 @@ func add_lattice_route(spec: RouteSpec, lattice: HexLattice, limits: RoadLimits,
 	var collar := Tuning.num("exploration/structure_rib_thickness")
 
 	var first: RoadStructure = null
+	var travelled := 0.0
 	for i in vertices.size() - 1:
 		var head := _mitre_at(vertices, i, limits, spec.profile)
 		var tail := _mitre_at(vertices, i + 1, limits, spec.profile)
 		var along := (vertices[i + 1] - vertices[i]).normalized()
 		var built := _make_structure("%sEdge%d" % [tag, i], false,
 			spec.profile == "pair")
+		# WHERE THIS EDGE SITS IN THE ROUTE, so the collars land on one rhythm from
+		# end to end. Each edge dividing its own span into a whole number of bays gave
+		# consecutive edges of the trunk steps of 450, 400, 427 and 458 m — and
+		# `structure_module_length` is the road's strongest speed cue, so a step that
+		# changes at every bend reads from the seat as the ship being shifted.
+		built.module_phase = travelled - head
+		travelled += vertices[i].distance_to(vertices[i + 1])
 		# The ends are the vertices' business, and the vertex collar covers the whole
 		# mitre plus half a rib either side of it.
-		built.end_inset = Vector2(head * 2.0 + collar * 0.5,
-			tail * 2.0 + collar * 0.5)
+		# ONLY A REAL JOINT GETS A COLLAR. A vertex where the road does not change
+		# direction is an authoring boundary — the seam between a junction's edge and
+		# the straight beside it — and the two buildings there are flush, so a collar
+		# standing on it marks nothing and breaks the rhythm twice over. Eleven of the
+		# trunk's thirteen vertices are that. The two ends of a route are real: the
+		# road stops there.
+		built.end_inset = Vector2(
+			head * 2.0 + collar * 0.5 if _wants_collar(vertices, i) else 0.0,
+			tail * 2.0 + collar * 0.5 if _wants_collar(vertices, i + 1) else 0.0)
 		built.follow(PackedVector3Array([vertices[i] - along * head,
 			vertices[i + 1] + along * tail]), pair, pair, false, false)
 		if first == null:
 			first = built
 
 	for i in vertices.size():
-		_collar_rows.append(_collar_at(vertices, i, limits, spec.profile, collar))
+		if _wants_collar(vertices, i):
+			_collar_rows.append(_collar_at(vertices, i, limits, spec.profile, collar))
 	_place_collars()
 
 	_routes.append(route)
@@ -239,6 +255,14 @@ func add_lattice_route(spec: RouteSpec, lattice: HexLattice, limits: RoadLimits,
 			limits.fillet_radius()), "", "")
 		carriageways.append(deck)
 	_route_pairs.append(carriageways)
+
+
+## Whether a vertex is a joint worth standing a collar on: either end of the route,
+## where the road stops, or a vertex the road actually turns at.
+static func _wants_collar(vertices: PackedVector3Array, i: int) -> bool:
+	if i <= 0 or i >= vertices.size() - 1:
+		return true
+	return _deflection_at(vertices, i) > RoadPath.FILLET_MIN_ANGLE_RAD
 
 
 ## How far one edge's building runs past a vertex: `h · tan(θ/2)`, which reaches

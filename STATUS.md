@@ -84,6 +84,23 @@ portal and does exactly what the portal branch does.
 - `LegacyLayout` and `LatticeLayout` both produce a `MapLayout`, so everything
   downstream of `SystemMap` is identical for the two. Both branches go in step D.
 
+**Two things found from the seat, on the first drive.** *"About every 6 segments the
+ship position looks like it gets shifted backwards"* and *"it skips to discrete angles
+around turns while in docked mode"*.
+
+- **The collar rhythm was per building, and there are twelve of them per route now.**
+  Each edge divided its own span into a whole number of bays, so consecutive edges of
+  the trunk stepped at 450, 400, 427 and 458 m — and `structure_module_length` is the
+  road's strongest speed cue. It is phased to the route now: 102 of 106 gaps on the
+  trunk are exactly 400 m, and the four that are not are its two real bends. A collar
+  also only stands where the road actually turns; eleven of the trunk's thirteen
+  vertices are authoring seams and a frame there marks nothing.
+- **A polyline's tangent is piecewise constant.** A filleted bend is half a dozen
+  segments, so a nose held against it turns in that many jumps — worst in a berth,
+  which is carried exactly along it. `RoadPath.heading_at` is a centred difference over
+  a fixed window; the lane and the berth steer by it, module placement still uses the
+  raw segment direction.
+
 **One bug the lattice surfaced, and it was live on the old road too.** `RoadPath.closest`
 clamps, so the offset measured from a clamped end has no along-component left in it: a
 building thirty kilometres behind the ship reported exactly the same two walls as the
