@@ -524,7 +524,17 @@ func upcoming_exits(here: Vector3) -> Array:
 	for sign in _road.signs():
 		if sign.from_deck != _riding or sign.ramp == null:
 			continue
-		var metres: float = line.closest(sign.ramp.path().start())[0] - ship_at
+		# MEASURED TO THE WAY OUT, not to where the ramp's centre-line begins. A ramp
+		# starts ON the carriageway and runs beside it for hundreds of metres before it
+		# clears the wall, so the distance to its start is a distance to a point in the
+		# lane you are already in — the strip said 257 m while the opening was still
+		# most of a kilometre ahead. The gate the tile declares IS the way out.
+		var leaves := sign.ramp.path().start()
+		for gate in _road.gates():
+			if gate.deck == sign.ramp:
+				leaves = gate.position
+				break
+		var metres: float = line.closest(leaves)[0] - ship_at
 		if metres > horizon:
 			continue
 		# A ramp that is behind you is a turning you have missed — unless it is the one

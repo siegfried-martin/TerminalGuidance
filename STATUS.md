@@ -109,6 +109,37 @@ one the ship was inside, and tied with it on `room()`. One long building per rou
 it; a dozen short edges in a line surfaced it at once, as the HUD naming the wrong
 shell. A building now declines to answer past its own end face.
 
+### Why the gate missed three obvious faults, and what was added
+
+The second drive found three faults in seconds that 1481 checks had passed. The
+reason is one thing, and it is worth more than the fixes:
+
+**The gate had no model of the ship following the road.** It bounded the road's
+CURVATURE and it checked the collision SHELL, and it never simulated what the player
+is handed frame by frame. All three faults lived in that gap:
+
+- The curvature check was `max_turn_deg_per_metre × cruise_speed ≤ turn_rate` — "the
+  road never demands more than the ship's whole turn rate". That is a much weaker
+  statement than "the ship can fly this road". At the limit the nose slews after the
+  lane at exactly the rate the lane turns, so it lags the road the whole way round,
+  the velocity points somewhere else again, and the camera hung off the nose swings
+  with no input. **That is the alignment complaint, and it measured 81 per cent.**
+- The mesh is deliberately independent of the shell (art and collision never
+  co-depend), and **nothing checked the mesh against its own sidecar**. So a tile
+  could lose an entire wall while every collision check passed.
+- Nothing checked that what the HUD announces is where the thing announced actually
+  is.
+
+**`RoadRehearsal` is the instrument.** It walks a path at cruise speed, slews a
+heading after it at the ship's own rate, and reports the worst LAG and what share of
+the turn rate the road takes. The gate now flies every deck through it. It caught the
+off-ramp at 81 per cent on the first run, by name.
+
+**`road_turn_share` is the bound that was missing.** The fillet floor was
+`cruise_speed / turn_rate` — the radius at which the road takes ALL of it. It now
+reserves a share (0.5), which moves the floor from 421 m to 842 and is a feel value
+with a comment.
+
 ### The first drive of the lattice road — three findings, none signed off
 
 Reported from the seat, fixed or diagnosed, and **none of it confirmed by you yet**.

@@ -57,7 +57,7 @@ func _process(_delta: float) -> void:
 		return
 	var world := spec.world_vertices(lattice)
 	var at_vertex: Vector3 = world[clampi(int(_number("VERTEX_SHOT_VERTEX", VERTEX)),
-		1, world.size() - 2)]
+		0, world.size() - 1)]
 	var along: float = deck.path().closest(at_vertex)[0]
 
 	# FROM THE SEAT, on the carriageway, short of the bend.

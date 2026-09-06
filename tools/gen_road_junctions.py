@@ -343,6 +343,29 @@ def sweep(points, across, below, above, skip):
     return parts
 
 
+def resample(points, step):
+    """A run walked at `step` metres, with its own vertices kept.
+
+    **A FACE IS ONLY AS OPEN AS ITS APERTURE SAYS.** `sweep` leaves out any segment
+    whose middle falls in an opening, so a run given as two points is one segment per
+    face and a single aperture takes the whole wall with it: a `diverge_right` lost
+    all 1800 m of its right wall for a 620 m opening, and a `merge_below` lost its
+    entire roadway. Walking the run first is what makes the declared stretch the
+    stretch that actually opens (ADR 0093).
+    """
+    if len(points) < 2:
+        return list(points)
+    out = [points[0]]
+    for i in range(1, len(points)):
+        a, b = points[i - 1], points[i]
+        span = math.dist(a, b)
+        pieces = max(int(math.ceil(span / step)), 1)
+        for k in range(1, pieces + 1):
+            u = k / pieces
+            out.append(tuple(a[j] + u * (b[j] - a[j]) for j in range(3)))
+    return out
+
+
 def building_mesh(points, half_width, half_height, open_faces):
     """A placeholder building: a roadway slab and a kerb in metal, glazing in glass,
     each face left out over the stretches the sidecar says are open.
@@ -351,6 +374,7 @@ def building_mesh(points, half_width, half_height, open_faces):
     sits ON or OUTSIDE the clear interior, so the space a ship flies through is
     exactly the lane and nothing reaches inward to eat it.
     """
+    points = resample(points, SAMPLE_METRES)
     deck = half_height * 2.0 * DECK_FRACTION
     metal = sweep(points, (-half_width, half_width),
                   -half_height - deck, -half_height, open_faces.get("BELOW", []))
@@ -405,9 +429,16 @@ def solve(entry, tune):
     pitch_max = tune["road_pitch_max_deg"]
     turn_max = tune["cruise_turn_rate_deg_per_sec"]
     speed = tune["cruise_speed"]
-
-    floor = max(speed / math.radians(turn_max), deck_sep)
-    radius_target = max(RAMP_RADIUS_METRES, floor)
+    # THE ROAD MAY TAKE ONLY A SHARE of the ship's turn rate. At the whole of it the
+    # nose slews after the lane at exactly the rate the lane turns, so it lags the
+    # road the whole way round and never catches up — which is what "the ship is not
+    # pointing where it is going" is. A tile is held to the same share the routes are.
+    share = tune["road_turn_share"]
+    floor = max(speed / (math.radians(turn_max) * share), deck_sep)
+    # A MARGIN over the floor, not the floor itself. The acceptance below rejects
+    # anything within a tenth of the share, so a tile aimed exactly at the floor is a
+    # tile that can never be accepted however far it grows.
+    radius_target = max(RAMP_RADIUS_METRES, floor * 1.2)
     main_half = deck_sep * 0.5 + lane_w * 0.5
     ramp_half = lane_w * 0.5
     # Where the ramp's body has fully left the mainline's, so the two buildings stop
@@ -415,9 +446,10 @@ def solve(entry, tune):
     clear_across = main_half + ramp_half
 
     cells = entry["footprint_cells"]
-    for _attempt in range(24):
+    socket_cell = tuple(entry["socket"])
+    for _attempt in range(40):
         length = cells * cell
-        socket = cell_to_local(entry["socket"], entry["socket_level"], cell, level)
+        socket = cell_to_local(socket_cell, entry["socket_level"], cell, level)
         forward_z = deck_sep * 0.5
         if entry["kind"] == "exit":
             # An exit leaves the carriageway and reaches the socket. The divergence
@@ -437,6 +469,8 @@ def solve(entry, tune):
             run = end[0] - start[0]
         if run <= cell * 0.5 or run <= SOCKET_STRAIGHT_METRES:
             cells += 1
+            if entry["kind"] == "exit":
+                socket_cell = (socket_cell[0] + 1, socket_cell[1])
             continue
 
         samples = max(int(math.ceil(run / SAMPLE_METRES)), 8)
@@ -448,8 +482,14 @@ def solve(entry, tune):
         demanded = max_turn_deg_per_metre(ramp) * speed
         # A margin, so a tile is not one tuning nudge away from failing the gate it
         # was generated to pass.
-        if pitch > pitch_max * 0.9 or demanded > turn_max * 0.9:
+        if pitch > pitch_max * 0.9 or demanded > turn_max * share * 0.9:
+            # THE SOCKET MOVES WITH THE FOOTPRINT, for an EXIT only. An exit's run is
+            # bounded by how far along the edge its socket sits, so growing the tile
+            # without growing the socket buys it nothing; an entry's socket is the far
+            # end of the run and moving it forward cancels the length just added.
             cells += 1
+            if entry["kind"] == "exit":
+                socket_cell = (socket_cell[0] + 1, socket_cell[1])
             continue
 
         spine = [(0.0, 0.0, 0.0), (length, 0.0, 0.0)]
@@ -457,14 +497,14 @@ def solve(entry, tune):
         carriage_r = [(length, 0.0, -forward_z), (0.0, 0.0, -forward_z)]
         return _assemble(entry, ramp, spine, carriage_f, carriage_r, socket, length,
                          cells, main_half, ramp_half, lane_h, rib, clear_across,
-                         cell, level, lane_w, deck_sep, pitch, demanded)
+                         cell, level, lane_w, deck_sep, pitch, demanded, socket_cell)
     raise SystemExit("%s: no footprint up to %d cells satisfies the bounds"
                      % (entry["name"], cells))
 
 
 def _assemble(entry, ramp, spine, carriage_f, carriage_r, socket, length, cells,
               main_half, ramp_half, lane_h, rib, clear_across, cell, level,
-              lane_w, deck_sep, pitch, demanded):
+              lane_w, deck_sep, pitch, demanded, socket_cell):
     half_h = lane_h * 0.5
     ramp_length = polyline_length(ramp)
     apertures = []
@@ -539,7 +579,7 @@ def _assemble(entry, ramp, spine, carriage_f, carriage_r, socket, length, cells,
         # leave sideways or over the top and you join from below — is checked against
         # this rather than against the geometry.
         "kind": entry["kind"],
-        "sockets": {"ramp": {"cell": list(entry["socket"]),
+        "sockets": {"ramp": {"cell": list(socket_cell),
                              "level": entry["socket_level"],
                              "heading": [1, 0]}},
         "lane_runs": {
@@ -568,7 +608,7 @@ def _assemble(entry, ramp, spine, carriage_f, carriage_r, socket, length, cells,
     print("  %-14s footprint (%d,0) = %.0f m, ramp %.0f m, pitch %.2f deg, "
           "demands %.1f deg/s, socket at (%d,%d) level %d"
           % (entry["name"], cells, length, ramp_length, pitch, demanded,
-             entry["socket"][0], entry["socket"][1], entry["socket_level"]))
+             socket_cell[0], socket_cell[1], entry["socket_level"]))
     del socket
     return sidecar, parts
 

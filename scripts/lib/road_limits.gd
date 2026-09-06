@@ -23,6 +23,8 @@ var deck_separation: float = 0.0
 var pitch_max_deg: float = 0.0
 ## What `tuning.cfg` asks for, before the floor is applied.
 var tuned_fillet_radius: float = 0.0
+## How much of the ship's turn rate the road is allowed to take. See `fillet_floor`.
+var turn_share: float = 1.0
 
 
 func _init(tuned: Dictionary) -> void:
@@ -33,18 +35,20 @@ func _init(tuned: Dictionary) -> void:
 	deck_separation = float(tuned.get("deck_separation", 0.0))
 	pitch_max_deg = float(tuned.get("road_pitch_max_deg", 0.0))
 	tuned_fillet_radius = float(tuned.get("road_fillet_radius", 0.0))
+	turn_share = float(tuned.get("road_turn_share", 1.0))
 
 
 ## The tightest fillet the road may use.
 ##
-## Two floors, and the larger wins. The first is ADR 0070: at `cruise_speed` a radius
-## of `R` demands `cruise_speed / R` radians a second and the ship turns at
-## `turn_rate`. The second is ADR 0077: below the deck separation the inner
-## carriageway folds through itself.
+## Two floors, and the larger wins. The first is ADR 0070, with headroom: at
+## `cruise_speed` a radius of `R` demands `cruise_speed / R` radians a second, and the
+## road may take only `road_turn_share` of what the ship has — because the nose slews
+## after the lane at that same rate, so a road that takes all of it leaves the nose
+## lagging and nothing to steer with. The second is ADR 0077: below the deck
+## separation the inner carriageway folds through itself.
 func fillet_floor() -> float:
-	var turning := deg_to_rad(turn_rate_deg_per_sec)
-	var by_turn_rate := 0.0 if turning <= 0.0 else cruise_speed / turning
-	return maxf(by_turn_rate, deck_separation)
+	return maxf(RoadRehearsal.radius_floor(cruise_speed, turn_rate_deg_per_sec,
+		turn_share), deck_separation)
 
 
 ## The radius to actually build with. `asked` is a route's own request, or 0 for the

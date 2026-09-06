@@ -170,6 +170,7 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/road_curve_deg", "exploration/road_curve_period",
 	"exploration/lattice_cell_metres", "exploration/lattice_level_metres",
 	"exploration/road_fillet_radius", "exploration/road_pitch_max_deg",
+	"exploration/road_turn_share",
 	"exploration/road_rise_deg", "exploration/road_rise_period",
 	"exploration/bounds_grid_spacing", "exploration/bounds_grid_alpha_scale",
 	"exploration/bounds_grid_alpha", "exploration/road_height",
@@ -2624,19 +2625,33 @@ func _test_lattice() -> void:
 
 	# --- The derived floor ---------------------------------------------------
 	var limits := Routes.limits()
-	var floor_metres := Tuning.num("exploration/cruise_speed") \
-		/ deg_to_rad(Tuning.num("exploration/cruise_turn_rate_deg_per_sec"))
+	# THE FLOOR RESERVES TURN AUTHORITY. It used to be `cruise_speed / turn_rate` —
+	# the radius at which the road takes ALL of it, which is a road the ship can track
+	# and not one it can fly.
+	var floor_metres := RoadRehearsal.radius_floor(
+		Tuning.num("exploration/cruise_speed"),
+		Tuning.num("exploration/cruise_turn_rate_deg_per_sec"),
+		Tuning.num("exploration/road_turn_share"))
 	_expect(absf(limits.fillet_floor() - maxf(floor_metres,
 			Tuning.num("exploration/deck_separation"))) < 0.01,
-		"the fillet floor is cruise_speed / turn_rate, or the deck separation",
+		"the fillet floor leaves the ship a share of its turn rate to steer with",
 		"%.1f m against %.1f" % [limits.fillet_floor(), floor_metres])
+	_expect(RoadRehearsal.radius_floor(250.0, 34.0, 1.0) > 421.0
+			and RoadRehearsal.radius_floor(250.0, 34.0, 0.5)
+				> RoadRehearsal.radius_floor(250.0, 34.0, 1.0) * 1.9,
+		"…and halving the share doubles the radius the road may not be tighter than",
+		"it does not")
+	_expect(is_zero_approx(RoadRehearsal.worst_lag_deg(
+			_straight_path(), 250.0, 34.0)),
+		"a straight road leaves the nose nothing to lag behind", "it lags")
 	_expect(limits.fillet_radius() >= limits.fillet_floor(),
 		"the tuned fillet radius is at or above its floor",
 		"%.0f m against a floor of %.0f" % [limits.fillet_radius(),
 			limits.fillet_floor()])
 	var dragged := RoadLimits.new({
 		"cruise_speed": 250.0, "cruise_turn_rate_deg_per_sec": 34.0,
-		"deck_separation": 240.0, "road_fillet_radius": 300.0})
+		"deck_separation": 240.0, "road_fillet_radius": 300.0,
+		"road_turn_share": 1.0})
 	_expect(dragged.clamped() and dragged.fillet_radius() == dragged.fillet_floor(),
 		"a radius dragged under the floor is CLAMPED at the point of use, and says so",
 		"it was not")
@@ -2825,6 +2840,13 @@ func _test_lattice() -> void:
 			"it demands more than the ship has")
 
 
+## A kilometre of straight road, for the rehearsal's baseline.
+func _straight_path() -> RoadPath:
+	var line := RoadPath.new()
+	line.set_points(PackedVector3Array([Vector3.ZERO, Vector3(1000.0, 0.0, 0.0)]))
+	return line
+
+
 ## The angle a polyline turns through at one of its own vertices.
 func _deflection(line: PackedVector3Array, i: int) -> float:
 	if i <= 0 or i >= line.size() - 1:
@@ -2996,6 +3018,33 @@ func _test_lattice_builds() -> void:
 			"%s demands %.1f deg/s of a ship that turns at %.0f"
 				% [deck.name, demanded, limit],
 			"the road out-turns the ship")
+
+	# --- THE REHEARSAL -------------------------------------------------------
+	# Fly every deck on paper, because "the road never demands more than the ship's
+	# whole turn rate" is a much weaker statement than "the ship can fly this road",
+	# and the gap between them is where three obvious faults survived this gate.
+	#
+	# The nose slews after the lane's axis at the SAME rate the curvature check bounds
+	# the road by, so a road at that limit is one the nose exactly keeps up with and
+	# never gets ahead of: it lags through the whole bend, the velocity points
+	# somewhere else again, and the camera hung off the nose swings with no input.
+	# What is bounded here is the LAG, which is what that reads as from the seat.
+	var share_allowed := Tuning.num("exploration/road_turn_share")
+	for deck in road.decks():
+		var share := RoadRehearsal.turn_share(deck.path(), limits.cruise_speed,
+			limits.turn_rate_deg_per_sec)
+		_expect(share <= share_allowed + 0.01,
+			"%s leaves the ship turn rate to steer with — takes %.0f%% of %.0f deg/s"
+				% [deck.name, share * 100.0, limits.turn_rate_deg_per_sec],
+			"it takes %.0f%%, against a share of %.0f%%" % [
+				share * 100.0, share_allowed * 100.0])
+		var lag := RoadRehearsal.worst_lag_deg(deck.path(), limits.cruise_speed,
+			limits.turn_rate_deg_per_sec)
+		_expect(lag <= Tuning.num("exploration/cruise_turn_clamp_deg"),
+			"…and the nose never falls further behind %s than it may point off it"
+				% deck.name,
+			"the nose lags by %.1f deg against a %.0f deg cone" % [
+				lag, Tuning.num("exploration/cruise_turn_clamp_deg")])
 
 	# THE LANE IS INSIDE ITS OWN BUILDING, at the vertex most of all — the place the
 	# fillet cuts the corner and the two boxes are the only thing there (ADR 0087).

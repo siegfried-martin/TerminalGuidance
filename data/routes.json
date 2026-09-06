@@ -9,27 +9,34 @@
     "r steps 30 degrees east of north by the same. A level is lattice_level_metres of",
     "height, level 0 being the combat plane. 'junction' on a vertex means THE EDGE",
     "LEAVING THAT VERTEX is that tile, and the edge must be exactly the tile's",
-    "footprint: diverge_right is 3 cells, merge_below is 7. Junction tiles are",
     "generated for the (n, 0) direction family only, which includes (0, n).",
-    "",
+    "footprint: diverge_right is 4 cells, merge_below is 7. Junction tiles are",
     "A RAMP is a lane route. Its first vertex is NOT written here: it is the junction's",
     "socket, which the tile declares. 'from' names the junction, 'to' names the mouth.",
     "A ramp may ask for a tighter 'fillet' than the mainline's, and on a 600 m lattice",
-    "it has to — a 60 degree turn at the mainline's 900 m wants more tangent than half",
+    "it has to \u2014 a 60 degree turn at the mainline's 900 m wants more tangent than half",
     "an edge. The derived floor still holds it at 421.",
     "",
-    "Saving this file relays the map out under the ship, the way saving tuning.cfg",
-    "re-tunes it. Legs are unequal on purpose (ADR 0085)."
+    "it has to. The derived floor still holds it, and the floor now RESERVES half the ship's turn rate rather than spending all of it (road_turn_share).",
+    ""
   ],
-
   "anchors": {
-    "SYSTEM A": { "cell": [-19, 0] },
-    "SYSTEM B": { "cell": [0, 0] },
-    "SYSTEM C": { "cell": [34, 3] },
-    "SYSTEM D": { "cell": [0, -22] },
-    "SYSTEM E": { "cell": [0, 17] }
+    "SYSTEM A": {
+      "cell": [-19, 0]
+    },
+    "SYSTEM B": {
+      "cell": [0, 0]
+    },
+    "SYSTEM C": {
+      "cell": [34, 3]
+    },
+    "SYSTEM D": {
+      "cell": [0, -22]
+    },
+    "SYSTEM E": {
+      "cell": [0, 17]
+    }
   },
-
   "routes": {
     "A-377B": {
       "_comment": [
@@ -42,59 +49,132 @@
       "profile": "pair",
       "level": 3,
       "vertices": [
-        { "cell": [-25, 0] },
-        { "cell": [-22, 0], "junction": "diverge_right" },
-        { "at": "SYSTEM A", "junction": "merge_below" },
-        { "cell": [-12, 0] },
-        { "cell": [-3, 0], "junction": "diverge_right" },
-        { "at": "SYSTEM B", "junction": "merge_below" },
-        { "cell": [7, 0] },
-        { "cell": [20, 0] },
-        { "cell": [28, 3] },
-        { "cell": [31, 3], "junction": "diverge_right" },
-        { "at": "SYSTEM C", "junction": "merge_below" },
-        { "cell": [41, 3] },
-        { "cell": [44, 3] }
+        {
+          "cell": [-25, 0]
+        },
+        {
+          "cell": [-23, 0],
+          "junction": "diverge_right"
+        },
+        {
+          "at": "SYSTEM A",
+          "junction": "merge_below"
+        },
+        {
+          "cell": [-12, 0]
+        },
+        {
+          "cell": [-4, 0],
+          "junction": "diverge_right"
+        },
+        {
+          "at": "SYSTEM B",
+          "junction": "merge_below"
+        },
+        {
+          "cell": [7, 0]
+        },
+        {
+          "cell": [20, 0]
+        },
+        {
+          "cell": [28, 3]
+        },
+        {
+          "cell": [30, 3],
+          "junction": "diverge_right"
+        },
+        {
+          "at": "SYSTEM C",
+          "junction": "merge_below"
+        },
+        {
+          "cell": [41, 3]
+        },
+        {
+          "cell": [44, 3]
+        }
       ]
     },
-
     "K-112": {
       "_comment": [
         "The crossing road, D through B to E, riding two levels above the trunk.",
-        "It runs along e2, which is 60 DEGREES off the trunk's east — a lattice",
+        "It runs along e2, which is 60 DEGREES off the trunk's east \u2014 a lattice",
         "angle, where the 55 degrees this map used to cross at is not, and a better",
         "interchange angle besides (ADR 0095, plan section 7)."
       ],
       "profile": "pair",
       "level": 5,
       "vertices": [
-        { "cell": [0, -28] },
-        { "cell": [0, -25], "junction": "diverge_right" },
-        { "at": "SYSTEM D", "junction": "merge_below" },
-        { "cell": [0, -15] },
-        { "cell": [0, -3], "junction": "diverge_right" },
-        { "at": "SYSTEM B", "junction": "merge_below" },
-        { "cell": [0, 7] },
-        { "cell": [0, 14], "junction": "diverge_right" },
-        { "at": "SYSTEM E", "junction": "merge_below" },
-        { "cell": [0, 24] },
-        { "cell": [0, 27] }
+        {
+          "cell": [0, -28]
+        },
+        {
+          "cell": [0, -26],
+          "junction": "diverge_right"
+        },
+        {
+          "at": "SYSTEM D",
+          "junction": "merge_below"
+        },
+        {
+          "cell": [0, -15]
+        },
+        {
+          "cell": [0, -4],
+          "junction": "diverge_right"
+        },
+        {
+          "at": "SYSTEM B",
+          "junction": "merge_below"
+        },
+        {
+          "cell": [0, 7]
+        },
+        {
+          "cell": [0, 13],
+          "junction": "diverge_right"
+        },
+        {
+          "at": "SYSTEM E",
+          "junction": "merge_below"
+        },
+        {
+          "cell": [0, 24]
+        },
+        {
+          "cell": [0, 27]
+        }
       ]
     },
-
     "A-377B/off-A": {
       "_comment": [
         "SYSTEM A's off-ramp, and the first ramp on the lattice. It leaves at the",
-        "diverge_right on vertex 1, whose socket is (-19,-1) — 300 m short of A and",
-        "600 m to the right of the spine — and turns 60 degrees onto a mouth 1.0 km",
-        "from A's centre, well inside the disc."
+        "diverge_right on vertex 1, whose socket is (-19,-1), and turns 30 degrees",
+        "onto a mouth 1.2 km from A's centre, inside the disc.",
+        "",
+        "ONE 30 DEGREE TURN, NOT ONE 60. A (1,-1) edge to the mouth would be a 60",
+        "degree turn on 600 m, which even at the floor takes 81 per cent of the",
+        "ship's turn rate and leaves the nose lagging the road all the way round \u2014",
+        "which is what 'the ship isn't pointing where it's going' actually is. A",
+        "(2,-1) edge is half the turn over 1039 m and takes 35 per cent."
       ],
       "profile": "lane",
       "level": 3,
-      "fillet": 450.0,
-      "from": { "route": "A-377B", "vertex": 1, "carriageway": "forward" },
-      "vertices": [ { "cell": [-18, -2] } ],
-      "to": { "portal": "SYSTEM A" }
+      "fillet": 1200.0,
+      "from": {
+        "route": "A-377B",
+        "vertex": 1,
+        "carriageway": "forward"
+      },
+      "vertices": [
+        {
+          "cell": [-17, -2]
+        }
+      ],
+      "to": {
+        "portal": "SYSTEM A"
+      }
     }
   }
 }

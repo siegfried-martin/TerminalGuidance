@@ -28,7 +28,7 @@ const POLL_INTERVAL_SEC := 0.25
 ## and the builder cannot disagree about which they are.
 const LIMIT_KEYS: PackedStringArray = [
 	"cruise_speed", "cruise_turn_rate_deg_per_sec", "lane_width", "lane_height",
-	"deck_separation", "road_pitch_max_deg", "road_fillet_radius",
+	"deck_separation", "road_pitch_max_deg", "road_fillet_radius", "road_turn_share",
 ]
 
 var _anchors: Dictionary = {}
