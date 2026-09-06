@@ -14,14 +14,52 @@ the human's explicit direction.
 
 | | |
 |---|---|
-| Branch | `feat/highway-section-flips`, pushed |
-| Gate | `make check` — 1311 checks, 0 failed |
-| Run it | `make fly` |
-| Built | Exploration POC steps 1–8 and **highway rebuild steps A–D**, plus six play-session passes (ADRs 0062–0094) |
-| **Do next** | **Build the road on the lattice: `docs/HIGHWAY_LATTICE_PLAN.md`, step A.** Decided 2026-09-06 (ADR 0095) and not yet started. The drive against the 2026-09-05 fixes is still worth doing on the old road, but every highway bug it finds is one the lattice retires, so do not fix them in the old code. Steps 9–10 are traffic, and rebuild step E folds into them. |
+| Branch | `feat/lattice-a`, pushed |
+| Gate | `make check` — 1409 checks, 0 failed |
+| Run it | `make fly` — **unchanged**: lattice step A is pure code, tools and data, and nothing lays the new road out until step B |
+| Built | Exploration POC steps 1–8, highway rebuild steps A–D, **lattice step A**, plus six play-session passes (ADRs 0062–0095) |
+| **Do next** | **`docs/HIGHWAY_LATTICE_PLAN.md`, step B: the mainline from routes.** `scenes/lattice.tscn` and `make lattice` beside the existing scene, `LatticeLayout` in place of the leg-walking layout, one `RoadStructure` per edge with the mitre at each vertex, two `RoadDeck`s per route each filleted on its own line. Flown with the debug teleport — no ramps until C. The old road keeps working until D swaps them. |
 | **Waiting on you** | **Two feel calls.** `ship/max_pitch_deg` (78) and `camera/ship_pitch_ceiling_deg` (42) are the pitch pair — how steeply the nose may point, and how far the boom follows it there. They are tuned together and they are yours. Also `exploration/junction_wall_opening_metres` (500), which is how much wall an exit opens. Still not diagnosed: the undock on the far highway that put the ship in the other lane. Then the fourth checkpoint: success criterion 1, ten minutes on the trunk road. |
 
-### The road goes on a lattice — decided, not built
+### The lattice, step A — built
+
+**Pure code, tools and data; nothing renders differently yet.** `make fly` is the old
+road, unchanged, and it stays that way until step D.
+
+- **`HexLattice`** is the basis: cells as `Vector2i` axial coordinates, `to_world` /
+  `from_world` (cube rounding, because rounding q and r independently picks the wrong
+  cell near a boundary and the failure is invisible), bearings, lengths, and the exact
+  60° rotation that lets one junction mesh serve six directions.
+- **`RoadPath.fillet`** is the road's only curvature. **Each carriageway is filleted on
+  its own line, never the spine** — fillet the spine at R and offset by half the deck
+  separation afterwards and the inner carriageway comes out at 301 m, demanding 47.6
+  deg/s of a ship that turns at 34. That was the one real error found reviewing the plan.
+- **`RoadLimits`** holds the §5 bounds in one place, and the fillet's floor is
+  **derived, not tuned**: `cruise_speed / turn_rate` is 421 m today, and a radius
+  dragged under it in the F2 panel is clamped at the point of use rather than quietly
+  breaking the road until the next `make check`.
+- **`data/routes.json`** carries the five-system map on the lattice, hot-reloaded by a
+  `Routes` autoload the way `tuning.cfg` is. A→B runs 11.4 km and B→C 21.5 km, both
+  within a per cent of what the retiring `*_leg_length` keys said; the two 15.3° vertices
+  on the trunk are an `(8, 3)` edge, and they are the first direction change anyone will
+  fly. **The crossing at B is now exactly 60°**, as ADR 0095 settled.
+- **`tools/gen_road_junctions.py`** emits `diverge_right` and `merge_below` as metal and
+  glass `.obj` plus a sidecar the game reads. Two findings from actually solving them:
+  `merge_below` grew from a (5,0) footprint to (6,0), and a ramp's climb has to be a
+  **constant slope with rounded ends** rather than an S — an S of the same rise peaks at
+  twice the average pitch, 11° against a limit of 7, and buying that back costs nearly
+  two more kilometres of junction.
+- **The gate grew by 98 checks**, and the ones that matter are the rejections: a route
+  that doubles back, a junction whose edge is not its footprint, a junction on an oblique
+  edge, an edge too steep to fly, a fillet that would pass the next vertex — each named
+  with the route and the vertex, because "the map does not build" is not something a
+  human can act on.
+
+**Two feel calls that are now live**: `exploration/road_fillet_radius` (900 m, floor
+421) is how a vertex feels to fly, and it is yours the moment step B puts a vertex in
+front of you. `road_pitch_max_deg` (7) migrated off `road_rise_deg`.
+
+### The road goes on a lattice — decided, and step A built
 
 **ADR 0095, 2026-09-06.** Two plans in one day. The first proposed a catalogue of curved
 tiles on a hex lattice; its review found that no curved tile serves both heading families

@@ -1,0 +1,81 @@
+{
+  "_comment": [
+    "THE MAP. A route is a polyline whose vertices are lattice cells, every edge is a",
+    "straight road, and every direction change is an angle at a vertex (ADR 0095).",
+    "Read docs/HIGHWAY_LATTICE_PLAN.md section 4 before editing; the gate checks every",
+    "bound in section 5 on every vertex here and names the one that fails.",
+    "",
+    "A cell is [q, r] on the triangular lattice: q steps east by lattice_cell_metres,",
+    "r steps 30 degrees east of north by the same. A level is lattice_level_metres of",
+    "height, level 0 being the combat plane. 'junction' on a vertex means THE EDGE",
+    "LEAVING THAT VERTEX is that tile, and the edge must be exactly the tile's",
+    "footprint: diverge_right is 3 cells, merge_below is 6. Junction tiles are",
+    "generated for the (n, 0) direction family only, which includes (0, n).",
+    "",
+    "Saving this file relays the map out under the ship, the way saving tuning.cfg",
+    "re-tunes it. Legs are unequal on purpose (ADR 0085).",
+    "",
+    "Ramps are lane routes and land with step C of the plan; these are the mainlines."
+  ],
+
+  "anchors": {
+    "SYSTEM A": { "cell": [-19, 0] },
+    "SYSTEM B": { "cell": [0, 0] },
+    "SYSTEM C": { "cell": [34, 3] },
+    "SYSTEM D": { "cell": [0, -22] },
+    "SYSTEM E": { "cell": [0, 17] }
+  },
+
+  "routes": {
+    "A-377B": {
+      "_comment": [
+        "The trunk road, west to east. A to B is 11.4 km and B to C is 21.5 km along",
+        "the road, both within a per cent of what the retiring leg lengths said.",
+        "The two 15.3 degree vertices at (20,0) and (28,3) are an (8,3) edge: the",
+        "closest thing on any lattice to the 15 degrees nobody can have, and the",
+        "first direction change on this map anyone will fly."
+      ],
+      "profile": "pair",
+      "level": 3,
+      "vertices": [
+        { "cell": [-25, 0] },
+        { "cell": [-22, 0], "junction": "diverge_right" },
+        { "at": "SYSTEM A", "junction": "merge_below" },
+        { "cell": [-13, 0] },
+        { "cell": [-3, 0], "junction": "diverge_right" },
+        { "at": "SYSTEM B", "junction": "merge_below" },
+        { "cell": [6, 0] },
+        { "cell": [20, 0] },
+        { "cell": [28, 3] },
+        { "cell": [31, 3], "junction": "diverge_right" },
+        { "at": "SYSTEM C", "junction": "merge_below" },
+        { "cell": [40, 3] },
+        { "cell": [43, 3] }
+      ]
+    },
+
+    "K-112": {
+      "_comment": [
+        "The crossing road, D through B to E, riding two levels above the trunk.",
+        "It runs along e2, which is 60 DEGREES off the trunk's east — a lattice",
+        "angle, where the 55 degrees this map used to cross at is not, and a better",
+        "interchange angle besides (ADR 0095, plan section 7)."
+      ],
+      "profile": "pair",
+      "level": 5,
+      "vertices": [
+        { "cell": [0, -28] },
+        { "cell": [0, -25], "junction": "diverge_right" },
+        { "at": "SYSTEM D", "junction": "merge_below" },
+        { "cell": [0, -16] },
+        { "cell": [0, -3], "junction": "diverge_right" },
+        { "at": "SYSTEM B", "junction": "merge_below" },
+        { "cell": [0, 6] },
+        { "cell": [0, 14], "junction": "diverge_right" },
+        { "at": "SYSTEM E", "junction": "merge_below" },
+        { "cell": [0, 23] },
+        { "cell": [0, 26] }
+      ]
+    }
+  }
+}

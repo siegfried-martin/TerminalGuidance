@@ -166,8 +166,12 @@ annotation on the edge leaving a vertex**.
 - A `lane` route's `from` is a junction's ramp socket; its first vertex is the cell after
   that socket. Its `to` is a portal (a mouth, as now: flare and ring) or another
   junction (an interchange). Nothing is measured to find where either end is.
-- The map above is **illustrative**. Legs stay unequal on purpose (ADR 0085); the exact
-  cells are step D's, checked by the gate.
+- The map above was **illustrative and does not validate**: `merge_below`'s footprint
+  is not the edge it annotates, the ramp's first hop pitches 11.3° against a limit of 7,
+  and the vertex at `(44,6)` deflects 52°. **Step A authors the real cells**, against
+  today's leg lengths and the 60° crossing, and the gate checks every bound in §5 on
+  them. Legs stay unequal on purpose (ADR 0085); step D revises the cells only if
+  flying says so.
 
 ### 4.2 Systems sit on the lattice
 
@@ -208,7 +212,7 @@ pair; `lane_width/2` for a lane), and `e = h · tan(θ/2)`.
 
 | Bound | Why |
 |---|---|
-| `road_fillet_radius ≥ cruise_speed / turn_rate` (radians) | ADR 0070: a fillet's turn rate is `1/R`, and the road may not out-turn the ship. At 250 m/s and 34 deg/s that is 421 m |
+| `road_fillet_radius ≥ cruise_speed / turn_rate` (radians) | ADR 0070: a fillet's turn rate is `1/R`, and the road may not out-turn the ship. At 250 m/s and 34 deg/s that is 421 m. **The bound is on each carriageway's own lane line, so each is filleted on its own line at that radius — fillet the spine and offset afterwards and the inner carriageway comes out at `R − deck_separation/2`, which is 301 m and demands 47.6 deg/s of a ship that turns at 34.** `RoadLimits` holds the tuned value up to this floor at the point of use, so a slider dragged under it cannot break the road silently |
 | `road_fillet_radius ≥ deck_separation` | ADR 0077: the inner carriageway folds through itself below this |
 | `R · tan(θ/2) ≤` half the shorter adjacent edge | the fillet's tangent points must not pass the edge's midpoint, or two fillets overlap |
 | every point of the filleted lane is inside the union of the two boxes | the lane is what the hull is measured against; a lane outside its own building is the bug ADR 0087 fixed |
@@ -250,13 +254,27 @@ run followed by the lane route's filleted polyline.
 | Tile | Footprint | Ramp socket (start-relative) | Notes |
 |---|---|---|---|
 | `diverge_right` | (3, 0) | cell (3, -1), level 0, heading along the edge | 1500 m along, 520 m to the right of the spine: 400 m off the carriageway, an S of ~30° at ~1.5 km radius. Leaves at lane height (ADR 0092: an exit is cut, not troughed) |
-| `merge_below` | (5, 0) | cell (1, -1), level -2 | arrives 240 m below and climbs through the roadway over ~2400 m, under 6°. Trough rising into a slot (ADR 0091) |
+| `merge_below` | (5, 0) → **(6, 0) as built** | cell (1, -1), level -2 | arrives 240 m below and climbs through the roadway over 2.4 km at 5.7°. Trough rising into a slot (ADR 0091) |
 | `diverge_above` | (3, 0) | cell (3, 0), level +2 | the over-the-top left turn onto a road above (ADR 0080). **Not built until the interchange needs it**; listed so it is a catalogue addition and not an architecture change |
 
 Footprints and socket cells are starting values. The generator solves the ramp's curve
 between the carriageway and the socket, and the gate checks the result against the same
 bounds as §5 by walking the tile's declared runs. If a footprint has to grow to pass,
-it grows; the tile is the unit that absorbs it.
+it grows; the tile is the unit that absorbs it. **`merge_below` grew to (6, 0)** on the
+first run, for the reason §12.4 expected.
+
+**A ramp's lateral move is a two-arc S; its climb is a constant slope with a rounded
+end.** They are solved separately and that is not a detail. An S of 240 m over 2.7 km
+peaks at 11° — the S puts its steepest point in the middle, at twice the average — and
+buying that back by lengthening the tile costs nearly two more kilometres of junction.
+A constant 5.7° with a 3 km vertical fillet at each end is both shorter and gentler, and
+its curvature is bounded by the same check.
+
+**The exit's divergence point is derived from the radius, not picked.** A ramp that
+peels away at the tile's seam is flush with the mainline's wall for its whole length,
+and that is the highway losing a side (ADR 0093). Solving for a 900 m turn instead puts
+the divergence 369 m in and opens 620 m of wall — near the 500 m that ADR was tuned to,
+without a number to maintain.
 
 **A socket offset is written for an east-pointing edge and rotated with the edge.** A
 tile's sidecar gives its socket as a cell offset from the edge's start, in the frame
@@ -387,14 +405,15 @@ working until the new one is complete and D swaps them. That is the price of "wo
 correctly above anything else": the human can fly both and say when the new one is
 ready.
 
-### A. The lattice, the fillet, the data, the tiles
+### A. The lattice, the fillet, the data, the tiles ✅
 
-Pure code and tools. No visible change.
+Pure code and tools. No visible change. **Built 2026-09-06**; `make check` is 1409 checks.
 
 | New | What |
 |---|---|
 | `scripts/lib/hex_lattice.gd` | `to_world(cell, level)`, `from_world`, `is_lattice_vector(v)`, `bearing_of(cell)`, `length_of(cell)`, `neighbours`. No scene tree, no disk |
 | `scripts/lib/road_path.gd` | `static fillet(vertices, radius, segment_metres) -> PackedVector3Array` |
+| `scripts/lib/road_limits.gd` | the §5 bounds in one place, so the gate and the builder cannot disagree: the derived fillet floor and its clamp, the half-section per profile, the mitre extension, the turn rate a curvature demands |
 | `scripts/lib/route_spec.gd` | the parsed shape of one route: profile, vertices (cell, level, anchor, junction), `from`, `to`; and `validate() -> PackedStringArray` of exact, actionable errors ("K-112 closes at (14,-3), started at (12,-3)") |
 | `scripts/autoload/routes.gd` | loads `data/routes.json`, polls mtime, `reloaded` signal, `route(name)`, `anchors()`. Registered in `project.godot` |
 | `scripts/lib/road_tile.gd` | the sidecar, parsed: footprint, sockets, lane runs, apertures, gate, section |
@@ -402,11 +421,16 @@ Pure code and tools. No visible change.
 | `data/routes.json` | the current five-system map, transcribed onto the lattice (§4.1's sketch, corrected until it validates) |
 | `tuning.cfg` | the four new keys, in their group, with comments |
 
-Gate: lattice round-trips and the §3.2 table; `fillet` is tangent at both ends, has
-curvature `1/R` and leaves the endpoints alone; `RouteSpec.validate` rejects each of a
-list of bad routes with the right message; every tile's footprint is a lattice vector,
-its ramp socket is a lattice cell, its runs start and end at its sockets to a
-millimetre, its apertures lie inside it, and its section matches `tuning.cfg`;
+Gate: lattice round-trips (cube rounding, so a point off a cell centre snaps to the
+*nearest* cell) and the §3.2 table; `fillet` is tangent at both ends, has curvature
+`1/R`, leaves the endpoints alone, and reduces its radius rather than folding when an
+edge is too short; `RouteSpec.validate` rejects each of a list of bad routes with the
+right message; every tile's footprint is a lattice vector, its ramp socket is a lattice
+cell, its runs start and end at its sockets to a millimetre, its apertures lie inside
+it, its exit opens a wall and its entry a floor (ADR 0080 as a property of the
+catalogue), and its section matches `tuning.cfg`; **every §5 bound on every vertex of
+`data/routes.json`**, because the data lands here and step B should not be where a map
+that cannot be flown is discovered; the derived fillet floor and its clamp;
 `REQUIRED_TUNING_KEYS` carries the new keys.
 
 **ADR 0095** lands here (it is written; this step makes it true).
@@ -420,7 +444,7 @@ millimetre, its apertures lie inside it, and its section matches `tuning.cfg`;
 |---|---|
 | `scripts/lib/lattice_layout.gd` (new, pure) | routes and anchors in, and out: disc positions, each disc's aperture bearings (the direction of the route's edge at the anchor), the spine polyline per pair route, the corridor polyline per leg |
 | `SystemMap` | takes a layout object; the legacy layout is extracted unchanged into `legacy_layout.gd` so the exploration scene does not move. `relayout` runs on `Tuning.reloaded` **and** `Routes.reloaded` |
-| `RoadNetwork.add_route(spec)` | one `RoadStructure` per edge, extended by `e` at interior vertices; one collar per vertex on the bisector; two `RoadDeck`s per route from the filleted, offset spine. `_laid_on`'s bisector offset survives as the offset step |
+| `RoadNetwork.add_route(spec)` | one `RoadStructure` per edge, extended by `e` at interior vertices; one collar per vertex on the bisector; two `RoadDeck`s per route, each offset from the spine and then filleted **on its own line** (§5). `_laid_on`'s bisector offset survives as the offset step |
 | `RoadStructure` | loses the bleed. `rebuild` is a straight step. `pierce` stays for one more step so the old scene still works |
 
 Ramps: none on the lattice scene yet. The lattice scene is a highway with no way onto

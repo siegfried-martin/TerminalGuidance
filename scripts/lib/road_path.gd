@@ -16,6 +16,13 @@ extends RefCounted
 ## curve rather than the tessellation.
 const WEAVE_SEGMENT_METRES := 250.0
 
+## How finely a fillet's arc is tessellated, and the deflection below which a vertex
+## is left alone. Both infrastructure: the first trades polyline length against how
+## well `max_turn_deg_per_metre` reads the arc rather than the tessellation, and a
+## 30-degree fillet at 900 m wants about six points at this setting.
+const FILLET_SEGMENT_METRES := 80.0
+const FILLET_MIN_ANGLE_RAD := 0.0005
+
 var points: PackedVector3Array = PackedVector3Array()
 ## Cumulative distance to each point, so `length` and `point_at` are lookups rather
 ## than walks. Rebuilt whenever the points change.
@@ -128,6 +135,77 @@ func section(from: float, to: float) -> PackedVector3Array:
 ## A straight run between two points.
 static func straight(from: Vector3, to: Vector3) -> PackedVector3Array:
 	return PackedVector3Array([from, to])
+
+
+## The lane through a chain of vertices, with a **circular arc of `radius` at each
+## interior vertex** and a straight between them. The first and last vertex are left
+## exactly where they were.
+##
+## This is the whole of the lattice road's curvature (ADR 0095). The BUILDING is
+## straight and hard-cornered — a straight box on a straight segment is watertight,
+## which is the case ADR 0094 says a curve can never be — and the lane inside it is
+## filleted so the axis the camera and the nose follow turns smoothly. A direction
+## change is therefore flyable without the road curving.
+##
+## The radius is a feel value (`road_fillet_radius`): longer is gentler. It has a
+## floor, and the floor is derived rather than tuned — a fillet's turn rate is
+## `cruise_speed / radius`, so a radius under `cruise_speed / turn_rate` builds a
+## road that out-turns the ship (ADR 0070). The gate asserts it and `RoadNetwork`
+## clamps to it, because the human slides this one while flying.
+##
+## FILLET EACH CARRIAGEWAY'S OWN LINE, never the spine. Filleting the spine at R and
+## then offsetting by half the deck separation leaves the inner carriageway at
+## R - separation/2, which is a tighter turn than the one the floor was computed for.
+## Both lanes get the same R here and both clear the floor.
+##
+## Where the tangent points would pass an edge's midpoint the radius is reduced for
+## that vertex, so two adjacent fillets can never overlap. That is a backstop: the
+## gate rejects a route that needs it, with the vertex named.
+static func fillet(vertices: PackedVector3Array, radius: float,
+		segment_metres: float) -> PackedVector3Array:
+	if vertices.size() < 3 or radius <= 0.0:
+		return vertices
+	var out := PackedVector3Array([vertices[0]])
+	for i in range(1, vertices.size() - 1):
+		var here := vertices[i]
+		var back := here - vertices[i - 1]
+		var ahead := vertices[i + 1] - here
+		var back_length := back.length()
+		var ahead_length := ahead.length()
+		if back_length <= 0.001 or ahead_length <= 0.001:
+			out.append(here)
+			continue
+		var leaving := back / back_length
+		var arriving := ahead / ahead_length
+		# The DEFLECTION, not the interior angle: 0 is straight on.
+		var theta := leaving.angle_to(arriving)
+		# Straight on needs no arc, and doubling back has no finite one. A route
+		# that doubles back is rejected by `RouteSpec.validate` long before here.
+		if theta <= FILLET_MIN_ANGLE_RAD or theta >= PI - FILLET_MIN_ANGLE_RAD:
+			out.append(here)
+			continue
+		var half := theta * 0.5
+		var tangent := minf(radius * tan(half),
+			minf(back_length, ahead_length) * 0.5)
+		var effective := tangent / tan(half)
+		var entry := here - leaving * tangent
+		var exit := here + arriving * tangent
+		# The centre is on the interior bisector, at `R / cos(theta/2)` from the
+		# vertex. `arriving - leaving` IS that bisector: it is (-leaving) + arriving.
+		var centre := here + (arriving - leaving).normalized() * (effective / cos(half))
+		var spoke := entry - centre
+		var axis := spoke.cross(exit - centre)
+		if axis.length_squared() <= 0.000001:
+			out.append(here)
+			continue
+		axis = axis.normalized()
+		if out[out.size() - 1].distance_to(entry) > 0.001:
+			out.append(entry)
+		var steps := maxi(int(ceil(effective * theta / maxf(segment_metres, 1.0))), 2)
+		for k in range(1, steps + 1):
+			out.append(centre + spoke.rotated(axis, theta * float(k) / float(steps)))
+	out.append(vertices[vertices.size() - 1])
+	return out
 
 
 ## A ramp: leaves `from` along `from_tangent` and **arrives at `to` along

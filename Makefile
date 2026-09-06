@@ -42,7 +42,7 @@ import:  ## Re-import assets (run after adding or regenerating a file in assets/
 
 assets:  ## Regenerate the generated placeholder assets, then import them
 	@cd tools && python3 gen_probe_obj.py && python3 gen_carrier_obj.py \
-		&& python3 gen_road_modules.py
+		&& python3 gen_road_modules.py && python3 gen_road_junctions.py
 	@python3 tools/gen_textures.py
 	@$(MAKE) --no-print-directory import
 
