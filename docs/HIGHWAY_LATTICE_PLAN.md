@@ -258,6 +258,13 @@ between the carriageway and the socket, and the gate checks the result against t
 bounds as §5 by walking the tile's declared runs. If a footprint has to grow to pass,
 it grows; the tile is the unit that absorbs it.
 
+**A socket offset is written for an east-pointing edge and rotated with the edge.** A
+tile's sidecar gives its socket as a cell offset from the edge's start, in the frame
+where the edge runs along `e₁`. Placing the tile on a `(n, 0)`-family edge that runs at
+60° or 120° rotates that offset by the same multiple of 60°, which is an exact lattice
+rotation: axial `(q, r)` rotated by +60° is `(-r, q + r)`. Levels do not rotate. The
+world position of the socket is therefore always a cell, and the gate asserts it.
+
 **Backward placement is part of the contract.** A pair-profile tile is symmetric under a
 half-turn about the vertical, because both carriageways exist whichever way the route
 is read. A `diverge_right` for the reverse carriageway is the same mesh placed on the
@@ -367,6 +374,11 @@ and a `REQUIRED_TUNING_KEYS` entry: `lattice_cell_metres`, `lattice_level_metres
 needs `make assets` after they move, and the gate says so.
 
 ## 10. Build order and implementation plan
+
+> **Start here.** A fresh session begins step A on a branch `feat/lattice-a` from `main`.
+> Read §3 (the basis), §5 (the vertex rule) and §6.1 (the tile contract) before writing
+> anything; they are the three things the gate in step A asserts. Nothing in the old road
+> is touched in A, so `make fly` is unaffected until D.
 
 One PR per step, on a `feat/` branch, `make check` green before each is called done,
 each leaving `make fly` playable. Steps B and C build the new road in a **second scene**

@@ -227,6 +227,13 @@ debug_teleport_enabled = true      ; false in any session judging travel feel
 
 ## Build Order
 
+> **Amended 2026-09-06.** Steps 9 and 10 do **not** start next. The road is being rebuilt
+> first, on a lattice, and that work has its own build order: `docs/HIGHWAY_LATTICE_PLAN.md`
+> §10, steps A to E, decided in ADR 0095. Step 8 below is built but its mechanism (the
+> weave, the fitted ramps) is what the lattice replaces; the checkpoint it opened, success
+> criterion 1, is judged on the lattice road instead. Traffic (9 and 10) follows the
+> lattice's step D.
+
 Each numbered step should leave the build in a playable state.
 
 1. **Tuning section and debug HUD extension.** ✅ **built 2026-08-29** — the `[exploration]` section, `HullClass`, and the per-hull speed table. Before anything else, as with the combat POC. The instrument comes before what it measures.
