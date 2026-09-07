@@ -162,10 +162,30 @@ where the scale pass would have made it 42. X1 leaves A-377B closer to B, climbs
 B's K-112 entry and joins K-112 past it: 12 km. `make roads` now names the corner
 that is too tight rather than the road.
 
-**Not done**: the compressed far layer the design doc describes (planets and distant
-road drawn smaller than perspective, by a distance exponent). The scale pass was the
-honest half; that is the trick half, and it is next if the doubled world does not
-sell it on its own.
+**The far layer landed** — 2026-09-07, after the human flew the doubled world and
+reverted the planet size (500 m now, its cap at the floor): *"the spacing and speed
+feels right, but it still doesn't look the part, I think we need the visual trick."*
+Beyond `road_detail_radius`, planets, stars and the road's far mesh and markings are
+drawn smaller than perspective by `far_compress_power` (`FarLayer`, one formula shared
+by the nodes and the shaders; the far mesh carries each vertex's ring centre in a
+custom attribute and shrinks toward it). At 1.0, something twice as far looks four
+times smaller. From an entry mouth the next system's highway is a hairline and its
+planet a dot.
+
+**Each system has a star, and it is the light.** Below the floor and beside the
+planet at a seeded bearing, three planet diameters across, an emissive disc with an
+omni light. The scene's key and fill lights are gone. **The light reaches across its
+own system and no further, and the ambient is near zero: between systems it is
+dark, on purpose** — the human's call, made as the stars went in: *"this could be a
+feature. lights along the road. the ability to buy a headlight or search light that
+allows the player to operate more easily outside a system… a strategic trade off."*
+The lane markings and the glass's sheen are what you steer by out there. Godot's
+omni light multiplies by distance^-attenuation, so a star is attenuation 0 with a
+system-sized range; the star keys are under `;;; The star`.
+
+**Flagged, not built (scope, per CLAUDE.md):** lamps along the road, a headlight or
+searchlight as ship equipment, and what the dark costs off-road. Each is a design
+decision with a trade-off in it, and a doc or ADR before code.
 
 ### What to fly first, and the feel calls that come with it
 

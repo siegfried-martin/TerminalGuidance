@@ -43,6 +43,10 @@ const MAT_GLASS := 1
 const MAT_METAL := 2
 
 static var _materials: Array = []
+## The far version's materials: the same look, with the distance compression in the
+## vertex stage. Kept apart so the detailed chunks stay exact.
+static var _far_materials: Array = []
+static var _marking_shader: Shader = null
 
 ## The section, copied out of tuning ONCE per build so a worker thread never reads an
 ## autoload.
@@ -55,6 +59,12 @@ var _max_untested: float = 30.0
 var _active: Array[Tube] = []
 var _verts: Array[PackedVector3Array] = []
 var _norms: Array[PackedVector3Array] = []
+## Per vertex, the centre of the ring it belongs to — only kept for the far version,
+## whose shader shrinks each vertex toward it with distance (`FarLayer`).
+var _want_centres: bool = false
+var _centres: Array[PackedFloat32Array] = []
+var _c0: Vector3 = Vector3.ZERO
+var _c1: Vector3 = Vector3.ZERO
 var _faces := PackedVector3Array()
 
 
@@ -129,6 +139,7 @@ static func build_far(road: Road, chunk: Dictionary, from_t: float, to_t: float,
 	b._road = road
 	b._floor_thickness = floor_thickness
 	b._beam = beam
+	b._want_centres = true
 	b._reset()
 	var t0 := maxf(float(chunk["t0"]), from_t)
 	var t1 := minf(float(chunk["t1"]), to_t)
@@ -139,16 +150,17 @@ static func build_far(road: Road, chunk: Dictionary, from_t: float, to_t: float,
 			var f0 := road.path.frame(t0 + i * ring)
 			var f1 := road.path.frame(minf(t0 + (i + 1) * ring, road.path.length))
 			b._strip(f0, f1)
-	var node := commit(road, int(chunk["index"]), {"verts": b._verts, "norms": b._norms})
+	var node := commit(road, int(chunk["index"]),
+		{"verts": b._verts, "norms": b._norms, "centres": b._centres}, true)
 	node.name = "Far %s chunk %d" % [road.name, chunk["index"]]
 	return node
 
 
 ## Turn built arrays into nodes. Main thread only.
-static func commit(road: Road, chunk_index: int, built: Dictionary) -> Node3D:
+static func commit(road: Road, chunk_index: int, built: Dictionary, far: bool = false) -> Node3D:
 	var root := Node3D.new()
 	root.name = "%s chunk %d" % [road.name, chunk_index]
-	var mats := materials()
+	var mats := far_materials() if far else materials()
 	var verts: Array = built["verts"]
 	var norms: Array = built["norms"]
 	for m in range(3):
@@ -159,8 +171,12 @@ static func commit(road: Road, chunk_index: int, built: Dictionary) -> Node3D:
 		arrays.resize(Mesh.ARRAY_MAX)
 		arrays[Mesh.ARRAY_VERTEX] = vs
 		arrays[Mesh.ARRAY_NORMAL] = norms[m]
+		var flags := 0
+		if far:
+			arrays[Mesh.ARRAY_CUSTOM0] = (built["centres"] as Array)[m]
+			flags = Mesh.ARRAY_CUSTOM_RGB_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT
 		var mesh := ArrayMesh.new()
-		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, flags)
 		mesh.surface_set_material(0, mats[m])
 		var mi := MeshInstance3D.new()
 		mi.mesh = mesh
@@ -178,34 +194,49 @@ static func markings(tube: Tube) -> MeshInstance3D:
 	var span: float = tube.path.length
 	var stations := maxi(int(span / MARKING_METRES), 1)
 	var runs: Array[PackedVector3Array] = []
+	var centres: Array[PackedVector3Array] = []
 	for r in MARKING_COUNT:
 		runs.append(PackedVector3Array())
+		centres.append(PackedVector3Array())
 	for i in stations + 1:
 		var t := span * float(i) / float(stations)
 		var floor_point := tube.world(t, 0.0, -tube.hh * (1.0 - MARKING_LIFT))
+		var centre := tube.path.point_at(t)
 		var right: Vector3 = tube.path.frame(t)["right"]
 		for r in MARKING_COUNT:
 			var across := -1.0 + 2.0 * float(r) / float(MARKING_COUNT - 1)
 			runs[r].append(floor_point + right * across * tube.hw * MARKING_INSET)
+			centres[r].append(centre)
 	var verts := PackedVector3Array()
-	for run in runs:
+	var custom := PackedFloat32Array()
+	for r in runs.size():
+		var run := runs[r]
 		for i in run.size() - 1:
-			verts.append(run[i])
-			verts.append(run[i + 1])
+			for k in [i, i + 1]:
+				verts.append(run[k])
+				var c := centres[r][k]
+				custom.append(c.x)
+				custom.append(c.y)
+				custom.append(c.z)
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_CUSTOM0] = custom
 	var mesh := ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_LINES, arrays)
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_LINES, arrays, [], {},
+		Mesh.ARRAY_CUSTOM_RGB_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT)
 	var mi := MeshInstance3D.new()
 	mi.name = "Markings " + tube.name
 	mi.mesh = mesh
-	var mat := StandardMaterial3D.new()
 	# Paint, unshaded on purpose: a marking is a light source in its own right, and one
-	# that dims with the system's key light is one the player stops steering by.
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	# that dims with the system's light is one the player stops steering by. It
+	# compresses with distance like the far mesh, or the lines would show the road's
+	# true width where the tube is drawn narrower.
+	if _marking_shader == null:
+		_marking_shader = Shader.new()
+		_marking_shader.code = MARKING_SHADER
+	var mat := ShaderMaterial.new()
+	mat.shader = _marking_shader
 	mi.material_override = mat
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	return mi
@@ -218,7 +249,10 @@ static func paint_markings(mi: MeshInstance3D, tube: Tube, active: bool) -> void
 	color.a = Tuning.num("exploration/lane_active_alpha" if active
 		else "exploration/lane_line_alpha")
 	color = color.darkened(1.0 - clampf(shade, 0.0, 1.0))
-	(mi.material_override as StandardMaterial3D).albedo_color = color
+	var mat := mi.material_override as ShaderMaterial
+	mat.set_shader_parameter("albedo", color)
+	mat.set_shader_parameter("compress_start", Tuning.num("exploration/road_detail_radius"))
+	mat.set_shader_parameter("compress_power", Tuning.num("exploration/far_compress_power"))
 
 
 # --- materials ---------------------------------------------------------------
@@ -232,7 +266,39 @@ static func materials() -> Array:
 
 ## Re-read the colours. Called on a tuning reload; the geometry is not rebuilt for a
 ## colour.
+static func far_materials() -> Array:
+	if _far_materials.is_empty():
+		var opaque := Shader.new()
+		opaque.code = FAR_OPAQUE_SHADER
+		var glass := Shader.new()
+		glass.code = FAR_GLASS_SHADER
+		var floor_m := ShaderMaterial.new()
+		floor_m.shader = opaque
+		var glass_m := ShaderMaterial.new()
+		glass_m.shader = glass
+		var metal_m := ShaderMaterial.new()
+		metal_m.shader = opaque
+		_far_materials = [floor_m, glass_m, metal_m]
+		refresh_materials()
+	return _far_materials
+
+
 static func refresh_materials() -> void:
+	if not _far_materials.is_empty():
+		var start := Tuning.num("exploration/road_detail_radius")
+		var power := Tuning.num("exploration/far_compress_power")
+		var metal := Tuning.color("exploration/structure_metal_color")
+		for m: ShaderMaterial in _far_materials:
+			m.set_shader_parameter("compress_start", start)
+			m.set_shader_parameter("compress_power", power)
+		(_far_materials[MAT_FLOOR] as ShaderMaterial).set_shader_parameter("albedo", metal.darkened(0.35))
+		(_far_materials[MAT_METAL] as ShaderMaterial).set_shader_parameter("albedo", metal)
+		var fg: ShaderMaterial = _far_materials[MAT_GLASS]
+		fg.set_shader_parameter("tint", Tuning.color("exploration/structure_glass_color"))
+		fg.set_shader_parameter("base_alpha", Tuning.num("exploration/structure_glass_alpha"))
+		fg.set_shader_parameter("edge_alpha", Tuning.num("exploration/structure_glass_edge_alpha"))
+		fg.set_shader_parameter("fresnel_power", Tuning.num("exploration/structure_glass_fresnel_power"))
+		fg.set_shader_parameter("sheen", Tuning.num("exploration/structure_glass_sheen"))
 	if _materials.is_empty():
 		return
 	var glass: ShaderMaterial = _materials[MAT_GLASS]
@@ -279,6 +345,64 @@ void fragment() {
 """
 
 
+## The far layer's vertex stage: each vertex shrinks toward its ring's centre by
+## `FarLayer.factor` of the centre's distance from the camera — the same formula.
+const COMPRESS_VERTEX := """
+uniform float compress_start = 12000.0;
+uniform float compress_power = 1.0;
+void vertex() {
+	vec3 c = CUSTOM0.xyz;
+	float d = distance(CAMERA_POSITION_WORLD, c);
+	float f = (d > compress_start && compress_start > 0.0) ? pow(compress_start / d, compress_power) : 1.0;
+	VERTEX = c + (VERTEX - c) * f;
+}
+"""
+
+const FAR_OPAQUE_SHADER := """
+shader_type spatial;
+render_mode cull_disabled;
+uniform vec4 albedo : source_color = vec4(0.5, 0.5, 0.55, 1.0);
+""" + COMPRESS_VERTEX + """
+void fragment() {
+	ALBEDO = albedo.rgb;
+	METALLIC = 0.6;
+	ROUGHNESS = 0.6;
+}
+"""
+
+const FAR_GLASS_SHADER := """
+shader_type spatial;
+render_mode blend_mix, cull_disabled, depth_draw_opaque;
+uniform vec4 tint : source_color = vec4(0.13, 0.28, 0.36, 1.0);
+uniform float base_alpha = 0.3;
+uniform float edge_alpha = 0.75;
+uniform float fresnel_power = 3.0;
+uniform float sheen = 0.6;
+""" + COMPRESS_VERTEX + """
+void fragment() {
+	float facing = abs(dot(normalize(NORMAL), normalize(VIEW)));
+	float fresnel = pow(1.0 - clamp(facing, 0.0, 1.0), fresnel_power);
+	ALBEDO = tint.rgb;
+	ALPHA = clamp(mix(base_alpha, edge_alpha, fresnel), 0.0, 1.0);
+	EMISSION = tint.rgb * sheen * fresnel;
+	METALLIC = 0.4;
+	ROUGHNESS = 0.08;
+	SPECULAR = 0.6;
+}
+"""
+
+const MARKING_SHADER := """
+shader_type spatial;
+render_mode unshaded, blend_mix, cull_disabled;
+uniform vec4 albedo : source_color = vec4(0.4, 0.7, 0.9, 0.7);
+""" + COMPRESS_VERTEX + """
+void fragment() {
+	ALBEDO = albedo.rgb;
+	ALPHA = albedo.a;
+}
+"""
+
+
 static func _glass_material() -> ShaderMaterial:
 	var shader := Shader.new()
 	shader.code = GLASS_SHADER
@@ -300,6 +424,7 @@ static func _metal_material() -> StandardMaterial3D:
 func _reset() -> void:
 	_verts = [PackedVector3Array(), PackedVector3Array(), PackedVector3Array()]
 	_norms = [PackedVector3Array(), PackedVector3Array(), PackedVector3Array()]
+	_centres = [PackedFloat32Array(), PackedFloat32Array(), PackedFloat32Array()]
 	_faces = PackedVector3Array()
 
 
@@ -320,6 +445,8 @@ static func _pt(f: Dictionary, u: float, v: float) -> Vector3:
 
 ## One strip of structure between two ring frames.
 func _strip(f0: Dictionary, f1: Dictionary) -> void:
+	_c0 = f0["pos"]
+	_c1 = f1["pos"]
 	var road := _road
 	var w := road.half_width
 	var h := road.half_height
@@ -354,6 +481,8 @@ func _strip(f0: Dictionary, f1: Dictionary) -> void:
 
 ## A rib collar between two frames a rib-thickness apart.
 func _rib(f0: Dictionary, f1: Dictionary) -> void:
+	_c0 = f0["pos"]
+	_c1 = f1["pos"]
 	var road := _road
 	var w := road.half_width + 0.3
 	var h := road.half_height + 0.3
@@ -472,6 +601,13 @@ func _emit(mat: int, a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> void:
 	vs.append(d)
 	for k in range(6):
 		ns.append(n)
+	if _want_centres:
+		var cs := _centres[mat]
+		for p: Vector3 in [a, b, c, a, c, d]:
+			var centre := _c0 if p.distance_squared_to(_c0) <= p.distance_squared_to(_c1) else _c1
+			cs.append(centre.x)
+			cs.append(centre.y)
+			cs.append(centre.z)
 	if _want_faces:
 		_faces.append(a)
 		_faces.append(b)

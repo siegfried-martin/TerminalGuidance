@@ -221,7 +221,11 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/ramp_mouth_along_offset", "exploration/ramp_mouth_height",
 	"exploration/exit_approach_metres",
 	"exploration/structure_glass_edge_alpha", "exploration/structure_glass_fresnel_power",
-	"exploration/structure_glass_sheen", "exploration/debug_teleport_enabled",
+	"exploration/structure_glass_sheen", "exploration/far_compress_power",
+	"exploration/star_radius_planet_multiple", "exploration/star_gap_below_floor",
+	"exploration/star_offset_metres", "exploration/star_color", "exploration/star_emission",
+	"exploration/star_light_energy", "exploration/star_light_range",
+	"exploration/star_light_attenuation", "exploration/ambient_energy", "exploration/debug_teleport_enabled",
 ]
 
 const REQUIRED_ACTIONS: Array[String] = [
@@ -3111,8 +3115,8 @@ func _test_disc_bounds() -> void:
 	# planet; the cap is what you descend onto, and it is below the combat plane.
 	var surface := Tuning.num("exploration/planet_radius") \
 		- Tuning.num("exploration/planet_center_depth")
-	_expect(surface > -Tuning.num("exploration/system_floor_depth"),
-		"the planet's cap stands up through the floor into the disc (ADR 0061, amended)",
+	_expect(surface >= -Tuning.num("exploration/system_floor_depth"),
+		"the planet's cap reaches the floor of the disc or stands up through it (ADR 0061, amended)",
 		"cap at %.0f, floor at %.0f" % [surface, -Tuning.num("exploration/system_floor_depth")])
 	_expect(surface < 0.0,
 		"…and the planet's surface is below the combat plane, not in it (ADR 0061)",
@@ -3160,8 +3164,9 @@ func _test_exploration_builds() -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 
-	for path in ["WorldEnvironment", "KeyLight", "FillLight", "SystemRoot",
-			"SystemRoot/SystemMap",
+	for path in ["WorldEnvironment", "SystemRoot",
+			"SystemRoot/SystemMap", "SystemRoot/SystemMap/StarA",
+			"SystemRoot/SystemMap/StarA/Light", "SystemRoot/SystemMap/StarA/Body",
 			"SystemRoot/SystemMap/DiscA", "SystemRoot/SystemMap/DiscA/Ceiling",
 			"SystemRoot/SystemMap/DiscA/Floor", "SystemRoot/SystemMap/DiscA/Rim",
 			"SystemRoot/SystemMap/DiscA/SystemMarkers",
@@ -3192,6 +3197,27 @@ func _test_exploration_builds() -> void:
 	_expect(map.marker_count() > 0 and map.links()[0].marker_count() > 0,
 		"the whole map is filled with reference markers, corridor included",
 		"%d markers" % map.marker_count())
+	# EACH SYSTEM HAS A STAR, under its floor, three planet diameters across, and it is
+	# the light: there is no key or fill light in this scene.
+	_expect(map.stars().size() == map.planets().size(),
+		"every planet has a star", "%d stars" % map.stars().size())
+	for i in map.stars().size():
+		var star := map.stars()[i]
+		_expect(star.top() < map.systems()[i].position.y - map.systems()[i].floor_depth(),
+			"%s's star sits wholly below the disc's floor" % SystemMap.NAMES[i],
+			"top at %.0f, floor at %.0f" % [star.top(),
+				map.systems()[i].position.y - map.systems()[i].floor_depth()])
+		_expect(is_equal_approx(star.radius(), map.planets()[i].radius()
+				* Tuning.num("exploration/star_radius_planet_multiple")),
+			"…and is the tuned multiple of the planet's size", "%.0f m" % star.radius())
+	_expect(scene.get_node_or_null("KeyLight") == null and scene.get_node_or_null("FillLight") == null,
+		"the exploration scene carries no light of its own: the stars light it", "a scene light exists")
+	# THE FAR LAYER: honest within the detail radius, compressed beyond it.
+	var start := Tuning.num("exploration/road_detail_radius")
+	_expect(is_equal_approx(FarLayer.factor(start * 0.5, start, 1.0), 1.0)
+			and is_equal_approx(FarLayer.factor(start * 2.0, start, 1.0), 0.5)
+			and is_equal_approx(FarLayer.factor(start * 2.0, start, 0.0), 1.0),
+		"the far layer leaves the near world alone and shrinks the far one by its power", "")
 
 	# The corridor between two systems runs rim to rim, and the disc's aperture is
 	# where it attaches — the drawn rim has a hole exactly there.

@@ -65,7 +65,6 @@ var _reads_input: bool = true
 
 func _ready() -> void:
 	_build_environment()
-	_build_lights()
 	_build_world()
 	_build_ship()
 	_build_hud()
@@ -94,18 +93,8 @@ func _build_environment() -> void:
 	add_child(world_env)
 
 
-func _build_lights() -> void:
-	var key := DirectionalLight3D.new()
-	key.name = "KeyLight"
-	key.light_color = Color(1.0, 0.96, 0.9)
-	add_child(key)
-
-	var fill := DirectionalLight3D.new()
-	fill.name = "FillLight"
-	fill.light_color = Color(0.42, 0.56, 0.78)
-	add_child(fill)
-
-
+## No lights here. Each system's star is its light (`Star`), and the only other
+## illumination is the environment's ambient, which is a slider.
 func _build_world() -> void:
 	_root = Node3D.new()
 	_root.name = "SystemRoot"
@@ -442,16 +431,9 @@ func _apply_tuning() -> void:
 	var env := (get_node("WorldEnvironment") as WorldEnvironment).environment
 	env.background_color = Tuning.color("arena/background_color")
 	env.ambient_light_color = Tuning.color("arena/background_color").lightened(0.35)
-	env.ambient_light_energy = Tuning.num("arena/ambient_energy")
+	env.ambient_light_energy = Tuning.num("exploration/ambient_energy")
 	env.glow_enabled = Tuning.flag("arena/glow_enabled")
 	env.glow_intensity = Tuning.num("arena/glow_intensity")
-
-	var key := get_node("KeyLight") as DirectionalLight3D
-	key.light_energy = Tuning.num("arena/key_light_energy")
-	key.rotation_degrees = Tuning.vec3("arena/key_light_angles_deg")
-	var fill := get_node("FillLight") as DirectionalLight3D
-	fill.light_energy = Tuning.num("arena/fill_light_energy")
-	fill.rotation_degrees = Tuning.vec3("arena/fill_light_angles_deg")
 
 
 # --- flight ------------------------------------------------------------------

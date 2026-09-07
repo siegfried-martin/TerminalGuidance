@@ -33,6 +33,8 @@ signal departed()
 
 var _discs: Array[SystemDisc] = []
 var _planets: Array[Planet] = []
+## One star per planet: below and beside it, the system's only light.
+var _stars: Array[Star] = []
 var _approaches: Array[ApproachEnvelope] = []
 var _links: Array[SystemLink] = []
 ## Which two systems each link joins, in `NAMES` order, built from the highways.
@@ -92,6 +94,12 @@ func _build() -> void:
 		planet.name = "Planet" + letter
 		add_child(planet)
 		_planets.append(planet)
+
+		var star := Star.new()
+		star.name = "Star" + letter
+		star.index = i
+		add_child(star)
+		_stars.append(star)
 
 		var approach := ApproachEnvelope.new()
 		approach.name = "Approach" + letter
@@ -160,6 +168,9 @@ func relayout() -> void:
 		disc.rebuild()
 		_planets[i].base = disc.position
 		_planets[i].rebuild()
+		_stars[i].base = disc.position
+		_stars[i].planet_position = _planets[i].position
+		_stars[i].rebuild()
 		_approaches[i].position = _planets[i].position
 		_approaches[i].rebuild()
 
@@ -261,6 +272,7 @@ func observe(ship: Mothership, delta: float) -> void:
 	_road.set_active(_riding)
 	_road.stream(here)
 	_deep.follow(here)
+	_compress_the_distance()
 	_previous = here
 	_has_previous = true
 
@@ -351,6 +363,24 @@ func _forgive_the_junction(ship: Mothership, here: Vector3, clearance: Vector2) 
 		if ahead >= 0.0 and ahead <= approach and ship.cruise.lateral > 0.0:
 			ship.cruise.edge_speed_penalty = 1.0
 			return
+
+
+## THE FAR LAYER (`FarLayer`): beyond the road's detail radius, planets and stars are
+## drawn smaller than perspective makes them, by the same rule the road's far mesh
+## uses in its shader. Scaled about their own centres, so nothing moves.
+func _compress_the_distance() -> void:
+	var camera := get_viewport().get_camera_3d() if get_viewport() != null else null
+	if camera == null:
+		return
+	var eye := to_local(camera.global_position)
+	var start := Tuning.num("exploration/road_detail_radius")
+	var power := Tuning.num("exploration/far_compress_power")
+	for planet in _planets:
+		var f := FarLayer.factor(eye.distance_to(planet.position), start, power)
+		planet.scale = Vector3.ONE * f
+	for star in _stars:
+		var f := FarLayer.factor(eye.distance_to(star.position), start, power)
+		star.scale = Vector3.ONE * f
 
 
 ## The exits ahead on the tube being ridden, nearest first, as
@@ -465,6 +495,10 @@ func links() -> Array[SystemLink]:
 
 func planets() -> Array[Planet]:
 	return _planets
+
+
+func stars() -> Array[Star]:
+	return _stars
 
 
 func approaches() -> Array[ApproachEnvelope]:
