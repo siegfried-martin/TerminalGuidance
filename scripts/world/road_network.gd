@@ -316,6 +316,21 @@ func _ramp(name: String, from_tube: Tube, from_t: float, to_tube: Tube, to_t: fl
 	if pts.size() < 2:
 		problems.append("ramp %s has no shape" % name)
 		return null
+	# Every corner's arc has to fit its legs: the tangent length may not pass either
+	# leg's midpoint. A ramp's radii are shrunk to what fits; the validator still
+	# floors them at what the ship can turn, so a leg too short for a flyable bend is
+	# reported rather than folded.
+	for i in range(1, pts.size() - 1):
+		var r := float(radii[i])
+		if r <= 0.0:
+			continue
+		var a: Vector3 = ((pts[i] as Vector3) - (pts[i - 1] as Vector3))
+		var b: Vector3 = ((pts[i + 1] as Vector3) - (pts[i] as Vector3))
+		var ang := a.normalized().angle_to(b.normalized())
+		if ang < deg_to_rad(0.05):
+			continue
+		var room := minf(a.length(), b.length()) * 0.5 - 1.0
+		radii[i] = minf(r, room / maxf(tan(ang * 0.5), 0.001))
 	var path := RoadPath.build(pts, radii, false)
 	for c in path.problems():
 		problems.append("%s: %s" % [name, c])
@@ -454,6 +469,18 @@ func _validate() -> void:
 		if road.kind == "highway" and road.path.max_pitch_deg() > pitch_max + 0.01:
 			problems.append("%s: pitch %.1f deg over road_pitch_max_deg" % [
 				road.name, road.path.max_pitch_deg()])
+	# An exit's diverging leg must carry the ramp clear of the host's wall, and an
+	# entry's drop must carry it under the host's floor, or the ramp never leaves.
+	var hw := Tuning.num("exploration/lane_width") * 0.5
+	var hh := Tuning.num("exploration/lane_height") * 0.5
+	var reaches := Tuning.num("exploration/ramp_exit_length") \
+		* sin(deg_to_rad(Tuning.num("exploration/ramp_exit_angle_deg")))
+	if reaches < hw * 2.0 - RAMP_INSET + 20.0:
+		problems.append("ramp_exit_length x sin(ramp_exit_angle_deg) is %.0f m: an exit must move %.0f m sideways to clear the wall" % [
+			reaches, hw * 2.0 - RAMP_INSET + 20.0])
+	if Tuning.num("exploration/ramp_merge_drop") < hh * 2.0 + _floor_thickness + 10.0:
+		problems.append("ramp_merge_drop %.0f m does not put an entry under the host's floor (needs %.0f)" % [
+			Tuning.num("exploration/ramp_merge_drop"), hh * 2.0 + _floor_thickness + 10.0])
 	var head := Tuning.num("exploration/ramp_exit_lead") \
 		+ Tuning.num("exploration/ramp_exit_length") + 600.0
 	var tail := Tuning.num("exploration/ramp_merge_lead") \

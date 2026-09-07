@@ -115,7 +115,7 @@
         0
       ],
       "mouth_height": 400,
-      "mouth_along": 1600
+      "mouth_along": 800
     }
   ],
   "planet_ramps": [
@@ -151,31 +151,25 @@
         "highway": "A-377B",
         "side": "R",
         "near": [
-          9000,
+          4500,
           360,
-          120
+          50
         ]
       },
       "to": {
         "highway": "K-112",
         "side": "R",
         "at": "SYSTEM B",
-        "offset": 6450
+        "offset": 4200
       },
       "points": [
         [
-          11150,
-          330,
-          2800
-        ],
-        [
-          12894,
+          11033,
           340,
-          3814
+          691
         ]
       ],
       "radii": [
-        1200,
         1200
       ]
     },
@@ -191,9 +185,9 @@
         "highway": "A-377B",
         "side": "R",
         "near": [
-          22000,
+          23000,
           360,
-          120
+          50
         ]
       },
       "points": [

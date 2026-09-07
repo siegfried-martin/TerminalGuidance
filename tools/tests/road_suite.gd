@@ -64,8 +64,9 @@ func run() -> void:
 	_space = _holder.get_world_3d().direct_space_state
 	_probe = RoadProbe.new()
 	_probe.setup(_network.tubes, _network.roads)
-	var taxi: Vector3 = Vector3(14.0, 8.0, 48.0) * 0.5
-	_probe.half = taxi
+	# The taxi, at whatever scale the hull is drawn at.
+	var hull := load("res://assets/models/carrier.obj") as Mesh
+	_probe.half = hull.get_aabb().size * Tuning.num("ship/hull_scale") * 0.5
 
 	_containment()
 	_laps()
@@ -87,7 +88,10 @@ func _containment() -> void:
 		var bad := 0
 		var t := 0.0
 		while t < tube.path.length:
-			for off: Vector3 in [Vector3.ZERO, Vector3(50, 30, 3.3), Vector3(-50, -30, -3.3), Vector3(-35, 0, 7.7)]:
+			# Offsets as shares of the section, so the test means the same at any scale.
+			var w := tube.hw * 0.42
+			var h := tube.hh * 0.4
+			for off: Vector3 in [Vector3.ZERO, Vector3(w, h, 3.3), Vector3(-w, -h, -3.3), Vector3(-w * 0.7, 0, 7.7)]:
 				var ta: float = t + off.z * tube.direction
 				if not tube.path.closed and (ta < 0.0 or ta > tube.path.length):
 					continue
@@ -152,6 +156,11 @@ func _exits_steered() -> void:
 		var label := "steering 15 deg into exit %s" % rt.name
 		var ok := true
 		for i in int(9.0 / DT):
+			# Once in the ramp, fly it: what is under test is what ENTERING sharply
+			# costs, not holding a fixed heading into the ramp's own bends.
+			if _probe.tube() == rt:
+				var lc := rt.local(_probe.position)
+				_probe.aim = (rt.centre(float(lc["t"]) + 400.0) - _probe.position).normalized()
 			if not _step_checked(label, i):
 				ok = false
 				break
@@ -340,8 +349,13 @@ func _step_checked(label: String, i: int) -> bool:
 		return false
 	if _probe.tube() != null and i % 30 == 0:
 		var fr: Dictionary = _probe.frame
+		var fwd: Vector3 = fr["fwd"]
 		for d: Vector3 in [fr["right"], -fr["right"], fr["up"], -fr["up"]]:
-			if _ray(after, after + d * 2500.0).is_empty():
+			# A ray exactly along a seam between two of a clipped wall's triangles can
+			# slip through the physics test; a second ray a little further along cannot
+			# hit the same seam.
+			if _ray(after, after + d * 2500.0).is_empty() \
+					and _ray(after + fwd * 0.7, after + fwd * 0.7 + d * 2500.0).is_empty():
 				_expect(false, label, "no structure within 2.5 km toward %s at %s (t=%.1fs in %s)" % [
 					d, after, i * DT, _name(_probe.tube())])
 				return false

@@ -100,6 +100,40 @@ landed the same day:
   loaded (it is per chunk now), and a ramp's far version stood unclipped inside the
   carriageway until its chunk streamed in (ramps' heads and tails are left out of it).
 
+### The scale — 2026-09-07, from the human
+
+*"There's no way that with planets as small as the ones we can see that we would be
+able to build a highway as large as the one that exists… the speed and pacing feels
+right, so… scale down the size of the ships and the highway significantly… make the
+planets a bit bigger… only the top of the planet sticking out into usable space…
+shorter ramps."*
+
+Done as STARTING VALUES, all sliders. Before: taxi 48 m, highway 240 × 150, planet
+radius 200 wholly below the plane — the road wider than the planet, a ship a quarter of
+it. Now: hulls halved (taxi 24 m, `ship/hull_scale` 0.5 — **this halves the ship in
+the combat arena too**, since the hull is the ship's; say if the arena should keep
+its own), section 100 × 60, separation 100, portal 60 × 36, the structure's ribs,
+beams and slab in proportion, planet radius 900 at depth 1300 so its cap stands 350 m
+up through the floor (ADR 0061 amended to say so), approach envelope 1200. Ratios:
+road to planet 120% → 11%, ship to planet 24% → 2.7%. Speed, the rib beat and the map
+are untouched, so pacing is what it was and the highway reads about ten times longer
+against what it passes.
+
+Ramps are compact: exit lead 300 and a 500 m diverging leg at 15°, merge drop 100,
+swing 450 and reach 600 — a planet ramp is about 1.9 km instead of 4.4, and the
+interchange X1 is back before B now that B's exit opens only 2 km out. Two things had
+to be built for that: the mesh clip's resolution follows the section (it assumed a
+150 m tube), and every ramp corner's radius is fitted to its legs with the validator
+still flooring it at the turn-share radius, so a compact ramp that cannot be flown is
+named rather than folded. `make roads` also checks that an exit's leg actually
+clears the wall and an entry's drop clears the floor at the current section.
+
+**Not done, and next**: a star at the bottom of the system that lights it. The key
+light's angles are `arena/key_light_angles_deg`; a bright body below the floor is new
+work in `DeepField`. And the planet's cap is not solid — nothing stops a ship flying
+into it (the approach envelope arms first at hull speed, but a fighter through the
+envelope reaches the surface); a solid planet is the next piece of the boundary.
+
 ### What to fly first, and the feel calls that come with it
 
 - **The road at all.** `make fly`, fly the on-ramp at A onto A-377B, ride to B, take
@@ -110,14 +144,13 @@ landed the same day:
 - **`exploration/ramp_exit_angle_deg`** (8), **`ramp_exit_length`** (2000): how an
   exit peels off. The POC's numbers; the human said sizing "could maybe be a little
   smaller".
-- **`exploration/lane_width` / `lane_height`** (240 × 150): the human said the POC's
-  sizing "felt pretty good, could maybe be a little smaller". Saving either rebuilds
-  the structure.
+- **`exploration/lane_width` / `lane_height`** (100 × 60): scaled down 2026-09-07
+  for the planets. Saving either rebuilds the structure.
 - **The floor.** The POC drew a textured roadway; the human preferred this project's
   painted lane lines. The floor is plain metal with the five markings per carriageway.
-- **`exploration/planet_radius`** (200): the human said the POC's planets (600 m)
-  were "a lot more reasonable". Left alone here because the approach envelope and the
-  floor depth are sized around it; it is one slider and two dependents.
+- **`exploration/planet_radius`** (900) and `planet_center_depth` (1300): the cap's
+  height through the floor is their difference. `approach_envelope_radius` must stay
+  more than a fighter's countdown outside the surface; the gate checks.
 - **The structure's rib beat** (`structure_module_length`, 400) is continuous along
   a road and a ramp continues its host's phase; the old road's stations are gone.
 - **Mouth height.** A-377B's mouths sit 160 m above the plane, K-112's at 400 so its

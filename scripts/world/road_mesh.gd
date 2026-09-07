@@ -19,14 +19,14 @@ extends RefCounted
 
 ## Tolerance for "strictly inside" in the clip rule. THE SAME NUMBER the collider uses.
 const EPS := RoadCollider.OPEN_EPS
-## Finest subdivision at a clipped edge, in metres. The edge of an opening is ragged
-## at this scale and exact at the collider's; 8 m on a 150 m wall is not legible from
-## a ship doing 250 m/s, and it is what keeps a junction's triangle count sane.
-const MIN_CLIP := 8.0
-## Quads larger than this are split before testing. A tube's section is never smaller
-## than 146 m across, so a slot through a quad this size must cover one of the five
-## test points; a larger quad could hide one.
-const MAX_UNTESTED := 80.0
+## Finest subdivision at a clipped edge, as a share of the section's height: the
+## edge of an opening is ragged at this scale and exact at the collider's, and this is
+## what keeps a junction's triangle count sane.
+const MIN_CLIP_SHARE := 0.05
+## Quads larger than half the section's smaller side are split before testing: a slot
+## through a quad that size must cover one of the five test points; a larger quad
+## could hide one.
+const MAX_UNTESTED_SHARE := 0.5
 ## Rings per chunk, and metres per ring. Infrastructure.
 const CHUNK_RINGS := 40
 const RING_METRES := 40.0
@@ -50,6 +50,8 @@ var _road: Road
 var _floor_thickness: float = 10.0
 var _beam: float = 8.0
 var _want_faces: bool = false
+var _min_clip: float = 3.0
+var _max_untested: float = 30.0
 var _active: Array[Tube] = []
 var _verts: Array[PackedVector3Array] = []
 var _norms: Array[PackedVector3Array] = []
@@ -94,6 +96,7 @@ static func build_chunk(road: Road, foreign: Array[Tube], chunk: Dictionary,
 	b._floor_thickness = floor_thickness
 	b._beam = beam
 	b._want_faces = want_faces
+	b._size_clip(road)
 	b._reset()
 	var n := ring_count(road)
 	var ring := road.path.length / n
@@ -419,10 +422,10 @@ func _clip(mat: int, a: Vector3, b: Vector3, c: Vector3, d: Vector3,
 			n += 1
 	if n == 5:
 		return
-	if n == 0 and size <= MAX_UNTESTED:
+	if n == 0 and size <= _max_untested:
 		_emit(mat, a, b, c, d)
 		return
-	if size <= MIN_CLIP or depth >= 12:
+	if size <= _min_clip or depth >= 14:
 		if not _inside_any(reaching, centre):
 			_emit(mat, a, b, c, d)
 		return
@@ -434,6 +437,17 @@ func _clip(mat: int, a: Vector3, b: Vector3, c: Vector3, d: Vector3,
 	_clip(mat, ab, b, bc, centre, reaching, depth + 1)
 	_clip(mat, centre, bc, c, cd, reaching, depth + 1)
 	_clip(mat, da, centre, cd, d, reaching, depth + 1)
+
+
+## The clip's resolution follows the section: the smallest tube on the road decides
+## what a quad can hide, and the section's height what an edge may be ragged by.
+func _size_clip(road: Road) -> void:
+	var smallest := INF
+	var height := road.carriageway_h
+	for t in road.tubes:
+		smallest = minf(smallest, minf(t.hw, t.hh) * 2.0)
+	_max_untested = maxf(smallest * MAX_UNTESTED_SHARE, 4.0)
+	_min_clip = maxf(height * MIN_CLIP_SHARE, 1.0)
 
 
 static func _inside_any(near: Array[Tube], p: Vector3) -> bool:

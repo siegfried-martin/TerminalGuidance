@@ -3106,15 +3106,14 @@ func _test_disc_bounds() -> void:
 		"%.0f m of flare in a %.0f m leg" % [
 			Tuning.num("exploration/aperture_funnel_length") * 2.0, shortest_leg])
 
-	# ADR 0061: the floor goes UNDER the planet, never between the player and it.
+	# ADR 0061, as the human meant it: the planet sits at the bottom of the disc with
+	# only its CAP standing up through the floor into usable space. The floor cuts the
+	# planet; the cap is what you descend onto, and it is below the combat plane.
 	var surface := Tuning.num("exploration/planet_radius") \
 		- Tuning.num("exploration/planet_center_depth")
-	var planet_bottom := -Tuning.num("exploration/planet_center_depth") \
-		- Tuning.num("exploration/planet_radius")
-	_expect(planet_bottom > -Tuning.num("exploration/system_floor_depth"),
-		"the disc's hard floor sits below the whole planet",
-		"planet reaches %.0f, floor is at %.0f" % [planet_bottom,
-			-Tuning.num("exploration/system_floor_depth")])
+	_expect(surface > -Tuning.num("exploration/system_floor_depth"),
+		"the planet's cap stands up through the floor into the disc (ADR 0061, amended)",
+		"cap at %.0f, floor at %.0f" % [surface, -Tuning.num("exploration/system_floor_depth")])
 	_expect(surface < 0.0,
 		"…and the planet's surface is below the combat plane, not in it (ADR 0061)",
 		"surface at %+.0f" % surface)
