@@ -191,7 +191,8 @@ func _dives() -> void:
 		else:
 			# Well short of the mouth: four seconds of diving covers half a kilometre,
 			# and out of the mouth is open space, legitimately.
-			_dive_set("%s near its mouth" % road.name, rt, maxf(road.path.length - 1500.0, 50.0))
+			_dive_set("%s near its mouth" % road.name, rt,
+				maxf(road.path.length - _probe.cruise_speed * 4.5, 50.0))
 	for road in _network.roads:
 		if road.kind != "highway":
 			continue
@@ -219,7 +220,8 @@ func _fly(label: String, route: Array, start_tube: Tube, start_t: float, seconds
 	var idx := 0
 	var visited: Array = [start_tube]
 	var max_turn := 0.0
-	var lookahead := 600.0
+	# The pilot looks a fixed TIME ahead, whatever the speed.
+	var lookahead := _probe.cruise_speed * 2.4
 	var ok := true
 	var steps := int(seconds / DT)
 	var arrived := -1
@@ -350,12 +352,14 @@ func _step_checked(label: String, i: int) -> bool:
 	if _probe.tube() != null and i % 30 == 0:
 		var fr: Dictionary = _probe.frame
 		var fwd: Vector3 = fr["fwd"]
+		var side: Vector3 = fr["right"]
 		for d: Vector3 in [fr["right"], -fr["right"], fr["up"], -fr["up"]]:
-			# A ray exactly along a seam between two of a clipped wall's triangles can
-			# slip through the physics test; a second ray a little further along cannot
-			# hit the same seam.
+			# A ray exactly along a seam between two of a clipped wall's triangles, or
+			# through a shared edge, can slip through the physics test; three origins a
+			# metre apart cannot all hit the same seam.
 			if _ray(after, after + d * 2500.0).is_empty() \
-					and _ray(after + fwd * 0.7, after + fwd * 0.7 + d * 2500.0).is_empty():
+					and _ray(after + fwd * 0.7, after + fwd * 0.7 + d * 2500.0).is_empty() \
+					and _ray(after + side * 0.7 + fwd * 0.3, after + side * 0.7 + fwd * 0.3 + d * 2500.0).is_empty():
 				_expect(false, label, "no structure within 2.5 km toward %s at %s (t=%.1fs in %s)" % [
 					d, after, i * DT, _name(_probe.tube())])
 				return false

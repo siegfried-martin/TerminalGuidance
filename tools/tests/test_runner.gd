@@ -3325,7 +3325,7 @@ func _test_exploration_builds() -> void:
 		"riding %s" % _tube_name(map.riding()))
 	# Back to just past A's merge, where two exits (the interchange and B's) lie within
 	# the strip's horizon; over B the next exit is C's, twenty kilometres on.
-	var t_b: float = forward.local(map.system_center(0))["t"] + 4100.0
+	var t_b: float = forward.local(map.system_center(0))["t"] + 4600.0
 	over_b_point = forward.centre(t_b)
 	_park(scene, over_b_point, forward.travel_frame(t_b)["fwd"])
 	_step_exploration(scene, 1.0 / 60.0)
@@ -3421,7 +3421,7 @@ func _test_exploration_builds() -> void:
 	_expect(berth.tube() == chosen and berth.taking() == null,
 		"when the ramp arrives the berth's rail rebinds to it, and the choice is spent",
 		"on %s after %d frames" % [_tube_name(berth.tube()), frames])
-	for _i in 600:
+	for _i in 1500:
 		_step_exploration(scene, 1.0 / 60.0)
 		if map.riding() == chosen:
 			break

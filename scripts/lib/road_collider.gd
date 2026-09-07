@@ -105,14 +105,21 @@ func _wall_name(side: String) -> String:
 
 
 ## Is the wall open here — is the point just through it inside a neighbouring tube?
+## Remembers which tube opened it, because that tube is where a hull going through
+## the opening is, whatever else the far point happens to lie in.
+var _opener: Tube = null
+
 func _open_at(p: Vector3) -> bool:
 	for n in tube.neighbours:
 		if n.contains(p, OPEN_EPS):
+			_opener = n
 			return true
 	return false
 
 
-func _collide_inside(next: Vector3, basis: Basis, half: Vector3, result: Dictionary) -> void:
+func _collide_inside(next: Vector3, basis: Basis, half: Vector3, result: Dictionary,
+		depth: int = 0) -> void:
+	_opener = null
 	var l := tube.local(next)
 	var f: Dictionary = l["frame"]
 	var right: Vector3 = f["right"]
@@ -139,7 +146,20 @@ func _collide_inside(next: Vector3, basis: Basis, half: Vector3, result: Diction
 	result["pos"] = out
 	var l2 := {"t": t, "u": u, "v": v, "w": l["w"]}
 	if not tube.contains_local(l2):
-		var next_tube := tube_containing(out, tube.neighbours)
+		# Through an open wall, the hull is in the tube that OPENED it — and if one
+		# step carried it clean across that tube (a thin ramp at speed), that tube's
+		# own walls hold it, once. Only a hull leaving through an open END takes
+		# whichever tube contains it, or open space.
+		var next_tube: Tube = null
+		if _opener != null:
+			next_tube = _opener
+			if not _opener.contains(out) and depth == 0:
+				_log("entered %s" % next_tube.name)
+				tube = next_tube
+				_collide_inside(out, basis, half, result, depth + 1)
+				return
+		if next_tube == null:
+			next_tube = tube_containing(out, tube.neighbours)
 		if next_tube == null:
 			next_tube = tube_containing(out, tubes)
 		if next_tube != null:

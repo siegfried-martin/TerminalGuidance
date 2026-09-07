@@ -11,7 +11,8 @@
     "carriageways. Saving this file relays the map out under the ship. The gate (and the",
     "console on load) names any bend that is too tight, any ramp that touches a road it does",
     "not join, and any highway that pitches too steeply.",
-    "A highway may carry mouth_height (m above the plane) and mouth_along (m from the system centre) to move its planet mouths; K-112 rides 240 m above A-377B and its mouths at B sit higher and further out so its ramps pass over A-377B's."
+    "A highway may carry mouth_height (m above the plane) and mouth_along (m from the system centre) to move its planet mouths; K-112 rides 240 m above A-377B and its mouths at B sit higher and further out so its ramps pass over A-377B's.",
+    "Scaled x2 on 2026-09-07: every distance doubled and cruise speed with it, so pacing is unchanged and everything far away is half the size against the ships and the tube, which did not scale."
   ],
   "systems": {
     "SYSTEM A": [
@@ -20,24 +21,24 @@
       0
     ],
     "SYSTEM B": [
-      11500,
+      23000,
       0,
       0
     ],
     "SYSTEM C": [
-      38000,
+      76000,
       0,
-      -2000
+      -4000
     ],
     "SYSTEM D": [
-      3750,
+      7500,
       0,
-      -13423
+      -26846
     ],
     "SYSTEM E": [
-      18073,
+      36146,
       0,
-      18568
+      37136
     ]
   },
   "highways": [
@@ -51,37 +52,37 @@
       "closed": false,
       "points": [
         [
-          -7000,
-          360,
+          -14000,
+          720,
           0
         ],
         [
-          24000,
-          360,
+          48000,
+          720,
           0
         ],
         [
-          30000,
-          560,
-          -2000
+          60000,
+          1120,
+          -4000
         ],
         [
-          34000,
-          560,
-          -2000
+          68000,
+          1120,
+          -4000
         ],
         [
-          44500,
-          360,
-          -2000
+          89000,
+          720,
+          -4000
         ]
       ],
       "radii": [
-        0,
-        2500,
-        2500,
-        2500,
-        0
+        0.0,
+        5000.0,
+        5000.0,
+        5000.0,
+        0.0
       ]
     },
     {
@@ -94,28 +95,28 @@
       "closed": false,
       "points": [
         [
-          250,
-          600,
-          -19486
+          500,
+          1200,
+          -38972
         ],
         [
-          16250,
-          600,
-          8227
+          32500,
+          1200,
+          16454
         ],
         [
-          19202,
-          600,
-          24969
+          38404,
+          1200,
+          49938
         ]
       ],
       "radii": [
-        0,
-        2500,
-        0
+        0.0,
+        5000.0,
+        0.0
       ],
-      "mouth_height": 400,
-      "mouth_along": 800
+      "mouth_height": 800.0,
+      "mouth_along": 1600.0
     }
   ],
   "planet_ramps": [
@@ -151,26 +152,32 @@
         "highway": "A-377B",
         "side": "R",
         "near": [
-          4500,
-          360,
-          50
+          16000,
+          720,
+          100
         ]
       },
       "to": {
         "highway": "K-112",
         "side": "R",
         "at": "SYSTEM B",
-        "offset": 4200
+        "offset": 6200
       },
       "points": [
         [
-          11033,
-          340,
-          691
+          20200,
+          1120,
+          600
+        ],
+        [
+          23166,
+          1120,
+          1787
         ]
       ],
       "radii": [
-        1200
+        2400,
+        2400
       ]
     },
     {
@@ -179,68 +186,38 @@
         "highway": "K-112",
         "side": "R",
         "at": "SYSTEM B",
-        "offset": 6750
+        "offset": -8000
       },
       "to": {
         "highway": "A-377B",
         "side": "R",
         "near": [
-          23000,
-          360,
-          50
+          32500,
+          720,
+          100
         ]
       },
       "points": [
         [
-          15600,
-          540,
-          9600
+          20300,
+          1050,
+          -3200
         ],
         [
-          13900,
-          460,
-          10100
+          22500,
+          850,
+          -1500
         ],
         [
-          13100,
-          400,
-          8600
-        ],
-        [
-          13600,
-          330,
-          7400
-        ],
-        [
-          15200,
-          250,
-          5800
-        ],
-        [
-          17000,
-          240,
-          3500
-        ],
-        [
-          17800,
-          260,
-          2200
-        ],
-        [
-          18300,
-          140,
-          500
+          27000,
+          640,
+          -600
         ]
       ],
       "radii": [
-        900,
-        900,
-        900,
-        900,
-        1200,
-        1200,
-        1200,
-        900
+        2400,
+        2400,
+        2400
       ]
     },
     {

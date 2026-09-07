@@ -134,6 +134,39 @@ work in `DeepField`. And the planet's cap is not solid — nothing stops a ship 
 into it (the approach envelope arms first at hull speed, but a fighter through the
 envelope reaches the surface); a solid planet is the next piece of the boundary.
 
+### The distance pass — 2026-09-07, from the human
+
+*"One thing that would really sell this for me is if items got smaller in the distance
+more quickly… the fact that I can easily see the planets of other systems in the
+distance and the highway still looks large there is a killer."*
+
+Perspective cannot be changed per distance, but distance can: **every distance in the
+world is doubled and cruise speed with it**, so pacing on the road is unchanged and
+everything far away is half the size against the ships and the tube, which did not
+scale. Legs are 23 and 46 km, the disc 7 km, the planet radius 1800 at a depth of
+2600, cruise 500 m/s, the rib beat 800 m (the same 1.6 s), fuel priced at half per
+km so a trip costs what it did. The ramp rule's lengths scaled where they are about
+time (leads, radii, swing, reach) and stayed where they are about the section (drop);
+the merge climb eased to 10°. `data/routes.json` carries a note.
+
+**Hull speeds did not double.** Doubling them would put the taxi above the missile,
+and the speed hierarchy is keyed to the missile (ADR 0059): raising the hulls means
+raising the missile and the combat POC's metres with it, which is a decision about
+combat, not the road. Off-road crossings therefore take twice as long in seconds;
+the fighter's local leg is now about 3.5 minutes against 46 seconds by road.
+
+**The interchanges are direct now.** X2 used to leave K-112 13 km past B because the
+carriageway there was booked by B's entry and X1's merge, and looped 40 km home. It
+leaves BEFORE B, turns under K-112 and joins A-377B just past B's entry: 16.8 km
+where the scale pass would have made it 42. X1 leaves A-377B closer to B, climbs over
+B's K-112 entry and joins K-112 past it: 12 km. `make roads` now names the corner
+that is too tight rather than the road.
+
+**Not done**: the compressed far layer the design doc describes (planets and distant
+road drawn smaller than perspective, by a distance exponent). The scale pass was the
+honest half; that is the trick half, and it is next if the doubled world does not
+sell it on its own.
+
 ### What to fly first, and the feel calls that come with it
 
 - **The road at all.** `make fly`, fly the on-ramp at A onto A-377B, ride to B, take

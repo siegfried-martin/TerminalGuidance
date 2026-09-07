@@ -12,9 +12,17 @@ func _ready() -> void:
 	print("── roads: %d roads, %d tubes, %d ramps, %d chunks, laid out in %d ms ──" % [
 		network.roads.size(), network.tubes.size(), network.ramps.size(),
 		network.chunk_count(), t1 - t0])
+	var floor_r := Tuning.num("exploration/cruise_speed") / (clampf(Tuning.num("exploration/road_turn_share"), 0.05, 1.0)
+		* deg_to_rad(Tuning.num("exploration/cruise_turn_rate_deg_per_sec")))
 	for road in network.roads:
 		print("  %-40s %6.1f km  min bend %5.0f m  pitch %.1f deg" % [road.name,
 			road.path.length / 1000.0, road.path.min_radius(), road.path.max_pitch_deg()])
+		# Name the corner that is too tight, so the author knows which leg to lengthen.
+		if road.path.min_radius() < floor_r:
+			for c in road.path.corners:
+				if float(c["radius"]) < floor_r:
+					print("      corner at %s turns %.0f deg with r=%.0f (floor %.0f)" % [
+						c["pos"], c["angle_deg"], c["radius"], floor_r])
 	if OS.get_environment("ROAD_REPORT_MESH") == "1":
 		var faces := network.build_all_now()
 		var tris := 0
