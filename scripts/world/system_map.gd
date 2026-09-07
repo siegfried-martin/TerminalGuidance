@@ -338,6 +338,19 @@ func _forgive_the_junction(ship: Mothership, here: Vector3, clearance: Vector2) 
 		if other.contains(here):
 			ship.cruise.edge_speed_penalty = 1.0
 			return
+	# AND ON THE APPROACH TO AN EXIT. Lining up on the wall before the opening is how
+	# an exit is taken, not a lane-keeping mistake, so for `exit_approach_metres` before
+	# an exit the lane does not slow a ship on that side either.
+	var t_ship: float = _riding.local(here)["t"]
+	var approach := Tuning.num("exploration/exit_approach_metres")
+	for j in _riding.junctions:
+		if j["kind"] != "exit":
+			continue
+		var ahead: float = _riding.path.ahead(t_ship, float(j.get("opens_at", j["t"])),
+			_riding.direction)
+		if ahead >= 0.0 and ahead <= approach and ship.cruise.lateral > 0.0:
+			ship.cruise.edge_speed_penalty = 1.0
+			return
 
 
 ## The exits ahead on the tube being ridden, nearest first, as
@@ -352,13 +365,14 @@ func upcoming_exits(here: Vector3) -> Array:
 		return found
 	var t_ship: float = _riding.local(here)["t"]
 	var horizon := Tuning.num("exploration/nav_exit_horizon_metres")
-	var lead := Tuning.num("exploration/ramp_exit_lead")
 	var taking := _berth.taking()
 	for j in _riding.junctions:
 		if j["kind"] != "exit":
 			continue
 		var ramp: Tube = j["ramp"]
-		var metres: float = _riding.path.ahead(t_ship, j["t"], _riding.direction) + lead
+		# To where the wall OPENS, which is the turning the player is deciding about.
+		var metres: float = _riding.path.ahead(t_ship, float(j.get("opens_at", j["t"])),
+			_riding.direction)
 		if _riding.path.closed and metres > _riding.path.length * 0.5:
 			metres -= _riding.path.length
 		if metres > horizon:

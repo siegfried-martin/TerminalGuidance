@@ -82,6 +82,17 @@ landed the same day:
   B put you on X1. X1 now leaves A-377B after B's exit, and the map moved to fit it:
   K-112's mouths at B sit 1600 m out, D and E are further from B. The strip reads
   "SYSTEM B 1.3 km, K-112 3.7 km" approaching B.
+- **"A slight invisible barrier on the right side of the exit ramp."** Two
+  screenshots: pressed against the highway's right wall 281 m before the opening,
+  then in the ramp riding its outer wall. Both walls are real and both are the glass —
+  `structure_glass_color` #20485c at alpha 0.3, dark navy against black space, which
+  from the seat at 250 m/s is invisible. Three things landed around it: the strip now
+  counts down to where the wall actually OPENS (walked from the collider's own rule,
+  not guessed from the lead); the exit's blue gate stands where the ramp has cleared
+  the wall rather than two kilometres on; and for `exit_approach_metres` (800) before
+  an opening the lane no longer slows a ship lining up on the exit's side. **The
+  glass itself is your call**: a paler tint or a higher alpha makes the wall you are
+  about to hit visible, and both are F2 sliders.
 - Also fixed: the far version of a road vanished entirely once one of its chunks
   loaded (it is per chunk now), and a ramp's far version stood unclipped inside the
   carriageway until its chunk streamed in (ramps' heads and tails are left out of it).

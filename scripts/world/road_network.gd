@@ -329,8 +329,26 @@ func _ramp(name: String, from_tube: Tube, from_t: float, to_tube: Tube, to_t: fl
 		"exit_portal": null, "entry_portal": null, "gate": null}
 	if from_tube != null:
 		road.rib_phase = fposmod(-from_t, spacing)
+		# Where the host's wall actually OPENS: the first point along the ramp where its
+		# tube reaches through the host's wall — the collider's own rule, walked once.
+		# The strip counts down to this, and the gate stands where the ramp has cleared
+		# the wall entirely; both used to be guessed from the lead and the exit length.
+		var opens_t := from_t
+		var clears_t := from_t
+		var t := 0.0
+		var found_open := false
+		while t < path.length:
+			var wall := from_tube.local(tube.centre(t))
+			var out: float = absf(float(wall["u"])) - from_tube.hw
+			if not found_open and out + tube.hw > RoadCollider.OPEN_EPS:
+				opens_t = float(wall["t"])
+				found_open = true
+			if out - tube.hw >= 0.0:
+				clears_t = t
+				break
+			t += 10.0
 		from_tube.junctions.append({"t": from_t, "kind": "exit",
-			"label": _exit_label(record), "ramp": tube})
+			"label": _exit_label(record), "ramp": tube, "opens_at": opens_t})
 		tube.junctions.append({"t": 0.0, "kind": "from", "label": "from " + from_tube.name,
 			"ramp": from_tube})
 		spots.append({"label": "Exit %s" % name, "tube": from_tube,
@@ -340,7 +358,7 @@ func _ramp(name: String, from_tube: Tube, from_t: float, to_tube: Tube, to_t: fl
 		gate.name = "Gate " + name
 		gate.tube = tube
 		add_child(gate)
-		var gt := lead + Tuning.num("exploration/ramp_exit_length")
+		var gt := clears_t + 60.0
 		gate.place(tube.centre(gt), tube.travel_frame(gt)["fwd"],
 			Vector2(road.carriageway_w, road.carriageway_h))
 		_gates.append(gate)
