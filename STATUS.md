@@ -19,7 +19,8 @@ the human's explicit direction.
 | Run it | **`make lattice`** for the new road, `make fly` for the old one — both work, and both will until step D swaps them |
 | Built | Exploration POC steps 1–8, highway rebuild steps A–D, **lattice steps A and B**, plus six play-session passes (ADRs 0062–0095) |
 | **NOT SIGNED OFF** | The three drive fixes below are implemented and measured but **not verified from the seat** — you were away from the machine. The station finding in particular is *diagnosed and deliberately not fixed*, because what to do about it is a feel call. |
-| **Do next** | **`docs/HIGHWAY_LATTICE_PLAN.md`, step C: junctions and ramps.** `RoadStructure.follow_tile`, `RoadNetwork.add_ramp`, the planet ramps for all five systems and the four interchange ramps at B, as `lane` routes in `data/routes.json`. That is what gives the lattice road a way on to it. |
+| **PAUSED FOR REVIEW** | **Read `docs/LATTICE_REVIEW.md` first.** Step C is stopped part-way at your request: six faults were found from the seat within seconds of drives that a 1481-check gate had passed, and you want the approach reviewed before more is built. That document is the brief — every fault, who found it, the one reason the gate missed them, and the case for and against the lattice made both ways. Nothing is irreversible: `make fly` is still the old road and step D has not started. |
+| Was next | **`docs/HIGHWAY_LATTICE_PLAN.md`, step C: junctions and ramps.** `RoadStructure.follow_tile`, `RoadNetwork.add_ramp`, the planet ramps for all five systems and the four interchange ramps at B, as `lane` routes in `data/routes.json`. That is what gives the lattice road a way on to it. |
 | **Waiting on you** | **Two feel calls.** `ship/max_pitch_deg` (78) and `camera/ship_pitch_ceiling_deg` (42) are the pitch pair — how steeply the nose may point, and how far the boom follows it there. They are tuned together and they are yours. Also `exploration/junction_wall_opening_metres` (500), which is how much wall an exit opens. Still not diagnosed: the undock on the far highway that put the ship in the other lane. Then the fourth checkpoint: success criterion 1, ten minutes on the trunk road. |
 
 ### The lattice, step A — built
@@ -108,6 +109,15 @@ building thirty kilometres behind the ship reported exactly the same two walls a
 one the ship was inside, and tied with it on `room()`. One long building per route hid
 it; a dozen short edges in a line surfaced it at once, as the HUD naming the wrong
 shell. A building now declines to answer past its own end face.
+
+### PAUSED — see `docs/LATTICE_REVIEW.md`
+
+Step C is half-built and stopped. The review brief carries all ten faults found so
+far, which of them are the lattice's and which were latent in the old road, the single
+reason the gate missed the ones you found, and six questions for a reviewer — the
+sharpest being whether the **junction tiles** are needed at all, since the
+straight-edges half is exact without them and the tile half produced three of the four
+faults I introduced.
 
 ### Why the gate missed three obvious faults, and what was added
 
