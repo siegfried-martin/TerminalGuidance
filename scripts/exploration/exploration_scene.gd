@@ -135,6 +135,8 @@ func _build_ship() -> void:
 	# the autopilot — which is what happens when nobody is flying — never runs.
 	_ship.set_autopilot(false)
 	_ship.piloted = true
+	# The road's collision is the ship's to keep (ADR 0096); the map hands it over.
+	_map.attach(_ship)
 	# Started in system A, on the combat plane, back from the aperture and facing
 	# down the leg — so the first thing on screen is the way out of the system and
 	# the trip that is being measured. The map owns the rule, because the debug

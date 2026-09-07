@@ -232,10 +232,12 @@ static func materials() -> Array:
 static func refresh_materials() -> void:
 	if _materials.is_empty():
 		return
-	var glass: StandardMaterial3D = _materials[MAT_GLASS]
-	var tint := Tuning.color("exploration/structure_glass_color")
-	tint.a = Tuning.num("exploration/structure_glass_alpha")
-	glass.albedo_color = tint
+	var glass: ShaderMaterial = _materials[MAT_GLASS]
+	glass.set_shader_parameter("tint", Tuning.color("exploration/structure_glass_color"))
+	glass.set_shader_parameter("base_alpha", Tuning.num("exploration/structure_glass_alpha"))
+	glass.set_shader_parameter("edge_alpha", Tuning.num("exploration/structure_glass_edge_alpha"))
+	glass.set_shader_parameter("fresnel_power", Tuning.num("exploration/structure_glass_fresnel_power"))
+	glass.set_shader_parameter("sheen", Tuning.num("exploration/structure_glass_sheen"))
 	var metal := Tuning.color("exploration/structure_metal_color")
 	(_materials[MAT_METAL] as StandardMaterial3D).albedo_color = metal
 	(_materials[MAT_FLOOR] as StandardMaterial3D).albedo_color = metal.darkened(0.35)
@@ -249,12 +251,36 @@ static func _floor_material() -> StandardMaterial3D:
 	return m
 
 
-static func _glass_material() -> StandardMaterial3D:
-	var m := StandardMaterial3D.new()
-	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	m.metallic = 0.4
-	m.roughness = 0.05
-	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+## Glass reads as glass by its FRESNEL: clear where you look straight through it,
+## bright and reflective at a grazing angle — which is exactly the angle the wall
+## beside a ship at speed is seen at. One `pow` per pixel, no probes, no screen-space
+## reflections, no refraction; the pane you look through stays clear (ADR 0057).
+const GLASS_SHADER := """
+shader_type spatial;
+render_mode blend_mix, cull_disabled, depth_draw_opaque;
+uniform vec4 tint : source_color = vec4(0.13, 0.28, 0.36, 1.0);
+uniform float base_alpha = 0.3;
+uniform float edge_alpha = 0.75;
+uniform float fresnel_power = 3.0;
+uniform float sheen = 0.6;
+void fragment() {
+	float facing = abs(dot(normalize(NORMAL), normalize(VIEW)));
+	float fresnel = pow(1.0 - clamp(facing, 0.0, 1.0), fresnel_power);
+	ALBEDO = tint.rgb;
+	ALPHA = clamp(mix(base_alpha, edge_alpha, fresnel), 0.0, 1.0);
+	EMISSION = tint.rgb * sheen * fresnel;
+	METALLIC = 0.4;
+	ROUGHNESS = 0.08;
+	SPECULAR = 0.6;
+}
+"""
+
+
+static func _glass_material() -> ShaderMaterial:
+	var shader := Shader.new()
+	shader.code = GLASS_SHADER
+	var m := ShaderMaterial.new()
+	m.shader = shader
 	return m
 
 

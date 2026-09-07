@@ -511,6 +511,8 @@ func place_ship(ship: Node3D, index: int) -> void:
 ## Take the ship off whatever it was on. Being moved kilometres while a lane sample
 ## from the old road is still attached would arrive as an engine running in open space.
 func _lift_off(ship: Mothership) -> void:
+	if ship.road == null:
+		attach(ship)
 	_berth.release(ship)
 	_riding = null
 	ship.cruise = null

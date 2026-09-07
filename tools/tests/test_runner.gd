@@ -219,7 +219,9 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/ramp_bend_radius", "exploration/ramp_swing_metres",
 	"exploration/ramp_reach_metres", "exploration/ramp_mouth_side_offset",
 	"exploration/ramp_mouth_along_offset", "exploration/ramp_mouth_height",
-	"exploration/exit_approach_metres", "exploration/debug_teleport_enabled",
+	"exploration/exit_approach_metres",
+	"exploration/structure_glass_edge_alpha", "exploration/structure_glass_fresnel_power",
+	"exploration/structure_glass_sheen", "exploration/debug_teleport_enabled",
 ]
 
 const REQUIRED_ACTIONS: Array[String] = [

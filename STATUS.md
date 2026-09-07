@@ -91,8 +91,11 @@ landed the same day:
   not guessed from the lead); the exit's blue gate stands where the ramp has cleared
   the wall rather than two kilometres on; and for `exit_approach_metres` (800) before
   an opening the lane no longer slows a ship lining up on the exit's side. **The
-  glass itself is your call**: a paler tint or a higher alpha makes the wall you are
-  about to hit visible, and both are F2 sliders.
+  glass itself is your call**, and it now has a FRESNEL: clear where you look
+  straight through, brightening to `structure_glass_edge_alpha` at a grazing angle
+  with a `structure_glass_sheen` glint, so the wall beside you at speed is visible and
+  the one you look out through stays clear. One multiply per pixel. The tint, the
+  two alphas, the sheen and `structure_glass_fresnel_power` are F2 sliders.
 - Also fixed: the far version of a road vanished entirely once one of its chunks
   loaded (it is per chunk now), and a ramp's far version stood unclipped inside the
   carriageway until its chunk streamed in (ramps' heads and tails are left out of it).
