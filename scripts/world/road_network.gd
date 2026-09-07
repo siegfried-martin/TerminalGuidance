@@ -291,8 +291,14 @@ func _ramp(name: String, from_tube: Tube, from_t: float, to_tube: Tube, to_t: fl
 		var d: Vector3 = (f["fwd"] as Vector3).rotated(f["up"],
 			-deg_to_rad(Tuning.num("exploration/ramp_exit_angle_deg")))
 		var p2: Vector3 = p1 + d * Tuning.num("exploration/ramp_exit_length")
+		# The bend into the diverging leg has to FIT the lead: an arc whose tangent
+		# length passes the lead's midpoint starts inside the carriageway before the
+		# ramp does, and folds. So the radius is the tuned one or the largest the lead
+		# allows, whichever is smaller — a steeper exit angle buys a tighter bend.
+		var half_angle := deg_to_rad(Tuning.num("exploration/ramp_exit_angle_deg")) * 0.5
+		var fits := (lead * 0.5 - 1.0) / maxf(tan(half_angle), 0.001)
 		pts += [p0, p1, p2]
-		radii += [0.0, Tuning.num("exploration/ramp_exit_radius"),
+		radii += [0.0, minf(Tuning.num("exploration/ramp_exit_radius"), fits),
 			float(mid_radii[0]) if mid_radii.size() > 0 and float(mid_radii[0]) > 0.0 else bend]
 	for i in mids.size():
 		pts.append(mids[i])

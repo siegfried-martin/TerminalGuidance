@@ -72,6 +72,16 @@ landed the same day:
   overlaps the highway's — the speed penalty is lifted; the push toward the ramp's
   centre stays. The probe now takes every exit on the map at 15° and must hold 70%
   of cruise, and does (about 200 of 250).
+- **Exits at 15°** — the human's number, and "feels pretty good". At 15° the exit's
+  2000 m bend no longer fit inside its 300 m lead and the arc folded back into the
+  carriageway before the ramp began (the "physics not quite right at the exit"
+  screenshot); the exit radius now shrinks to what the lead allows, and `make roads`
+  names a corner whose arc does not fit.
+- **"Turns into this other freeway interchange as soon as I enter it."** The K-112
+  exit came 1.7 km BEFORE the SYSTEM B exit on the same side, so steering right for
+  B put you on X1. X1 now leaves A-377B after B's exit, and the map moved to fit it:
+  K-112's mouths at B sit 1600 m out, D and E are further from B. The strip reads
+  "SYSTEM B 1.3 km, K-112 3.7 km" approaching B.
 - Also fixed: the far version of a road vanished entirely once one of its chunks
   loaded (it is per chunk now), and a ramp's far version stood unclipped inside the
   carriageway until its chunk streamed in (ramps' heads and tails are left out of it).
