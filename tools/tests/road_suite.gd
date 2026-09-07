@@ -75,6 +75,7 @@ func run() -> void:
 	for w in _warnings:
 		print("  road suite WARN " + w)
 	print("  road suite: %d probe steps" % _steps)
+	_probe.collider.setup([], [])
 	_holder.queue_free()
 
 

@@ -25,4 +25,6 @@ func _ready() -> void:
 		print("  no problems")
 	for problem in network.problems:
 		print("  PROBLEM  " + problem)
-	get_tree().quit(0 if network.problems.is_empty() else 1)
+	var status := 0 if network.problems.is_empty() else 1
+	network.free()
+	get_tree().quit(status)

@@ -79,8 +79,7 @@ func build(data: Dictionary, system_positions: Dictionary) -> void:
 	_markings.clear()
 	_loaded.clear()
 	_chunks.clear()
-	roads.clear()
-	tubes.clear()
+	_release()
 	ramps.clear()
 	spots.clear()
 	problems.clear()
@@ -588,6 +587,23 @@ func _chunk_named(key: String) -> Dictionary:
 	return {}
 
 
+## Break the reference cycles between roads, their tubes and their neighbours, so a
+## torn-down network is actually freed rather than leaked on every hot reload.
+func _release() -> void:
+	for t in tubes:
+		t.road = null
+		t.neighbours.clear()
+		t.junctions.clear()
+	for r in roads:
+		r.tubes.clear()
+	for ramp in ramps:
+		ramp.clear()
+	roads.clear()
+	tubes.clear()
+	ramps.clear()
+	spots.clear()
+
+
 func _cancel_pending() -> void:
 	for key: String in _pending:
 		WorkerThreadPool.wait_for_task_completion((_pending[key] as Dictionary)["task"])
@@ -596,6 +612,7 @@ func _cancel_pending() -> void:
 
 func _exit_tree() -> void:
 	_cancel_pending()
+	_release()
 
 
 ## Build EVERY chunk now, on this thread, and return every road's triangles by road
