@@ -318,6 +318,12 @@ func _build_hud() -> void:
 		return "%s%s%s  ·  %d of %d chunks built" % [where, hit,
 			"" if kicked < 0.5 else "  ·  BOUNCING OFF at %.0f m/s" % kicked,
 			_map.road().loaded_chunk_count(), _map.road().chunk_count()])
+	# THE LIGHTS: whether the headlight is on and how many track lights are live. The
+	# track lights are a pool that follows the ship, so this is where a reach that
+	# asks for too many of them shows up.
+	_hud.add_row("lights", func() -> String:
+		return "headlight %s  ·  %s" % ["on" if _ship.headlight.on else "off",
+			_map.road().lamps.status()])
 	# Where the nearest way on or off is, and whether it will open. The colour is the
 	# whole of the answer (ADR 0060); this row is for reading it from the terminal
 	# while tuning, not a second channel the player is meant to need.
@@ -555,6 +561,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		cycle_hull()
 	elif event.is_action_pressed("debug_teleport"):
 		teleport_onward()
+	elif event.is_action_pressed("headlight"):
+		_ship.headlight.toggle()
 
 
 ## The debug roster (POC step 3). Instant, because the whole point is feeling the

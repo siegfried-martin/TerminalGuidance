@@ -591,27 +591,33 @@ func _emit(mat: int, a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> void:
 	if n.length_squared() < 1e-9:
 		n = (c - a).cross(d - b)
 	n = n.normalized()
+	# Godot's FRONT face is wound CLOCKWISE seen from outside. `n` is the outward
+	# normal by the right-hand rule on a, b, d, so the triangles go out the other way
+	# round: a, c, b and a, d, c. With the wrong winding every face is a back face
+	# from the side it is meant to be seen from, and with culling off the renderer
+	# flips its normal to face the viewer — which is how the roadway, seen from above,
+	# was being lit by the star underneath it.
 	var vs := _verts[mat]
 	var ns := _norms[mat]
 	vs.append(a)
+	vs.append(c)
 	vs.append(b)
-	vs.append(c)
 	vs.append(a)
-	vs.append(c)
 	vs.append(d)
+	vs.append(c)
 	for k in range(6):
 		ns.append(n)
 	if _want_centres:
 		var cs := _centres[mat]
-		for p: Vector3 in [a, b, c, a, c, d]:
+		for p: Vector3 in [a, c, b, a, d, c]:
 			var centre := _c0 if p.distance_squared_to(_c0) <= p.distance_squared_to(_c1) else _c1
 			cs.append(centre.x)
 			cs.append(centre.y)
 			cs.append(centre.z)
 	if _want_faces:
 		_faces.append(a)
+		_faces.append(c)
 		_faces.append(b)
-		_faces.append(c)
 		_faces.append(a)
-		_faces.append(c)
 		_faces.append(d)
+		_faces.append(c)

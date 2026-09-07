@@ -271,6 +271,7 @@ func observe(ship: Mothership, delta: float) -> void:
 		gate.repaint(delta)
 	_road.set_active(_riding)
 	_road.stream(here)
+	_road.light(here, _riding)
 	_deep.follow(here)
 	_compress_the_distance()
 	_previous = here

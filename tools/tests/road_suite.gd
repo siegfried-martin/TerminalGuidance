@@ -68,6 +68,7 @@ func run() -> void:
 	var hull := load("res://assets/models/carrier.obj") as Mesh
 	_probe.half = hull.get_aabb().size * Tuning.num("ship/hull_scale") * 0.5
 
+	_winding()
 	_containment()
 	_laps()
 	_ramps()
@@ -79,6 +80,33 @@ func run() -> void:
 	print("  road suite: %d probe steps" % _steps)
 	_probe.collider.setup([], [])
 	_holder.queue_free()
+
+
+## Every triangle's FRONT face is the side its normal points to. Godot's front face
+## is wound clockwise from outside, so the right-hand cross product of a triangle's
+## edges points the OTHER way from its normal. Get this wrong and, with culling off,
+## every face is lit as though it faced the other way — the roadway seen from above
+## was being lit by the star underneath it.
+func _winding() -> void:
+	var road := _network.roads[0]
+	var chunk: Dictionary = RoadMesh.plan(road)[0]
+	var foreign: Array[Tube] = []
+	var built := RoadMesh.build_chunk(road, foreign, chunk, 4.0, 3.0, false)
+	var wrong := 0
+	var total := 0
+	for m in 3:
+		var vs: PackedVector3Array = (built["verts"] as Array)[m]
+		var ns: PackedVector3Array = (built["norms"] as Array)[m]
+		var i := 0
+		while i + 2 < vs.size():
+			var geometric := (vs[i + 1] - vs[i]).cross(vs[i + 2] - vs[i])
+			if geometric.length_squared() > 1e-9 and geometric.dot(ns[i]) > 0.0:
+				wrong += 1
+			total += 1
+			i += 3
+	_expect(total > 0 and wrong == 0,
+		"every triangle is wound clockwise from the side its normal faces (Godot's front)",
+		"%d of %d triangles face the wrong way" % [wrong, total])
 
 
 ## Every tube contains its own centre-line and points near it, everywhere. This is

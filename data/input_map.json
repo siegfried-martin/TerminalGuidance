@@ -137,6 +137,9 @@
     "debug_teleport": [
       "key:J"
     ],
+    "headlight": [
+      "key:L"
+    ],
     "quit": [
       "key:Escape"
     ]

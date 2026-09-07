@@ -160,6 +160,8 @@ var _velocity: Vector3 = Vector3.ZERO
 var _speed: float = 0.0
 var _orbit_sign: float = 1.0
 var _hull: MeshInstance3D
+## The lamp on the nose (`Headlight`). L toggles it.
+var headlight: Headlight
 var _last_standoff: float = -1.0
 var _last_depth: float = -1.0
 ## 0 to 1. Held, not impulsive: this is the difference the human asked for between
@@ -197,6 +199,8 @@ func _ready() -> void:
 	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	_hull.material_override = mat
 	add_child(_hull)
+	headlight = Headlight.new()
+	add_child(headlight)
 
 	# The view controller sets this from the crew roster on the first frame; this is
 	# only so a Mothership built on its own (the headless gate does that) starts
@@ -228,6 +232,9 @@ func _on_tuning_reloaded() -> void:
 
 func _apply_tuning() -> void:
 	_hull.scale = Vector3.ONE * hull_scale()
+	# On the hull's foremost point, at the hull's scale, so it moves with the roster.
+	var aabb: AABB = _hull.mesh.get_aabb()
+	headlight.fit(Vector3(0.0, 0.0, aabb.position.z) * hull_scale(), hull_scale())
 	var mat := _hull.material_override as StandardMaterial3D
 	mat.albedo_color = Tuning.color("ship/hull_tint")
 	mat.metallic = Tuning.num("ship/metallic")

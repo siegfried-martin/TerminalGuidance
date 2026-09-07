@@ -194,12 +194,9 @@ needs to be much smaller."* Done as numbers, not code, except the spawn:
   now 100). The interchange ramps came down with them; X1 threads between two parts
   of B's K-112 entry and validates with a few tens of metres either side, so it is
   the corner `make roads` will name first if the heights move again.
-- **The star is brighter** (`star_light_energy` 3.0) but note the roadway faces UP:
-  the floor's lit side is the top, the star is below it, so what the star lights from
-  below is the underside and the glass. The floor you see is lit by ambient and by
-  the star's light coming back off the walls. Raising `star_light_energy` brightens
-  the walls and the planet's cap first; `exploration/ambient_energy` (0.06) is what
-  brightens the floor itself, everywhere, including between systems.
+- **The star was turned up** (`star_light_energy` 3.0) — and then back down to 1.5
+  once the lights below went in, because what it had been lighting was a bug (the
+  winding, below).
 - **A run starts behind the first entry mouth** (`spawn_behind_mouth_metres`, 500),
   facing into it, so the first thing on screen is the way onto the road.
   `SystemMap.place_ship` is still the one placement rule; the debug teleport
@@ -212,9 +209,39 @@ needs to be much smaller."* Done as numbers, not code, except the spawn:
   host's other carriageway are no longer each other's neighbours (`_finish`). The
   drunk probe on E's entry to K-112 L found it once the ramp was 100 m shorter.
 
-**Flagged, not built (scope, per CLAUDE.md):** lamps along the road, a headlight or
-searchlight as ship equipment, and what the dark costs off-road. Each is a design
-decision with a trade-off in it, and a doc or ADR before code.
+**The lights** — 2026-09-07, from the human, with a screenshot of the star throwing a
+hot spot down the roadway: *"the sun from a distance forms a very unrealistic cone of
+light. we can reduce this light and have headlights on the ship and tracklights on the
+highway to make up the difference. They should look like they are an intentional part
+of the design."*
+
+- **The cone was a winding bug, now fixed.** Godot's front face is wound clockwise;
+  the road's quads were wound the other way, so seen from above the roadway was a
+  back face, whose normal Godot flips to face the viewer — down — and the star below
+  lit it. Every quad is now wound to its normal, `RoadSuite` checks it, and the star
+  lights what a light from below should: undersides, walls, the planet's cap, the
+  ship's belly. The roadway gets no star light at all. `star_light_energy` is 1.5.
+- **The headlight** (`Headlight`): a spot on the nose with two visible lamps, on every
+  hull, free, toggled with `L`. The nose is 30 m above the road, so the beam is aimed
+  down `headlight_pitch_deg` (−6); level, it grazes the floor and lights the ribs
+  ahead more than the road.
+- **The track lights** (`RoadLamps`): a lamp bar on every rib in the collar above the
+  glass roof of each carriageway, instanced into the chunk, and a pool of at most 64
+  real lights re-placed every frame onto the bars within `track_light_reach` (3 km)
+  of the ship. The pool of light under each rib is real where you are and implied
+  down the road. The HUD's `lights` row counts them.
+- **The knobs**, all under `;;; Lights`: `headlight_energy` / `_range` /
+  `_angle_deg` / `_pitch_deg` / `_attenuation`, `track_light_energy` / `_range` /
+  `_attenuation` / `_reach`, the two colours, and the fixtures' `track_lamp_metres`,
+  `track_lamp_thickness`, `track_lamp_glow`, `headlight_fixture_metres`,
+  `headlight_spread_metres`, `headlight_lamp_glow`. The switches
+  `headlight_enabled` and `track_lights_enabled` are for A/B from the F2 panel.
+
+**Flagged, not built (scope, per CLAUDE.md):** what a headlight costs and what a
+better one (a searchlight) is — today every hull has the one headlight for free — and
+what the dark costs off-road. Each is a design decision with a trade-off in it, and a
+doc or ADR before code. The headlight is on the `Mothership`, so the combat arena's
+ship carries it too.
 
 ### What to fly first, and the feel calls that come with it
 
@@ -237,9 +264,10 @@ decision with a trade-off in it, and a doc or ADR before code.
 - **Mouth height.** A-377B's mouths sit 100 m above the plane, K-112's at 500 so its
   ramps at B clear A-377B's (`mouth_height` in `data/routes.json`). Whether an exit
   that climbs to its mouth reads right is a feel call.
-- **How dark, and how lit.** `star_light_energy`, `exploration/ambient_energy`,
-  `star_gap_below_floor` and `star_offset_metres` are the four knobs; the roadway
-  faces up, so the ambient is the floor's light and the star is the walls'.
+- **How dark, and how lit.** The star (`star_light_energy`, from below: undersides,
+  walls, the cap) and the ambient (`exploration/ambient_energy`) set the system; the
+  headlight and the track lights (`;;; Lights`) are what the roadway is lit by,
+  there and between systems.
 
 ### Known, not done
 

@@ -43,6 +43,8 @@ var spots: Array[Dictionary] = []
 var problems: PackedStringArray = []
 
 var _mesh_root: Node3D
+## The pool of live track lights that follows the ship (`RoadLamps`).
+var lamps: RoadLamps
 var _far: Dictionary = {}
 var _markings: Dictionary = {}
 var _chunks: Array[Dictionary] = []
@@ -59,6 +61,8 @@ func _ready() -> void:
 	_mesh_root = Node3D.new()
 	_mesh_root.name = "Structure"
 	add_child(_mesh_root)
+	lamps = RoadLamps.new()
+	add_child(lamps)
 
 
 ## Tear down and build from the route data (`Routes.data()`), with the systems'
@@ -586,6 +590,13 @@ func _plan_chunks() -> void:
 			_far[chunk["key"]] = far
 
 
+## Light the road around `here`: the track lights follow the ship along the tube it
+## rides, or the nearest one. Called every frame by the map, with the streaming.
+func light(here: Vector3, riding: Tube) -> void:
+	if lamps != null:
+		lamps.follow(here, riding, tubes)
+
+
 ## Build the chunks near `here` and drop the ones far from it. Called every frame by
 ## the map. Worker threads build; this thread commits.
 func stream(here: Vector3) -> void:
@@ -642,6 +653,8 @@ func _build_job(chunk: Dictionary, out: Dictionary) -> void:
 
 func _commit_chunk(chunk: Dictionary, built: Dictionary) -> void:
 	var node := RoadMesh.commit(chunk["road"], chunk["index"], built)
+	# The rib lamps come with the detailed chunk and go with it (`RoadLamps`).
+	node.add_child(RoadLamps.fixtures(chunk["road"], chunk))
 	_mesh_root.add_child(node)
 	_loaded[chunk["key"]] = node
 	# The far version of this stretch steps aside for the detailed one.

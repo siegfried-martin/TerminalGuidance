@@ -48,6 +48,23 @@ flies is exactly `lane_width × lane_height`, less its own hull.
 Markings — five lines on each carriageway's floor — are the lane paint. The ridden
 carriageway's are brighter and a ramp's are darker.
 
+Every quad is wound **clockwise from the side its normal faces**, which is Godot's
+front face. The materials are double-sided, and Godot flips a back face's normal to
+face the viewer, so a quad wound the other way is lit from the wrong side: the roadway
+seen from above was being lit by the star underneath it. `RoadSuite` checks the
+winding of a built chunk.
+
+## The lights
+
+Between systems it is dark on purpose (STATUS.md, the star), so the light out there
+is carried. `RoadLamps` puts a lamp bar on every rib, above the glass roof of each
+carriageway, as an instanced mesh in the chunk — the string of lights down the road —
+and keeps a pool of real omni lights (at most `RoadLamps.MAX_LIGHTS`) that the map
+re-places every frame onto the bars within `track_light_reach` of the ship, along the
+tube it rides or the nearest one. The ship's `Headlight` is a spot on the nose with
+two visible lamps, toggled with `L`. Everything you would nudge is under `;;; Lights`
+in `tuning.cfg`, and the HUD's `lights` row says what is live.
+
 ## Authoring the map
 
 `data/routes.json`, metres in the map's frame, Y up, the combat plane at y = 0:
@@ -153,8 +170,8 @@ within 2.5 km on all four sides while inside a tube. The whole mesh is built for
 (about 1.5 million triangles, half a minute).
 
 `make roads` is the fast loop while authoring. `make shot` with `ROAD_SHOT_SPOT=Exit`
-(or `Merge`, `Bend 1`, `Mouth`) renders a frame from the seat at that spot, and `K` in
-the game drops the ship at the next spot.
+(or `Merge`, `Bend 1`, `Mouth`, `Spawn`) renders a frame from the seat at that spot,
+and `K` in the game drops the ship at the next spot.
 
 ## What is deliberately not here
 

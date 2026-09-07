@@ -227,6 +227,15 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/star_light_energy", "exploration/star_light_range",
 	"exploration/star_light_attenuation", "exploration/ambient_energy",
 	"exploration/spawn_behind_mouth_metres", "exploration/debug_teleport_enabled",
+	"exploration/headlight_enabled", "exploration/headlight_color", "exploration/headlight_energy",
+	"exploration/headlight_range", "exploration/headlight_angle_deg", "exploration/headlight_pitch_deg",
+	"exploration/headlight_attenuation", "exploration/headlight_lamp_glow",
+	"exploration/headlight_fixture_metres", "exploration/headlight_spread_metres",
+	"exploration/track_lights_enabled", "exploration/track_light_color",
+	"exploration/track_light_energy", "exploration/track_light_range",
+	"exploration/track_light_attenuation", "exploration/track_light_reach",
+	"exploration/track_lamp_metres", "exploration/track_lamp_thickness",
+	"exploration/track_lamp_glow",
 ]
 
 const REQUIRED_ACTIONS: Array[String] = [
@@ -238,7 +247,7 @@ const REQUIRED_ACTIONS: Array[String] = [
 	"cam_forward", "cam_back", "cam_left", "cam_right", "cam_up", "cam_down",
 	"cam_boost", "cam_look",
 	"debug_toggle_hud", "debug_toggle_panel", "debug_reload_tuning",
-	"debug_reverse_arc", "debug_cycle_hull", "debug_teleport", "debug_drop", "quit",
+	"debug_reverse_arc", "debug_cycle_hull", "debug_teleport", "debug_drop", "headlight", "quit",
 ]
 
 var _failures: PackedStringArray = []
@@ -3198,6 +3207,22 @@ func _test_exploration_builds() -> void:
 	_expect(map.marker_count() > 0 and map.links()[0].marker_count() > 0,
 		"the whole map is filled with reference markers, corridor included",
 		"%d markers" % map.marker_count())
+	# THE LIGHTS. The ship carries a headlight on its nose; the road carries a lamp on
+	# every rib and lights the ones near the ship.
+	var lit_ship := scene.ship()
+	_expect(lit_ship.headlight != null and lit_ship.headlight.get_node_or_null("Beam") is SpotLight3D,
+		"the ship has a headlight on its nose", "")
+	_expect(lit_ship.headlight.position.z < 0.0,
+		"the headlight sits forward of the hull's origin", str(lit_ship.headlight.position))
+	_expect(road.lamps != null, "the road has its lamp pool", "")
+	var on_road := road.tubes[0].centre(2000.0)
+	road.light(on_road, road.tubes[0])
+	_expect(road.lamps.live_count() > 0 and road.lamps.live_count() <= RoadLamps.MAX_LIGHTS,
+		"the track lights follow a ship on the road, within the pool's cap",
+		"%d live" % road.lamps.live_count())
+	road.light(on_road + Vector3(0.0, 50000.0, 0.0), null)
+	_expect(road.lamps.live_count() == 0,
+		"far from every road, no track light is live", "%d live" % road.lamps.live_count())
 	# EACH SYSTEM HAS A STAR, under its floor, three planet diameters across, and it is
 	# the light: there is no key or fill light in this scene.
 	_expect(map.stars().size() == map.planets().size(),
