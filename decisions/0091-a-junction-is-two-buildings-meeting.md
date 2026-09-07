@@ -7,6 +7,8 @@ exit, which leaves sideways at lane height and is therefore cut clear of the hig
 instead; junction apertures carry no hoop, and a berth is handed back on a ramp to a
 planet.
 
+**Decisions 1 and 4's mechanism are superseded by ADR 0096.** A junction is a ramp's tube passing through its host's wall or floor, open exactly there; the road still carries its own playable space, the strip is still how an exit is taken, and a mouth is still named only when it is a choice.
+
 ## Decision
 
 Five things from one session. They are one ADR because four of them are the same

@@ -47,6 +47,8 @@ var _refuel: Button
 ## on the screen untrue, and this POC exists to read travel figures.
 var _teleports: int = 0
 var _last_teleport: String = ""
+## Which of the road's spots the debug drop is on.
+var _drop: int = -1
 ## The strip along the bottom: the ship off the road, the road's own nav on it, with
 ## the exits clickable while berthed (ADR 0091).
 var _nav: FlightHud
@@ -177,7 +179,7 @@ func _build_hud() -> void:
 	_nav = FlightHud.new()
 	_nav.name = "FlightHud"
 	add_child(_nav)
-	_nav.exit_picked.connect(func(ramp: RoadDeck) -> void: _map.take_exit(ramp))
+	_nav.exit_picked.connect(func(ramp: Tube) -> void: _map.take_exit(ramp))
 
 	# THE DEBUG TELEPORT, and it is the FIRST row on purpose. Every travel figure
 	# below it stops being a reading the moment a jump is made, and this POC exists to
@@ -284,10 +286,9 @@ func _build_hud() -> void:
 		var staying := "stay on highway %s" % riding.route_name \
 			if riding != null and not riding.route_name.is_empty() \
 			else "stay on this road"
-		var taken := _map.selected_sign()
+		var taken := _map.berth().taking()
 		if taken != null:
-			return "%s  ·  click it again on the strip to cancel" % \
-				taken.label_text.to_upper()
+			return "%s  ·  click it again on the strip to cancel" % taken.name.to_upper()
 		var ahead := _map.upcoming_exits(_ship_in_map())
 		if ahead.is_empty():
 			return "%s  ·  no exits ahead" % staying.to_upper()
@@ -308,25 +309,21 @@ func _build_hud() -> void:
 		return "OUT OF LANE  ·  %.0f m past  ·  speed limit at %.0f%%, pushed back" % [
 			past, (lane.top_speed() / maxf(lane.base_speed, 0.001)) * 100.0]
 	)
-	# THE SHELL you are held against (ADR 0087). The barrier never bumps, so from the
-	# seat a held ship looks exactly like one that chose to fly level — this row is what
-	# tells the difference, and it is where a wall in the wrong place shows up as a
-	# building you are inside and should not be.
-	_hud.add_row("shell", func() -> String:
-		var held := _ship.hull_barrier
-		if held == null:
-			return "clear of every building"
-		var ways := PackedStringArray()
-		for face: Array in [[held.open_right, "right"], [held.open_left, "left"],
-				[held.open_above, "above"], [held.open_below, "below"]]:
-			if face[0]:
-				ways.append(face[1] as String)
+	# THE TUBE you are in and the last thing you hit (ADR 0096). From the seat a held
+	# ship looks exactly like one that chose to fly level — this row is what tells the
+	# difference, and it is where a wall in the wrong place shows up.
+	_hud.add_row("tube", func() -> String:
+		var road := _ship.road
+		if road == null:
+			return "no road"
+		var contact: Dictionary = road.last_contact
+		var hit := "" if float(contact["age"]) > 1e6 else "  ·  last hit %s, %.0f%% square, %.1f s ago" % [
+			contact["wall"], float(contact["squareness"]) * 100.0, float(contact["age"])]
 		var kicked := _ship.rebound_speed()
-		return "%s  ·  %s  ·  %+.0f across, %+.0f up  ·  %.0f m to the nearest face%s%s" % [
-			held.shell_name, "INSIDE" if held.inside else "outside",
-			held.across, held.lift, absf(held.room()),
-			"" if ways.is_empty() else "  ·  open %s" % ", ".join(ways),
-			"" if kicked < 0.5 else "  ·  BOUNCING OFF at %.0f m/s" % kicked])
+		var where := "open space" if road.tube == null else "inside %s" % road.tube.name
+		return "%s%s%s  ·  %d of %d chunks built" % [where, hit,
+			"" if kicked < 0.5 else "  ·  BOUNCING OFF at %.0f m/s" % kicked,
+			_map.road().loaded_chunk_count(), _map.road().chunk_count()])
 	# Where the nearest way on or off is, and whether it will open. The colour is the
 	# whole of the answer (ADR 0060); this row is for reading it from the terminal
 	# while tuning, not a second channel the player is meant to need.
@@ -433,7 +430,7 @@ func _build_hud() -> void:
 		return "%d across the map" % _map.marker_count())
 	_hud.add_row("keys", func() -> String:
 		return "W/S throttle · A/D thrusters · mouse steers · C berth · H hull · " \
-			+ "J teleport · F1 hud · F2 tune")
+			+ "J teleport · K drop on road · F1 hud · F2 tune")
 
 
 func _apply_tuning() -> void:
@@ -528,12 +525,10 @@ func _refresh_strip() -> void:
 	if riding == null:
 		_nav.show_ship(_ship.throttle(), _ship.hp_fraction())
 		return
-	# The deck's name already opens with the road's — "A-377B SYSTEM C bound" — so
-	# prefixing the route again reads "A-377B · A-377B SYSTEM C bound". A ramp's name
-	# does not, and gets the road it belongs to in front of it.
-	var heading := riding.deck_name
-	if not riding.route_name.is_empty() \
-			and not heading.begins_with(riding.route_name):
+	# A carriageway's name already opens with the road's ("A-377B R"); a ramp's does
+	# not, and gets the road it belongs to in front of it.
+	var heading: String = riding.name
+	if not riding.route_name.is_empty() and not heading.begins_with(riding.route_name):
 		heading = "%s  ·  %s" % [riding.route_name, heading]
 	_nav.show_road(heading, _map.upcoming_exits(_ship_in_map()),
 		_map.berth().taking(), _map.berth().is_berthed())
@@ -614,6 +609,25 @@ func teleport_onward() -> void:
 	_last_teleport = "%s at %.0f s" % [_map.system_name(next),
 		Time.get_ticks_msec() / 1000.0]
 	print("[debug] teleport %d — to %s" % [_teleports, _last_teleport])
+
+
+## THE DEBUG DROP. K puts the ship on the road at the next bend, exit, merge or entry
+## mouth in the network's list, drive running. A junction is judged from the seat, and
+## flying to each of thirty of them is a session by itself. Counted and said out loud
+## exactly as J is.
+func drop_onward() -> void:
+	if not Tuning.flag("exploration/debug_teleport_enabled"):
+		return
+	var spots := _map.spots()
+	if spots.is_empty():
+		return
+	_drop = (_drop + 1) % spots.size()
+	var spot: Dictionary = spots[_drop]
+	_map.drop_on_road(_ship, spot["tube"], float(spot["t"]))
+	_camera.snap()
+	_teleports += 1
+	_last_teleport = "%s at %.0f s" % [spot["label"], Time.get_ticks_msec() / 1000.0]
+	print("[debug] drop %d — %s" % [_teleports, _last_teleport])
 
 
 ## How many jumps have been made this session. For the gate, which asserts that the

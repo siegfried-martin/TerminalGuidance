@@ -8,10 +8,9 @@ extends Node3D
 ## rather than one leg. What lives here is the bounded space you fly when you decline
 ## the road — the control condition success criterion 2 is measured against.
 ##
-## **A leg weaves and undulates** (`RoadPath.weave`), because success criterion 1
-## cannot be tested on a straight road. The corridor is the space around that leg, so
-## it bends with it: this node is handed the leg's centre-line and walks it, rather
-## than owning two endpoints and an axis.
+## The corridor is a straight tube from rim to rim on the combat plane; the highway
+## rides above it on its own line (ADR 0096). This node is handed the corridor's
+## centre-line as a `RoadPath` and walks it.
 ##
 ## The boundary lives in `TubeRegion` and the map owns it; this node draws it, from
 ## the same `profile()` the boundary is enforced with.
@@ -73,7 +72,7 @@ func _ready() -> void:
 ## The leg's centre-line, in the map's frame, mouth to mouth. Set by the map before
 ## the node enters the tree, and again on reload — the system diameter is a slider
 ## and the mouths move with it, and so is the curvature.
-func follow(line: PackedVector3Array) -> void:
+func follow(line: RoadPath) -> void:
 	_region.follow(line)
 	if _wall != null:
 		rebuild()

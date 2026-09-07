@@ -5,13 +5,9 @@ extends Node3D
 ## permitted, red for refused (ADR 0060).
 ##
 ## **Entry is on contact and instant.** No alignment, no docking sequence, no
-## confirmation (ADR 0057). At a 41-second local leg, ten seconds of ceremony is a
-## quarter of the trip and the network becomes a chain of loading screens.
-##
-## The crossing test is **swept** (ADR 0032's habit): a ship at cruise speed covers
-## 1.6 m in a frame, and a portal that can be passed through between two frames is a
-## portal that intermittently does not exist. The segment is tested against the
-## aperture plane, not the ship's position against a volume.
+## confirmation (ADR 0057). The portal itself is the sign and the colour; being INSIDE
+## the ramp's tube is what engages the drive (`RoadCollider`), so nothing here is
+## tested against the ship.
 
 ## Which way you go through it. Crossing along this is entering the road it serves;
 ## crossing against it is leaving.
@@ -34,7 +30,7 @@ var reachable: bool = true
 ## are. The APERTURE is always drawn — it is a built thing and it does not come and go
 ## — but its NAME is not: a system with two highways through it carries eight mouths,
 ## and a seat that can read all eight names at once is reading noise rather than a
-## signpost (ADR 0088).
+## signpost (ADR 0096).
 var _named: bool = false
 
 var _sheen: MeshInstance3D
@@ -158,32 +154,6 @@ func repaint() -> void:
 func _process(delta: float) -> void:
 	_elapsed += delta
 	repaint()
-
-
-## Did this segment cross the aperture, and which way?
-##
-## +1 along the direction of travel, -1 against it, 0 for no crossing. Both `from`
-## and `to` are in the frame this node's position is expressed in.
-##
-## Swept, and bounded by the opening rather than by the plane: flying past the
-## portal's *edge* is not going through it, and a plane-only test would put a ship
-## into cruise for clipping the corner of the structure.
-func crossed(from: Vector3, to: Vector3) -> int:
-	var before := (from - position).dot(travel)
-	var after := (to - position).dot(travel)
-	if is_equal_approx(before, after) or (before > 0.0) == (after > 0.0):
-		return 0
-	var span := after - before
-	if is_zero_approx(span):
-		return 0
-	var where := from.lerp(to, clampf(-before / span, 0.0, 1.0)) - position
-	var frame := CruiseLane.frame_for(travel)
-	var half_width := Tuning.num("exploration/portal_width") * 0.5
-	var half_height := Tuning.num("exploration/portal_height") * 0.5
-	if absf(where.dot(frame[0])) > half_width \
-			or absf(where.dot(frame[1])) > half_height:
-		return 0
-	return 1 if after > before else -1
 
 
 func width() -> float:

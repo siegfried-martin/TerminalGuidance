@@ -33,10 +33,10 @@ func _process(_delta: float) -> void:
 	if _scene == null or _scene.map().systems().is_empty():
 		return
 	var disc := _scene.map().systems()[0]
-	# Square across the map's bearing, so the rim being looked at is a closed stretch
-	# of wall rather than the aperture the road leaves through.
-	var bearing := SystemDisc.bearing_to_direction(
-		Tuning.num("exploration/aperture_bearing_deg"))
+	# Square across the first corridor's bearing, so the rim being looked at is a
+	# closed stretch of wall rather than the aperture the road leaves through.
+	var link := _scene.map().links()[0]
+	var bearing := (link.region().to() - link.region().from()).normalized()
 	var outward := bearing.cross(Vector3.UP).normalized()
 	_scene.ship().position = disc.position \
 		+ outward * disc.radius() * OUT_FRACTION + Vector3.UP * UP_METRES

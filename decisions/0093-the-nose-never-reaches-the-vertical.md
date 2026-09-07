@@ -3,6 +3,8 @@
 *Status: accepted · 2026-09-05 · the camera half is the human's own proposal · refines
 ADR 0091's aperture*
 
+**Decision 1 is superseded by ADR 0096**: a wall is open exactly where another tube passes through it, by one rule shared with the collider. The camera half stands.
+
 ## Decision
 
 ### 1. A wall opens where a ramp goes through it; a roadway opens for the whole merge

@@ -3,6 +3,8 @@
 *Status: accepted · 2026-09-05 · from the human flying ADR 0087 · supersedes ADR 0087's
 "it never bumps" clause*
 
+**Mechanism moved by ADR 0096.** The bounce is `RoadCollider` now, normal-only, with `structure_bounce_throttle_floor` under the throttle cost. The forbid on physics bodies below is narrowed by 0096: it is a choice, not an invariant.
+
 ## Decision
 
 **Hitting the road's structure is a bounce.** The speed going *into* a face comes back

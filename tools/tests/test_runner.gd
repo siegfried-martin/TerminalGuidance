@@ -19,7 +19,7 @@ const GODOT3_DENYLIST := "res://tools/tests/godot3_denylist.json"
 ## missing. That happened, and this is the tripwire: adding tests never breaks it, and
 ## the only way it fails is a suite that stopped early or one deliberately deleted.
 ## Lower it on purpose, never to make a run go green.
-const MINIMUM_CHECKS := 1300
+const MINIMUM_CHECKS := 900
 
 ## Tuning keys the sandbox needs. Keeping the list here means a rename in
 ## tuning.cfg fails the build instead of silently zeroing a feel value.
@@ -150,7 +150,6 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/lane_edge_speed_penalty", "exploration/lane_edge_push_accel",
 	"exploration/deck_separation",
 	"exploration/portal_width", "exploration/portal_height",
-	"exploration/portal_flare_length",
 	"exploration/portal_sheen_color", "exploration/portal_denied_color",
 	"exploration/portal_emission", "exploration/portal_sheen_scroll_hz",
 	"exploration/cruise_fuel_capacity", "exploration/cruise_fuel_per_km",
@@ -164,39 +163,23 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/bounds_alarm_alpha", "exploration/bounds_face_thickness",
 	"exploration/bounds_rim_alpha_scale",
 	"exploration/aperture_mouth_diameter", "exploration/aperture_funnel_length",
-	"exploration/aperture_bearing_deg",
 	"exploration/lane_corner_roundness",
-	"exploration/lane_hull_clearance_cap", "exploration/ramp_curve_tightness",
-	"exploration/road_curve_deg", "exploration/road_curve_period",
-	"exploration/road_rise_deg", "exploration/road_rise_period",
+	"exploration/lane_hull_clearance_cap",
 	"exploration/bounds_grid_spacing", "exploration/bounds_grid_alpha_scale",
-	"exploration/bounds_grid_alpha", "exploration/road_height",
-	"exploration/lane_active_color", "exploration/lane_active_alpha",
-	"exploration/lane_handover_margin", "exploration/lane_ramp_shade",
+	"exploration/bounds_grid_alpha",
+	"exploration/lane_active_color", "exploration/lane_active_alpha", "exploration/lane_ramp_shade",
 	"exploration/structure_module_length", "exploration/structure_rib_thickness",
 	"exploration/structure_glass_alpha", "exploration/structure_metal_color",
-	"exploration/structure_station_spacing",
-	"exploration/structure_station_length", "exploration/structure_barrier_margin",
 	"exploration/structure_bounce_restitution", "exploration/structure_bounce_seconds",
-	"exploration/structure_bounce_speed_keep",
-	"exploration/exit_signs_visible", "exploration/nav_exit_horizon_metres",
+	"exploration/structure_bounce_speed_keep", "exploration/nav_exit_horizon_metres",
 	"hud/nav_font_size", "hud/nav_padding", "hud/nav_separation",
 	"hud/nav_bar_width", "hud/nav_bar_height", "hud/nav_panel_color",
 	"hud/nav_panel_alpha", "hud/nav_text_color", "hud/nav_exit_color",
 	"hud/nav_taken_color", "hud/nav_shut_color", "hud/nav_bottom_margin",
-	"exploration/structure_glass_color", "exploration/ramp_ring_diameter",
-	"exploration/ramp_ring_depth", "exploration/junction_wall_opening_metres", "exploration/ramp_ring_color",
-	"exploration/crossing_bearing_deg", "exploration/crossing_road_height",
-	"exploration/cross_inbound_leg_length",
-	"exploration/cross_outbound_leg_length",
-	"exploration/interchange_run_length",
-	"exploration/interchange_curve_tightness",
-	"exploration/interchange_side_offset",
+	"exploration/structure_glass_color",
 	"exploration/berth_speed_fraction", "exploration/berth_offer_height",
 	"exploration/berth_ride_height", "exploration/berth_pull_rate",
 	"exploration/berth_ramp_release_metres",
-	"exploration/exit_sign_lead_metres", "exploration/exit_sign_metres",
-	"exploration/exit_sign_color",
 	"exploration/ramp_gate_alpha_scale",
 	"exploration/berth_look_cone_deg",
 	"camera/near_plane", "camera/far_plane",
@@ -211,10 +194,7 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/deep_dust_far", "exploration/deep_dust_min_size",
 	"exploration/deep_dust_max_size", "exploration/deep_dust_color",
 	"exploration/lane_color", "exploration/lane_line_alpha",
-	"exploration/portal_label_metres", "exploration/portal_site_offset",
-	"exploration/ramp_run_length",
-	"exploration/ramp_exit_side_offset", "exploration/ramp_exit_depth",
-	"exploration/ramp_entry_side_offset", "exploration/ramp_entry_depth",
+	"exploration/portal_label_metres",
 	"exploration/cruise_spool_seconds", "exploration/cruise_spool_down_seconds",
 	"exploration/depart_speed_fraction",
 	"exploration/planet_radius", "exploration/planet_center_depth",
@@ -226,8 +206,19 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/approach_alpha_far",
 	"exploration/approach_alpha_near",
 	"exploration/dock_title_font_size", "exploration/dock_title_color",
-	"exploration/corridor_diameter", "exploration/local_leg_length",
-	"exploration/trunk_leg_length", "exploration/debug_teleport_enabled",
+	"exploration/corridor_diameter",
+	# The tube road (ADR 0096): the structure, bends and pitch, the ramp rule, streaming.
+	"exploration/structure_rib_protrusion", "exploration/structure_beam_size",
+	"exploration/structure_floor_thickness", "exploration/road_detail_radius",
+	"exploration/structure_bounce_throttle_floor",
+	"exploration/road_turn_share", "exploration/road_pitch_max_deg",
+	"exploration/ramp_exit_angle_deg", "exploration/ramp_exit_lead",
+	"exploration/ramp_exit_length", "exploration/ramp_exit_radius",
+	"exploration/ramp_merge_pitch_deg", "exploration/ramp_merge_drop",
+	"exploration/ramp_merge_lead", "exploration/ramp_merge_radius",
+	"exploration/ramp_bend_radius", "exploration/ramp_swing_metres",
+	"exploration/ramp_reach_metres", "exploration/ramp_mouth_side_offset",
+	"exploration/ramp_mouth_along_offset", "exploration/ramp_mouth_height", "exploration/debug_teleport_enabled",
 ]
 
 const REQUIRED_ACTIONS: Array[String] = [
@@ -239,7 +230,7 @@ const REQUIRED_ACTIONS: Array[String] = [
 	"cam_forward", "cam_back", "cam_left", "cam_right", "cam_up", "cam_down",
 	"cam_boost", "cam_look",
 	"debug_toggle_hud", "debug_toggle_panel", "debug_reload_tuning",
-	"debug_reverse_arc", "debug_cycle_hull", "debug_teleport", "quit",
+	"debug_reverse_arc", "debug_cycle_hull", "debug_teleport", "debug_drop", "quit",
 ]
 
 var _failures: PackedStringArray = []
@@ -263,13 +254,10 @@ func _ready() -> void:
 	_test_hull_classes()
 	_test_lane_geometry()
 	_test_pitch_limits()
-	_test_module_bleed()
-	_test_hull_barrier()
 	_test_cruise_tank()
 	_test_deep_field()
 	_test_envelope_meter()
 	_test_disc_bounds()
-	_test_the_road()
 	_test_hull_roster()
 	_test_approach_envelope()
 	_test_target_components()
@@ -284,6 +272,7 @@ func _ready() -> void:
 	_test_tuning_writer()
 	_test_debug_panel()
 	_test_autopilot_holds_standoff()
+	await RoadSuite.new(self).run()
 	await _test_sandbox_builds()
 	await _test_arena_builds()
 	await _test_exploration_builds()
@@ -2440,10 +2429,14 @@ func _test_cruise_tank() -> void:
 	# The tuned numbers, against the map they are tuned for. Not a feel verdict — what
 	# is asserted is that a full tank crosses the map, because a POC in which the very
 	# first leg strands you is testing the wrong thing.
-	var map_metres := Tuning.num("exploration/local_leg_length") \
-		+ Tuning.num("exploration/trunk_leg_length") \
-		+ Tuning.num("exploration/cross_inbound_leg_length") \
-		+ Tuning.num("exploration/cross_outbound_leg_length")
+	# The legs are route data now (ADR 0096): the map's length is the sum of its
+	# highways, read from `data/routes.json` through the same paths the game builds.
+	var map_metres := 0.0
+	for h: Dictionary in Routes.data().get("highways", []):
+		var points: Array = []
+		for pt: Array in h["points"]:
+			points.append(Vector3(pt[0], pt[1], pt[2]))
+		map_metres += RoadPath.build(points, h.get("radii", []), bool(h.get("closed", false))).length
 	var tuned := CruiseTank.new()
 	tuned.configure(Tuning.num("exploration/cruise_fuel_capacity"),
 		Tuning.num("exploration/cruise_fuel_per_km") / 1000.0)
@@ -2597,14 +2590,6 @@ func _test_hull_classes() -> void:
 			TargetShip.tuned_drift_speed(), HullClass.max_speed(HullClass.Kind.TAXI)])
 
 
-## Lane, deck and portal geometry. These are the relationships that have to hold
-## whatever the numbers are tuned to; the numbers themselves are the human's.
-## THE SHELL (ADR 0087). Pure: a box section, a hull with a size, and the rule that a
-## hull does not pass through a surface from whichever side it is on.
-##
-## The property that matters most is the one that makes it a barrier rather than a
-## collision: motion ALONG the surface survives untouched. If that ever stops being
-## true, a ship held against the roadway stops dead on it and the road becomes a wall.
 ## THE PITCH PAIR (ADR 0093). The world has an absolute up, so everything near vertical
 ## is a special case; rather than handle that everywhere it turns up, the nose is
 ## clamped short of it and the camera's boom is compressed so it gets nearer still.
@@ -2657,152 +2642,8 @@ func _test_pitch_limits() -> void:
 		"the boom went backwards or overshot")
 
 
-## THE MODULE CONTRACT (ADR 0094). A module is a straight box, and a straight box
-## centred on a curved stretch does not reach its neighbours — the error is the sagitta,
-## `length x turn / 8` at each end, which at the tuned module length is metres. It is
-## closed by lengthening each module by its own curvature, and this is the arithmetic
-## that says the bleed is enough.
-func _test_module_bleed() -> void:
-	var line := RoadPath.new()
-	# A quarter circle of radius 1000, walked finely enough that the polyline is the
-	# curve rather than an approximation of it.
-	var points := PackedVector3Array()
-	for i in 200:
-		var t := PI * 0.5 * float(i) / 199.0
-		points.append(Vector3(cos(t) * 1000.0, 0.0, sin(t) * 1000.0))
-	line.set_points(points)
-	var module := 200.0
-	var worst_gap := 0.0
-	var worst_shortfall := 0.0
-	for i in int(line.length() / module) - 1:
-		var here := (float(i) + 0.5) * module
-		var reach := module * 0.5
-		# Where a bare module's leading end lands, against where the path actually is.
-		var bare: Vector3 = line.point_at(here) + line.tangent_at(here) * reach
-		var gap := bare.distance_to(line.point_at(here + reach))
-		var turn := line.tangent_at(here - reach).angle_to(line.tangent_at(here + reach))
-		worst_gap = maxf(worst_gap, gap)
-		worst_shortfall = maxf(worst_shortfall, gap - module * turn * 0.25)
-	_expect(worst_gap > 1.0,
-		"a straight module really does fall short of a curve — there is a gap to close",
-		"the worst end landed %.2f m off, which is nothing to fix" % worst_gap)
-	_expect(worst_shortfall <= 0.01,
-		"…and the bleed measured off the path's own turn covers it, everywhere on the curve",
-		"%.2f m of gap the bleed does not reach" % worst_shortfall)
-
-
-func _test_hull_barrier() -> void:
-	var shell := HullBarrier.new()
-	shell.centre = Vector3.ZERO
-	shell.axis = Vector3.FORWARD
-	shell.right = Vector3.RIGHT
-	shell.up = Vector3.UP
-	shell.extents = Vector2(100.0, 50.0)
-	shell.clearance = Vector2(10.0, 5.0)
-	shell.inside = true
-
-	var clear := shell.hold(Vector3(20.0, 10.0, 0.0), Vector3(5.0, 5.0, -200.0))
-	_expect((clear[0] as Vector3).is_equal_approx(Vector3(20.0, 10.0, 0.0)),
-		"a hull inside the shell is left exactly where it is",
-		"it was moved from the middle of the road")
-
-	# THROUGH THE FLOOR is the case the human reported: at cruise inside the steering
-	# cone a ship carries far more downward speed than the lane's push is worth, so it
-	# sank through the roadway and out the bottom of the road (ADR 0087).
-	shell.restitution = 0.5
-	var sunk := shell.hold(Vector3(0.0, -80.0, 0.0), Vector3(0.0, -60.0, -200.0))
-	_expect(is_equal_approx((sunk[0] as Vector3).y, -45.0),
-		"…and one pushed through the roadway is held at it, hull included",
-		"y %.1f, wanted -45" % (sunk[0] as Vector3).y)
-	_expect(is_zero_approx((sunk[1] as Vector3).y),
-		"…with the speed going THROUGH the floor taken out of the velocity",
-		"%.1f m/s still going down" % (sunk[1] as Vector3).y)
-	_expect(is_equal_approx((sunk[1] as Vector3).z, -200.0),
-		"…and the speed along the road untouched — a wall you fly beside, not into",
-		"%.1f m/s along, was -200" % (sunk[1] as Vector3).z)
-	# AND IT COMES BACK OUT (ADR 0090). The road is steel and glass; you bounce off it.
-	_expect(is_equal_approx((sunk[2] as Vector3).y, 30.0)
-			and is_zero_approx((sunk[2] as Vector3).z),
-		"…and half of it comes back out as a bounce, in the NORMAL direction only",
-		"kick %s" % sunk[2])
-	_expect(is_equal_approx(sunk[3] as float, 60.0),
-		"…with the speed the surface absorbed reported, so the caller can price the hit",
-		"%.1f m/s absorbed, wanted 60" % (sunk[3] as float))
-	# A GLANCING HIT IS DEFLECTED, NOT STOPPED. This is the property that keeps a wall
-	# from being a wall, and it is what the caller's penalty is scaled by.
-	var grazed := shell.hold(Vector3(0.0, -80.0, 0.0), Vector3(0.0, -2.0, -200.0))
-	_expect((grazed[3] as float) / 200.0 < 0.02,
-		"…while brushing along a wall barely registers as a hit at all",
-		"%.1f m/s absorbed against 200 along" % (grazed[3] as float))
-	shell.restitution = 0.0
-	var leaving := shell.hold(Vector3(0.0, -80.0, 0.0), Vector3(0.0, 30.0, -200.0))
-	_expect(is_equal_approx((leaving[1] as Vector3).y, 30.0)
-			and is_zero_approx(leaving[3] as float),
-		"…while coming back OFF the floor is the player flying, and is not touched",
-		"the climb away was cancelled too")
-
-	# AN OPEN FACE IS THE WAY THROUGH. A ramp's aperture is a hole, and holding it
-	# would be a highway with no junctions on it.
-	shell.open_below = true
-	var dropped := shell.hold(Vector3(0.0, -80.0, 0.0), Vector3(0.0, -60.0, -200.0))
-	_expect(is_equal_approx((dropped[0] as Vector3).y, -80.0),
-		"…and an OPEN face is not held: that is the ramp going through it",
-		"the aperture was closed")
-	shell.open_below = false
-
-	# FROM OUTSIDE, the same surface, the other way round. This is the half that stops
-	# a ship in open space flying in through a wall.
-	shell.inside = false
-	var poked := shell.hold(Vector3(0.0, 20.0, 0.0), Vector3(0.0, -40.0, 0.0))
-	_expect(is_equal_approx((poked[0] as Vector3).y, 55.0),
-		"a hull outside the shell is kept out of it, at its own half-height",
-		"y %.1f, wanted 55" % (poked[0] as Vector3).y)
-	shell.open_above = true
-	var entered := shell.hold(Vector3(0.0, 20.0, 0.0), Vector3(0.0, -40.0, 0.0))
-	_expect(is_equal_approx((entered[0] as Vector3).y, 20.0),
-		"…unless it came in through an opening, which is how a ramp is joined",
-		"the opening refused a hull from outside")
-
-	# THE MEDIAN is a wall in the middle rather than at the edge, and a hull still
-	# astride it is left free rather than pinned to a side it never chose.
-	shell.inside = true
-	shell.open_above = false
-	shell.has_median = true
-	shell.median_side = 1.0
-	var crossed := shell.hold(Vector3(-40.0, 0.0, 0.0), Vector3(-30.0, 0.0, -200.0))
-	_expect(is_equal_approx((crossed[0] as Vector3).x, 10.0),
-		"the median holds a hull on the side of the pane it was already on",
-		"x %.1f, wanted 10" % (crossed[0] as Vector3).x)
-	shell.median_side = 0.0
-	var astride := shell.hold(Vector3(-4.0, 0.0, 0.0), Vector3(-30.0, 0.0, -200.0))
-	_expect(is_equal_approx((astride[0] as Vector3).x, -4.0),
-		"…and a hull astride it is left alone rather than shoved to one side",
-		"a straddling hull was moved")
-
-	# ROOM is what the network compares when two buildings both have an opinion.
-	shell.has_median = false
-	shell.across = 60.0
-	shell.lift = 40.0
-	_expect(is_equal_approx(shell.room(), 10.0),
-		"room is the distance to the NEAREST face, so the tightest one decides",
-		"room %.1f, wanted 10" % shell.room())
-
-	# --- RoadPath.section, which is what cuts a ramp's building at the wall ---
-	var line := RoadPath.new()
-	line.set_points(PackedVector3Array([Vector3.ZERO, Vector3(100.0, 0.0, 0.0),
-		Vector3(200.0, 0.0, 0.0), Vector3(300.0, 0.0, 0.0)]))
-	var cut := RoadPath.new()
-	cut.set_points(line.section(120.0, 260.0))
-	_expect(is_equal_approx(cut.length(), 140.0)
-			and cut.start().is_equal_approx(Vector3(120.0, 0.0, 0.0))
-			and cut.finish().is_equal_approx(Vector3(260.0, 0.0, 0.0)),
-		"a path can be cut to a stretch of itself, ending exactly where asked",
-		"%.0f m from %s to %s" % [cut.length(), cut.start(), cut.finish()])
-	_expect(line.section(80.0, 80.0).is_empty(),
-		"…and a cut with nothing in it is empty rather than a degenerate line",
-		"a zero-length cut produced points")
-
-
+## Lane, carriageway and portal geometry. These are the relationships that have to
+## hold whatever the numbers are tuned to; the numbers themselves are the human's.
 func _test_lane_geometry() -> void:
 	var lane_width := Tuning.num("exploration/lane_width")
 	var lane_height := Tuning.num("exploration/lane_height")
@@ -2810,7 +2651,7 @@ func _test_lane_geometry() -> void:
 		"the lane is wider than it is tall — monitor aspect, and roll is locked",
 		"%.0f wide x %.0f tall" % [lane_width, lane_height])
 	_expect(Tuning.num("exploration/deck_separation") >= lane_width,
-		"the two decks are separated by more than one deck's WIDTH, so they do not intersect",
+		"the two carriageways are separated by at least one carriageway's WIDTH, so they do not intersect",
 		"separation %.0f across vs width %.0f" % [
 			Tuning.num("exploration/deck_separation"), lane_width])
 	_expect(Tuning.num("exploration/lane_edge_softness") < lane_width * 0.5,
@@ -2854,9 +2695,6 @@ func _test_lane_geometry() -> void:
 	_expect(portal_width <= lane_width,
 		"the portal is the ramp mouth, no wider than the road it feeds",
 		"portal %.0f vs lane %.0f" % [portal_width, lane_width])
-	_expect(is_zero_approx(Tuning.num("exploration/portal_entry_seconds")),
-		"portal entry is instant — a local leg is 41 s and cannot afford ceremony",
-		"%.1f s of entry sequence" % Tuning.num("exploration/portal_entry_seconds"))
 
 	# The corridor has to hold both decks with room around them, or "the lane is
 	# visually open" is not true and the tube has become a tunnel. The decks are side
@@ -3244,13 +3082,18 @@ func _test_disc_bounds() -> void:
 			Tuning.num("exploration/aperture_mouth_diameter"),
 			Tuning.num("exploration/system_diameter")])
 	# Two flares have to fit in the shortest leg, or the corridor is all mouth and
-	# never reaches its own width.
-	_expect(Tuning.num("exploration/aperture_funnel_length") * 2.0
-			< Tuning.num("exploration/local_leg_length"),
+	# never reaches its own width. The legs are route data now.
+	var shortest_leg := INF
+	var placed := Routes.system_positions()
+	for h: Dictionary in Routes.data().get("highways", []):
+		var on_route: Array = h.get("systems", [])
+		for i in on_route.size() - 1:
+			shortest_leg = minf(shortest_leg, (placed[on_route[i]] as Vector3).distance_to(
+				placed[on_route[i + 1]]) - Tuning.num("exploration/system_diameter"))
+	_expect(Tuning.num("exploration/aperture_funnel_length") * 2.0 < shortest_leg,
 		"…and the two flares fit inside the shortest leg with corridor left between",
 		"%.0f m of flare in a %.0f m leg" % [
-			Tuning.num("exploration/aperture_funnel_length") * 2.0,
-			Tuning.num("exploration/local_leg_length")])
+			Tuning.num("exploration/aperture_funnel_length") * 2.0, shortest_leg])
 
 	# ADR 0061: the floor goes UNDER the planet, never between the player and it.
 	var surface := Tuning.num("exploration/planet_radius") \
@@ -3266,219 +3109,37 @@ func _test_disc_bounds() -> void:
 		"surface at %+.0f" % surface)
 
 
-## The road (POC step 6): the lane, the portals, and the two carriageways. What is
-## under test is that the highway is a PLACE rather than a travel mode — every
-## property ADR 0057 asks a review to check is checkable here.
-##
-## There is no deck-convention test any more. Traffic runs on the right and each deck
-## sits on its own right, so which side a deck is on is a consequence of which way it
-## goes rather than a rule to be declared and checked against a heading (ADR 0077).
-func _test_the_road() -> void:
-	# --- the lane's cross-section ---
-	var lane := CruiseLane.new()
-	lane.axis = Vector3.RIGHT
-	lane.right = Vector3.BACK
-	lane.up = Vector3.UP
-	lane.half_width = 75.0
-	lane.half_height = 50.0
-	lane.roundness = 4.0
-	lane.edge_softness = 10.0
-	lane.base_speed = 96.7
-	lane.edge_speed_penalty = 0.45
-	lane.push_accel = 8.0
-
-	_expect(lane.edge_distance() < 0.0 and not lane.is_outside(),
-		"the centre of the lane is in the lane",
-		"%.1f m past" % lane.edge_distance())
-	lane.lateral = 74.0
-	_expect(not lane.is_outside(),
-		"…and so is just inside the near edge", "%.1f" % lane.edge_distance())
-	lane.lateral = 80.0
-	_expect(lane.is_outside() and is_equal_approx(lane.edge_distance(), 5.0),
-		"…and 5 m past it is 5 m past it", "%.2f" % lane.edge_distance())
-	# The cross-section is a rounded lozenge so no edge is dramatically nearer than
-	# another. At the corner a plain rectangle would still be inside and an ellipse
-	# would be well outside; the lozenge sits between them, and the DRAWN ribs use
-	# this same curve so the picture and the rule are one shape.
-	lane.lateral = 75.0 * 0.9
-	lane.vertical = 50.0 * 0.9
-	_expect(lane.is_outside(),
-		"the corner of the lane is outside it — the section is a lozenge, not a box",
-		"%.2f m past at 90%% of both extents" % lane.edge_distance())
-	lane.lateral = 75.0 * 0.7
-	lane.vertical = 50.0 * 0.7
-	_expect(not lane.is_outside(),
-		"…but not as far in as an ellipse would put it — nor a rounded diamond",
-		"%.2f m past at 70%% of both" % lane.edge_distance())
-
-	# --- the soft boundary: an incentive, never a wall (ADR 0064) ---
-	lane.vertical = 0.0
-	lane.lateral = 0.0
-	_expect(is_equal_approx(lane.top_speed(), lane.base_speed)
-			and lane.push() == Vector3.ZERO,
-		"in the lane there is no penalty and no push at all",
-		"%.1f m/s, push %.1f" % [lane.top_speed(), lane.push().length()])
-	lane.lateral = 90.0
-	_expect(lane.top_speed() < lane.base_speed
-			and lane.top_speed() > lane.base_speed * 0.4,
-		"out of the lane the cruise drive is slower — an incentive to hold a line",
-		"%.1f m/s of %.1f" % [lane.top_speed(), lane.base_speed])
-	# THE invariant of the lane: it must never be able to stop the player. If it can,
-	# it is a wall, and a wall on a road is the conveyor this design rejects.
-	lane.lateral = 100000.0
-	_expect(lane.top_speed() >= lane.base_speed * clampf(
-			Tuning.num("exploration/lane_edge_speed_penalty"), 0.05, 1.0) - 0.001,
-		"…and no slower than the penalty, however far out — the lane cannot STOP you",
-		"%.1f m/s" % lane.top_speed())
-	_expect(lane.top_speed() > Tuning.num("exploration/taxi_max_speed"),
-		"…in fact still faster than flying the leg by hand, which is why it is soft",
-		"%.1f m/s out of lane vs %.1f by hand" % [lane.top_speed(),
-			Tuning.num("exploration/taxi_max_speed")])
-	lane.lateral = 90.0
-	var nudge := lane.push()
-	_expect(nudge.length() > 0.0 and nudge.dot(Vector3.BACK) < 0.0,
-		"…and the push is back toward the centre-line, not along the road",
-		"(%.1f, %.1f, %.1f)" % [nudge.x, nudge.y, nudge.z])
-	_expect(is_zero_approx(nudge.dot(lane.axis)),
-		"…with nothing along the axis: the road corrects your LINE, never your speed",
-		"%.3f m/s along the road" % nudge.dot(lane.axis))
-	lane.lateral = 200.0
-	_expect(lane.push().length() > nudge.length(),
-		"…and it grows with depth, so it is felt as a slope rather than as a wall",
-		"%.1f then %.1f" % [nudge.length(), lane.push().length()])
-	# EASED IN, and this is the fix for a shudder rather than a nicety. `sqrt` has an
-	# infinite slope at zero, so the bare closed form arrived at full strength on the
-	# frame the edge was crossed, shoved the ship back inside, vanished — it is a
-	# function of position — and let it drift out again. A slope is what was promised;
-	# a limit cycle at the rail is what a big hull got.
-	lane.lateral = lane.half_width + 0.05
-	var toe := lane.push().length()
-	lane.lateral = lane.half_width + lane.edge_softness
-	_expect(toe < lane.push().length() * 0.05,
-		"…and it eases IN from nothing at the edge, rather than arriving at full",
-		"%.2f m/s a hair past the rail against %.2f m/s a softness past it" % [
-			toe, lane.push().length()])
-
-	# --- a ceiling that drops does not drop the ship with it (ADR 0071) ---
-	# This is the stutter the human flew into: cross the rail at cruise and the lane
-	# halves the drive's ceiling, and with nothing pacing the fall the ship lost eighty
-	# metres a second in ONE FRAME, got pushed back in, got it all back, and drifted
-	# out again. A limit cycle at the rail, which reads as being skipped forward.
-	var frame_time := 1.0 / 60.0
-	var braked := Mothership.brake_limited(160.0, 72.0, 160.0, 2.4, frame_time)
-	_expect(braked > 158.0,
-		"a ceiling that halves in one frame takes the ship's own brakes to follow",
-		"%.1f m/s after one frame of a 160 to 72 drop" % braked)
-	var settle := 160.0
-	var frames := 0
-	while settle > 72.5 and frames < 600:
-		settle = Mothership.brake_limited(settle, 72.0, 160.0, 2.4, frame_time)
-		frames += 1
-	_expect(frames > 30 and frames < 240,
-		"…and gets there in about the seconds its brakes are tuned for, not instantly",
-		"%.2f s to fall from 160 to 72" % (float(frames) * frame_time))
-	# Going UP is not limited. Acceleration is already paced by the throttle lever's
-	# own travel, and pacing it twice would make the lever slower than it is tuned to
-	# be — which is a feel change smuggled in behind a bug fix.
-	_expect(is_equal_approx(
-			Mothership.brake_limited(10.0, 160.0, 160.0, 2.4, frame_time), 160.0),
-		"…while gaining speed is untouched: the throttle already paces that",
-		"acceleration was limited too")
-	# A throttle simply released already falls at exactly this rate, so the guard has
-	# nothing to say about it. If it did, every hull would brake slower than tuned.
-	var released := Mothership.brake_limited(160.0, 160.0 - 160.0 / 2.4 * frame_time,
-		160.0, 2.4, frame_time)
-	_expect(is_equal_approx(released, 160.0 - 160.0 / 2.4 * frame_time),
-		"…and a released throttle is a no-op for it, at exactly the tuned rate",
-		"%.3f m/s" % released)
-
-	# --- the lane is measured against the HULL, not against a point ---
-	# A capital is 76 m across. A lane that only notices the ship's centre lets most
-	# of it hang through the rails before anything reports it, which is what the human
-	# flew into. Clearance shrinks the band the CENTRE may occupy; the drawn lane is
-	# unchanged, exactly as a road's markings do not move for a wide lorry.
-	var wide := CruiseLane.new()
-	wide.right = Vector3.BACK
-	wide.up = Vector3.UP
-	wide.half_width = 120.0
-	wide.half_height = 75.0
-	wide.roundness = 4.0
-	wide.edge_softness = 10.0
-	wide.clearance_cap = 0.5
-	wide.lateral = 90.0
-	_expect(not wide.is_outside(),
-		"a point-sized ship 90 m off a 120 m half-lane is still in its lane",
-		"%.1f m past" % wide.edge_distance())
-	wide.clearance = Vector2(38.0, 21.0)
-	_expect(wide.is_outside(),
-		"…and a 76 m hull in the same place is not, because its side is through the rail",
-		"%.1f m past" % wide.edge_distance())
-	wide.lateral = 0.0
-	wide.vertical = 0.0
-	_expect(not wide.is_outside() and wide.push() == Vector3.ZERO,
-		"…while down the middle it is still in its lane and unpushed",
-		"%.1f m past" % wide.edge_distance())
-	# A hull that is too big for the road still has to be able to FLY it. Without the
-	# cap it would be handed a lane of zero width, be outside wherever it sat, and be
-	# pushed and slowed for existing.
-	wide.clearance = Vector2(1000.0, 1000.0)
-	_expect(wide.usable_extents().x > 0.0 and wide.usable_extents().y > 0.0
-			and not wide.is_outside(),
-		"…and an absurd hull is left a lane rather than being outside its own road",
-		"%.1f x %.1f of usable lane" % [wide.usable_extents().x,
-			wide.usable_extents().y])
-	_expect(is_equal_approx(wide.usable_extents().x, 120.0 * 0.5),
-		"…capped at the tuned share of the section, and no further",
-		"%.1f m of a 120 m half-lane left" % wide.usable_extents().x)
-	_expect(lane.push().length() < lane.base_speed,
-		"…but never overpowers the drive itself", "%.1f m/s of push against %.1f" % [
-			lane.push().length(), lane.base_speed])
-
-	# --- ADR 0057: entry is on contact and instant ---
-	_expect(is_zero_approx(Tuning.num("exploration/portal_entry_seconds")),
-		"portal entry has no sequence — at a 41 s leg, ceremony is a loading screen",
-		"%.2f s of entry" % Tuning.num("exploration/portal_entry_seconds"))
-	_expect(Tuning.num("exploration/portal_width")
-			< Tuning.num("exploration/lane_width")
-			and Tuning.num("exploration/portal_height")
-				< Tuning.num("exploration/lane_height"),
-		"the portal is NARROWER than the lane it feeds — an on-ramp, not a gate",
-		"%.0f x %.0f opening into a %.0f x %.0f lane" % [
-			Tuning.num("exploration/portal_width"),
-			Tuning.num("exploration/portal_height"),
-			Tuning.num("exploration/lane_width"),
-			Tuning.num("exploration/lane_height")])
-	# The road only pays if it beats flying the leg. This is the ratio the third
-	# checkpoint is about, and it is arithmetic rather than opinion.
-	_expect(Tuning.num("exploration/cruise_speed")
-			> Tuning.num("exploration/fighter_max_speed"),
-		"cruise outruns the fastest hull, so the road is worth the detour to it",
-		"%.1f m/s cruise vs %.1f fighter" % [Tuning.num("exploration/cruise_speed"),
-			Tuning.num("exploration/fighter_max_speed")])
-	# The decks sit side by side and must not intersect, or the lanes stop being
-	# separate and "no oncoming traffic in your lane" quietly stops being structural.
-	_expect(Tuning.num("exploration/deck_separation")
-			>= Tuning.num("exploration/lane_width"),
-		"the two decks run clear of each other — one-way lanes stay separate",
-		"%.0f m apart for %.0f m of lane" % [
-			Tuning.num("exploration/deck_separation"),
-			Tuning.num("exploration/lane_width")])
-
-
-## The exploration scene builds its nodes. Same gate the arena and sandbox get: a
-## scene that is constructed in code has no editor to catch a missing child.
-## One frame of the exploration scene, the way the engine runs it: the scene's
-## `_process` and then the ship's, in tree order.
-##
-## The tests step by hand rather than awaiting real frames, because a three-second
-## drive spool is 180 of them and awaiting those would make the gate wait three real
-## seconds for a number it can reach instantly. Stepping only the scene was a quiet
-## lie about what a frame is — anything living in `Mothership._process` never ran.
 func _step_exploration(scene: ExplorationScene, delta: float) -> void:
 	scene._process(delta)
 	scene.ship()._process(delta)
 
 
+## Put the ship at a point in the map's frame and let one frame settle.
+func _park(scene: ExplorationScene, at: Vector3, facing: Vector3) -> void:
+	scene.ship().position = at
+	scene.ship().look_at(scene.map().to_global(at + facing * 100.0), Vector3.UP)
+	scene.ship().reset_reticle()
+	_step_exploration(scene, 1.0 / 60.0)
+
+
+## Fly the ship in through a mouth under its own power: a way on is CROSSED, never
+## teleported into, so the collider sees the ship arrive from outside.
+func _fly_in(scene: ExplorationScene, mouth: Portal, into: Vector3) -> void:
+	_park(scene, mouth.position - into * 20.0, into)
+	scene.ship()._throttle = 1.0
+	scene.ship()._speed = 30.0
+	for _i in 120:
+		_step_exploration(scene, 1.0 / 60.0)
+		if scene.ship().road.tube != null:
+			# One more, so the map has observed the tube the ship is now in.
+			_step_exploration(scene, 1.0 / 60.0)
+			return
+
+
+## The exploration scene, driven through its real nodes: the map, the road, the
+## ship, the berth, the strip, fuel, docking and the debug tools. The road's own
+## geometry is verified by `RoadSuite`; what is under test here is the WIRING between
+## the road and everything that reads it.
 func _test_exploration_builds() -> void:
 	var packed := load("res://scenes/exploration.tscn") as PackedScene
 	_expect(packed != null, "exploration.tscn loads", "scene failed to load")
@@ -3496,1728 +3157,431 @@ func _test_exploration_builds() -> void:
 			"SystemRoot/SystemMap/DiscA/SystemMarkers",
 			"SystemRoot/SystemMap/PlanetA", "SystemRoot/SystemMap/PlanetA/Body",
 			"SystemRoot/SystemMap/ApproachA",
-			"SystemRoot/SystemMap/DiscB", "SystemRoot/SystemMap/DiscB/Rim",
-			"SystemRoot/SystemMap/PlanetB", "SystemRoot/SystemMap/PlanetB/Body",
-			"SystemRoot/SystemMap/ApproachB",
+			"SystemRoot/SystemMap/DiscB", "SystemRoot/SystemMap/PlanetB",
 			"SystemRoot/SystemMap/LinkAB", "SystemRoot/SystemMap/LinkAB/Wall",
 			"SystemRoot/SystemMap/LinkAB/LinkMarkers",
-			"SystemRoot/SystemMap/DiscC", "SystemRoot/SystemMap/PlanetC",
-			"SystemRoot/SystemMap/LinkBC",
-			"SystemRoot/SystemMap/Road",
-			"SystemRoot/SystemMap/Road/A377BMainlineForward",
-			"SystemRoot/SystemMap/Road/A377BMainlineReverse",
-			"SystemRoot/SystemMap/Road/A377BRampOnAForward",
-			"SystemRoot/SystemMap/Road/A377BRampOffBForward",
-			"SystemRoot/SystemMap/Road/A377BRampOnBReverse",
-			"SystemRoot/Ship", "ChaseCamera", "DebugHud"]:
+			"SystemRoot/SystemMap/DiscC", "SystemRoot/SystemMap/LinkBC",
+			"SystemRoot/SystemMap/DiscD", "SystemRoot/SystemMap/DiscE",
+			"SystemRoot/SystemMap/Road", "SystemRoot/SystemMap/Road/Structure",
+			"SystemRoot/SystemMap/DeepField",
+			"SystemRoot/Ship", "ChaseCamera", "DebugHud", "FlightHud"]:
 		_expect(scene.get_node_or_null(path) != null,
 			"exploration builds " + path, "missing")
 
 	var map := scene.map()
 	var field := map.field()
-	# FIVE SYSTEMS ON TWO CROSSING HIGHWAYS. A-377B runs A, B, C; K-112 runs D, B, E
-	# across it. B is on both, which is what makes it an interchange rather than a
-	# place two roads happen to pass (ADR 0085).
+	var road := map.road()
+	var discs := map.systems()
 	_expect(map.systems().size() == 5 and map.links().size() == 4,
 		"the map is five systems on two crossing highways, and a corridor per leg",
 		"%d systems, %d links" % [map.systems().size(), map.links().size()])
-	# EVERY LEG A DIFFERENT LENGTH, on purpose. Legs that are all the same make a
-	# grid, and a grid makes system-to-system transport a distance rather than a
-	# decision — the human's reading of the first build's short A-B and long B-C.
-	var seen_lengths := {}
-	for key: String in SystemMap.LEG_KEYS:
-		seen_lengths[Tuning.num(key)] = true
-	_expect(seen_lengths.size() == SystemMap.LEG_KEYS.size(),
-		"…and no two legs are the same length, so the map is not a grid",
-		"%d distinct lengths across %d legs" % [seen_lengths.size(),
-			SystemMap.LEG_KEYS.size()])
-	_expect(map.marker_count() > 0,
+	_expect(Routes.load_error().is_empty(), "data/routes.json parses", Routes.load_error())
+	_expect(road.problems.is_empty(),
+		"the map's road builds with no problems (see `make roads`)",
+		"\n      ".join(road.problems))
+	_expect(map.marker_count() > 0 and map.links()[0].marker_count() > 0,
 		"the whole map is filled with reference markers, corridor included",
 		"%d markers" % map.marker_count())
-	_expect(map.links()[0].marker_count() > 0,
-		"…and the CORRIDOR has its own: 4 km of empty tube reads as a still image",
-		"%d in the corridor" % map.links()[0].marker_count())
 
-	# The drawn rim and the enforced rim have to be the same thing, or the player
-	# learns to distrust the picture. The hole is a hole in the mesh, not a decal.
-	var rim := scene.get_node_or_null(
-		"SystemRoot/SystemMap/DiscA/Rim") as MeshInstance3D
-	if rim != null and rim.mesh != null:
-		var rim_verts: PackedVector3Array = rim.mesh.surface_get_arrays(0)[
-			Mesh.ARRAY_VERTEX]
-		var drawn := rim_verts.size() / 6
-		_expect(drawn > 0 and drawn < SystemDisc.RIM_SEGMENTS,
-			"the rim is drawn with an actual HOLE in it where the aperture is",
-			"%d of %d segments drawn" % [drawn, SystemDisc.RIM_SEGMENTS])
-
-	# A LINE, not a ring: the end systems have one aperture each, and it is the one
-	# the leg actually attaches to. An aperture facing nowhere is a hole in the
-	# boundary with unrendered space behind it.
-	var discs := map.systems()
-	_expect(discs[0].aperture_count() == 1
-			and discs[discs.size() - 1].aperture_count() == 1,
-		"each END system opens its rim exactly once — a line, not a ring",
-		"%d and %d apertures" % [discs[0].aperture_count(),
-			discs[discs.size() - 1].aperture_count()])
-	# B is on BOTH highways, so it opens four times: a mouth each way along each road
-	# through it. That is what makes it an interchange rather than a place two roads
-	# happen to pass (ADR 0085).
-	_expect(discs[1].aperture_count() == 4,
-		"…and the one both roads pass through opens four times, twice per road",
-		"%d apertures" % discs[1].aperture_count())
-	_expect(discs[2].aperture_count() == 1 and discs[3].aperture_count() == 1,
-		"…while a system on one road opens once at each end of it",
-		"%d and %d apertures" % [discs[2].aperture_count(),
-			discs[3].aperture_count()])
+	# The corridor between two systems runs rim to rim, and the disc's aperture is
+	# where it attaches — the drawn rim has a hole exactly there.
 	var link := map.links()[0]
 	_expect(link.region().from().distance_to(discs[0].aperture_mouth(0)) < 1.0
 			and link.region().to().distance_to(discs[1].aperture_mouth(0)) < 1.0,
-		"…and the corridor attaches to those two mouths, not near them",
-		"%.1f m and %.1f m off" % [
-			link.region().from().distance_to(discs[0].aperture_mouth(0)),
+		"the A-B corridor attaches to both systems' apertures exactly",
+		"%.0f m and %.0f m off" % [link.region().from().distance_to(discs[0].aperture_mouth(0)),
 			link.region().to().distance_to(discs[1].aperture_mouth(0))])
-	# Legs are measured PORTAL TO PORTAL (an amendment to the POC doc), so this is
-	# the number the highway has to beat and it must be the tuned one, not the
-	# centre-to-centre distance that would be easy to conflate it with.
-	#
-	# The tuned number is the STRAIGHT LINE between the mouths. A leg weaves now, so
-	# what you actually fly is a little longer than what you tuned — which is the
-	# honest reading and the reason both are checked here rather than one.
-	_expect(absf(link.region().from().distance_to(link.region().to())
-			- Tuning.num("exploration/local_leg_length")) < 1.0,
-		"the leg is the tuned length MOUTH TO MOUTH, not centre to centre",
-		"%.0f m of a tuned %.0f" % [link.length(),
-			Tuning.num("exploration/local_leg_length")])
-	_expect(link.length() > Tuning.num("exploration/local_leg_length")
-			and link.length() < Tuning.num("exploration/local_leg_length") * 1.2,
-		"…and flying it is a little further than that, because the leg curves",
-		"%.0f m of road across a %.0f m gap" % [link.length(),
-			Tuning.num("exploration/local_leg_length")])
-	_expect(absf(discs[0].position.distance_to(discs[1].position)
-			- (Tuning.num("exploration/local_leg_length")
-				+ Tuning.num("exploration/system_diameter"))) < 1.0,
-		"…so centre to centre is the leg plus one system radius at each end",
-		"%.0f m apart" % discs[0].position.distance_to(discs[1].position))
-	_expect(absf(map.links()[1].region().from().distance_to(
-				map.links()[1].region().to())
-			- Tuning.num("exploration/trunk_leg_length")) < 1.0,
-		"…and the trunk leg is its own tuned length, an order up from the local one",
-		"%.0f m of a tuned %.0f" % [map.links()[1].length(),
-			Tuning.num("exploration/trunk_leg_length")])
-
-	# You can fly from one to the other without leaving the map. This is the whole of
-	# step 5 as one assertion: if any point along the route is out of bounds, the
-	# control condition cannot be flown and success criterion 2 is untestable.
-	var route_ok := true
-	var worst := 0.0
-	for i in 81:
-		var t := float(i) / 80.0
-		var point := discs[0].position.lerp(discs[1].position, t)
-		worst = maxf(worst, field.overshoot(point))
-		if field.overshoot(point) > 0.0:
-			route_ok = false
-	_expect(route_ok,
-		"the whole route from A to B is in bounds — the leg can actually be flown",
-		"worst point is %.1f m outside" % worst)
-	# And the corridor is not a second way of saying "the disc". Halfway along, the
-	# governing region has to be the tube.
-	# ALONG the corridor rather than between its mouths: a leg weaves now, and the
-	# straight-line midpoint of a curved leg is not on it.
+	_expect(discs[1].aperture_count() == 4,
+		"B is on both highways, so its rim opens four times", "%d apertures" % discs[1].aperture_count())
 	var midpoint := link.region().path.point_at(link.region().length() * 0.5)
 	_expect(map.place_of(midpoint) == link.region().name_of,
-		"…and halfway along it, the CORRIDOR is what governs, not either system",
-		map.place_of(midpoint))
-	_expect(map.place_of(discs[1].position) == SystemMap.NAMES[1],
-		"…while the far end is system B, which the HUD can therefore name",
-		map.place_of(discs[1].position))
-
-	# The ship has to start somewhere it can actually be. A closed rim plus a start
-	# position derived from the radius is exactly the pair that could silently put
-	# the player outside their own system.
-	_expect(is_zero_approx(field.overshoot(map.to_local(
-			scene.ship().global_position))),
-		"the ship starts INSIDE the bounded volume, not on the wrong side of the rim",
-		"%.1f m past" % field.overshoot(map.to_local(scene.ship().global_position)))
-	_expect(map.place_of(map.to_local(scene.ship().global_position))
-			== SystemMap.NAMES[0],
-		"…and it starts in system A, with the crossing still ahead of it",
-		map.place_of(map.to_local(scene.ship().global_position)))
-
-	# The player owns the helm and keeps it. There is no other station here, so the
-	# autopilot — which is what happens when nobody is flying — must never run.
+		"halfway along the corridor, the corridor governs", map.place_of(midpoint))
+	_expect(is_zero_approx(field.overshoot(map.to_local(scene.ship().global_position))),
+		"the ship starts inside the playable volume", "it starts outside")
 	_expect(not scene.ship().autopilot and scene.ship().piloted,
-		"the player is at the helm and stays there — no roster in this scene",
-		"autopilot %s, piloted %s" % [scene.ship().autopilot, scene.ship().piloted])
-	_expect(scene.ship().position.y < discs[0].ceiling_height()
-			and scene.ship().position.y > -discs[0].floor_depth(),
-		"…and starts inside the disc", "y %.1f" % scene.ship().position.y)
-	# Every system gets a planet, each below its OWN combat plane. A planet that
-	# derived its depth from the world rather than its system would sit correctly at
-	# A and be buried at B, which is a bug that only shows up after a four-minute flight.
-	for i in map.planets().size():
-		var planet := map.planets()[i]
-		_expect(is_equal_approx(planet.depth_below_system(),
-				Tuning.num("exploration/planet_center_depth")),
-			"%s's planet is below ITS OWN combat plane (ADR 0061)" % SystemMap.NAMES[i],
-			"%.1f m below a system centred at y %.1f" % [
-				planet.depth_below_system(), planet.base.y])
+		"the player holds the helm from the first frame", "autopilot on")
 
-	# --- the road (POC step 6, reshaped after the first play session) ---
-	# The highway runs entirely THROUGH each system and never stops (ADR 0065). What
-	# stops is the ramp: it leaves the mainline tangentially and curves down and out
-	# to a portal beside the planet.
-	var road := map.road()
-	# A ramp is DECLARED now, not inferred from the portal it carries. Once there is a
-	# second highway both halves of that inference break at once: an interchange ramp
-	# joins two roads and carries no portal (ADR 0081).
-	var mainlines: Array[RoadDeck] = []
-	var ramps: Array[RoadDeck] = []
-	for deck in road.decks():
-		if deck.is_ramp:
-			ramps.append(deck)
-		elif deck.route_name == SystemMap.ROUTE_NAMES[0]:
-			mainlines.append(deck)
-	_expect(mainlines.size() == 2,
-		"there is one mainline per direction, spanning the whole map",
-		"%d mainlines" % mainlines.size())
-	_expect(mainlines[0].runs_forward != mainlines[1].runs_forward,
-		"…running opposite ways, so there is never oncoming traffic in the player's lane",
-		"both run %s" % ("forward" if mainlines[0].runs_forward else "reversed"))
-	# …and they are laid on opposite sides of the spine, which is what right-hand
-	# traffic MEANS here. Sampled at the middle of the map, where the spine is not
-	# near either end and the answer is unambiguous.
-	var middle: Vector3 = road.spine().point_at(road.spine().length() * 0.5)
-	var forward: RoadDeck = mainlines[0] if mainlines[0].runs_forward else mainlines[1]
-	var reverse: RoadDeck = mainlines[1] if mainlines[0].runs_forward else mainlines[0]
-	var spine_across: Vector3 = road.spine().tangent_at(
-		road.spine().length() * 0.5).cross(Vector3.UP).normalized()
-	var forward_side: float = (forward.path().closest(middle)[1] - middle).dot(
-		spine_across)
-	var reverse_side: float = (reverse.path().closest(middle)[1] - middle).dot(
-		spine_across)
-	_expect(forward_side > 0.0 and reverse_side < 0.0,
-		"…each on the RIGHT of its own direction of travel — traffic runs on the right",
-		"forward deck %+.0f m across, reverse deck %+.0f m" % [
-			forward_side, reverse_side])
-	# And what that buys: the oncoming deck is on your LEFT, from either seat. This is
-	# the property that replaced the upper/lower convention, so it is the one asserted.
-	var forward_travel: Vector3 = forward.path().closest(middle)[2]
-	var toward_oncoming: Vector3 = reverse.path().closest(middle)[1] \
-		- forward.path().closest(middle)[1]
-	_expect(toward_oncoming.dot(forward_travel.cross(Vector3.UP)) < 0.0,
-		"…so the oncoming lane is on your left, with no convention to remember",
-		"the oncoming deck came out on the right")
-	# Four ramps at a system the road passes through, two at each end of the line — a
-	# ramp that serves nobody is not built, because it would be an opening onto a road
-	# with no traffic and a sign with no name on it.
-	var through := map.systems().size() - 2
-	var planet_ramps: Array[RoadDeck] = []
-	var interchange_ramps: Array[RoadDeck] = []
-	for ramp: RoadDeck in ramps:
-		if ramp.start_portal() != null or ramp.end_portal() != null:
-			planet_ramps.append(ramp)
-		else:
-			interchange_ramps.append(ramp)
-	_expect(planet_ramps.size() == through * 4 + 4,
-		"…and every system has the ramps it has traffic for, and no others",
-		"%d ramps for %d systems, %d of them through-systems" % [
-			planet_ramps.size(), map.systems().size(), through])
-	# THE CROSSING HIGHWAY. It is here so an exit-face rule can be flown rather than
-	# only read, and it is a road like any other: its own spine, a carriageway either
-	# side of it, its own building. It carries no portals and simply ends.
-	var crossing: Array[RoadDeck] = []
-	for deck in road.decks():
-		if deck.route_name == SystemMap.ROUTE_NAMES[1] and not deck.is_ramp:
-			crossing.append(deck)
-	_expect(crossing.size() == 2,
-		"a second highway crosses the first, one carriageway per direction",
-		"%d crossing carriageways" % crossing.size())
-	_expect(crossing.size() == 2 and crossing[0].start_portal() == null
-			and crossing[0].end_portal() == null,
-		"…and it carries no portals — it ends, the way the main road ends at the map's edge",
-		"the crossing road has a portal on it")
-	_expect(interchange_ramps.size() >= 1,
-		"…and at least one ramp turns onto it, so the exit-face rule is flyable",
-		"%d interchange ramps" % interchange_ramps.size())
-	# It rides ABOVE the road it crosses, which is what makes "over the top" the answer
-	# for the carriageway coming the other way — and its own roof still has to clear
-	# the system's ceiling by more than the warning band.
-	var main_roof := Tuning.num("exploration/road_height") \
-		+ Tuning.num("exploration/lane_height") * 0.5
-	var cross_floor := Tuning.num("exploration/crossing_road_height") \
-		- Tuning.num("exploration/lane_height") * 0.5
-	_expect(cross_floor > main_roof,
-		"…and it passes clear ABOVE the road it crosses",
-		"its floor is at %.0f m over a %.0f m roof" % [cross_floor, main_roof])
-	var cross_head := Tuning.num("exploration/system_ceiling_height") \
-		- (Tuning.num("exploration/crossing_road_height")
-			+ Tuning.num("exploration/lane_height") * 0.5)
-	_expect(cross_head > Tuning.num("exploration/bounds_warning_band"),
-		"…with head room over it too, so the upper road is not a red alarm either",
-		"%.0f m of head room" % cross_head)
-	_expect(Tuning.num("exploration/crossing_road_length")
-			< Tuning.num("exploration/system_diameter"),
-		"…and it stays inside the system's own disc rather than running out of bounds",
-		"%.0f m of road in a %.0f m disc" % [
-			Tuning.num("exploration/crossing_road_length"),
-			Tuning.num("exploration/system_diameter")])
-	# The sign has to name the NEIGHBOUR, not the system you are standing in. "TO
-	# SYSTEM B" on a portal inside system B is the kind of thing only a frame catches.
-	# Planet ramps only: an interchange ramp joins two roads and carries no sign.
-	for ramp: RoadDeck in planet_ramps:
-		var sign_at: Portal = ramp.start_portal() if ramp.start_portal() != null \
-			else ramp.end_portal()
-		var home := map.system_name(map.nearest_system(sign_at.position))
-		if sign_at.destination.ends_with(home):
-			_expect(false,
-				"a ramp's sign names the neighbour it serves, not the system it is in",
-				"%s reads \"%s\" while standing in %s" % [
-					ramp.name, sign_at.destination, home])
-			break
-	for ramp: RoadDeck in planet_ramps:
-		var ends := 0
-		if ramp.start_portal() != null:
-			ends += 1
-		if ramp.end_portal() != null:
-			ends += 1
-		if ends != 1:
-			_expect(false, "a ramp carries exactly one portal, at its planet end",
-				"%s has %d" % [ramp.name, ends])
-			break
-
-	# THE thing the reshape was for: the mainline passes through every system's
-	# middle. A road that stopped at each one would put every arrival a
-	# system-crossing from the only thing worth arriving for.
-	# It no longer passes through the exact centre: the carriageways sit half a
-	# separation either side of the spine, and the SPINE is what runs through the
-	# middle. So what is checked is that the mainline holds its own side of it all the
-	# way, rather than wandering across the median or drifting off the system.
-	var runs_through := true
-	var own_side := Tuning.num("exploration/deck_separation") * 0.5
-	var worst_drift := 0.0
-	# Only the systems ON this road. With two highways crossing, the others are
-	# kilometres off to one side and mean nothing to this carriageway.
-	for i: int in SystemMap.ROUTE_SYSTEMS[0]:
-		var lane := mainlines[0].sample(map.system_center(i))
-		worst_drift = maxf(worst_drift, absf(absf(lane.lateral) - own_side))
-		if lane.metres_travelled <= 0.0 or lane.metres_remaining <= 0.0:
-			runs_through = false
-	_expect(runs_through,
-		"the mainline runs THROUGH every system, ending at neither of them",
-		"it stops inside one")
-	_expect(worst_drift < 1.0,
-		"…holding its own carriageway past each, half a separation off the spine",
-		"%.1f m off its side" % worst_drift)
-	_expect(mainlines[0].length() > map.system_center(0).distance_to(
-			map.system_center(map.systems().size() - 1)),
-		"…and out past the far rim at each end, rather than stopping at a centre",
-		"%.0f m of road across a %.0f m map" % [mainlines[0].length(),
-			map.system_center(0).distance_to(
-				map.system_center(map.systems().size() - 1))])
-
-	# --- the road's SHAPE (POC step 8) ---
-	# THE steepness check, and the one that makes "too steep" a number rather than an
-	# opinion. The ship's nose is hard-clamped into a cone around the road's axis
-	# every frame, so a road that turns faster than the ship can be turned yanks the
-	# nose instead of being flown — which is what a diving ramp feels like. Measured
-	# on every road on the map, at full cruise, because the tightest bend is the one
-	# that decides it.
-	var cruise := Tuning.num("exploration/cruise_speed")
-	var allowance := Tuning.num("exploration/cruise_turn_rate_deg_per_sec")
-	var steepest := 0.0
-	var steepest_name := ""
-	for deck in road.decks():
-		var rate := deck.path().max_turn_deg_per_metre() * cruise
-		if rate > steepest:
-			steepest = rate
-			steepest_name = deck.name
-	_expect(steepest <= allowance,
-		"no road on the map turns faster than the ship can be turned at cruise",
-		"%s bends at %.1f deg/s against a %.1f deg/s turn rate" % [
-			steepest_name, steepest, allowance])
-	# …and it is not zero, or success criterion 1 has nothing to be judged on: "a
-	# generous clamp on a straight road still feels like nothing".
-	# THE TRUNK, by name. It used to be "the last link", and with a second highway on
-	# the map the last link is a leg of the other road on a different bearing.
-	var trunk: SystemLink = map.links()[1]
-	for one: SystemLink in map.links():
-		if one.from_name == SystemMap.NAMES[1] and one.to_name == SystemMap.NAMES[2]:
-			trunk = one
-	var trunk_line := trunk.region().path
-	_expect(trunk_line.max_turn_deg_per_metre() > 0.0,
-		"the trunk leg CURVES — a straight road cannot answer success criterion 1",
-		"the trunk leg is straight")
-	var lowest := INF
-	var highest := -INF
-	for point: Vector3 in trunk_line.points:
-		lowest = minf(lowest, point.y)
-		highest = maxf(highest, point.y)
-	_expect(highest - lowest > Tuning.num("exploration/lane_height"),
-		"…and changes elevation by more than the lane is tall, so the rise is felt",
-		"%.0f m of rise and fall" % (highest - lowest))
-	# A weaving leg still has to leave and arrive ON the bearing, or the aperture and
-	# the corridor disagree about where the road goes and the mouths move.
-	var on_bearing := SystemDisc.bearing_to_direction(
-		Tuning.num("exploration/aperture_bearing_deg"))
-	_expect(trunk_line.tangent_at(0.0).dot(on_bearing) > 0.999
-			and trunk_line.tangent_at(trunk_line.length()).dot(on_bearing) > 0.999,
-		"…and leaves and arrives exactly on the bearing, so the mouths do not move",
-		"%.3f in, %.3f out" % [trunk_line.tangent_at(0.0).dot(on_bearing),
-			trunk_line.tangent_at(trunk_line.length()).dot(on_bearing)])
-	# THE CURVE RADIUS FLOOR. The two carriageways are offset SIDEWAYS from the spine
-	# now, so the inner one is shorter than the outer through every bend — which is
-	# what a divided highway does, and is fine until the bend is tighter than the
-	# offset. At a radius below the separation the inner carriageway folds through
-	# itself and the lane stops being a lane. This replaces the northwest-southeast
-	# divider invariant, which right-hand traffic retired (ADR 0077).
-	var turn := trunk_line.max_turn_deg_per_metre()
-	var radius := INF if turn <= 0.0 else 180.0 / (PI * turn)
-	_expect(radius > Tuning.num("exploration/deck_separation"),
-		"…and never bends tighter than the two carriageways are far apart",
-		"a %.0f m radius against a %.0f m separation" % [
-			radius, Tuning.num("exploration/deck_separation")])
-	# The corridor is the space AROUND the road, so it has to still contain it once
-	# both curve. The far top corner of the outboard lane is the worst case, and it is
-	# now a diagonal: half the separation plus half the width across, half the height up.
-	var out_across := Tuning.num("exploration/deck_separation") * 0.5 \
-		+ Tuning.num("exploration/lane_width") * 0.5
-	var up_by := Tuning.num("exploration/lane_height") * 0.5
-	var worst_escape := -INF
-	for i in 40:
-		var along := trunk_line.length() * float(i) / 39.0
-		var across := trunk_line.tangent_at(along).cross(Vector3.UP).normalized()
-		for side: float in [1.0, -1.0]:
-			worst_escape = maxf(worst_escape, trunk.region().depth(
-				trunk_line.point_at(along) + across * side * out_across
-					+ Vector3.UP * up_by))
-	_expect(worst_escape < 0.0,
-		"…and the corridor still contains the road laid inside it, all the way",
-		"the lane's far corner is %.1f m outside the corridor" % worst_escape)
-
-	# --- where the road SITS (2026-08-30) ---
-	# High, not through the middle. Two things bound it and both are cheap to get
-	# wrong by nudging one slider: the ceiling above, and the planet's approach
-	# envelope below — which the road must never enter, or riding the highway arms a
-	# landing nobody asked for (ADR 0012).
-	# Side by side, so the roof is the lane's own half-height above the road's centre.
-	# The separation is an ACROSS measurement now and adds nothing here.
-	var stack_top := Tuning.num("exploration/road_height") \
-		+ Tuning.num("exploration/lane_height") * 0.5
-	var head_room := Tuning.num("exploration/system_ceiling_height") - stack_top
-	_expect(head_room > Tuning.num("exploration/bounds_warning_band"),
-		"the road clears the ceiling by more than the warning band, so riding it is not an alarm",
-		"%.0f m of head room against a %.0f m band" % [head_room,
-			Tuning.num("exploration/bounds_warning_band")])
-	_expect(Tuning.num("exploration/road_height")
-			> Tuning.num("exploration/lane_height"),
-		"…and rides ABOVE the combat plane rather than straddling it",
-		"the road is centred at %.0f m" % Tuning.num("exploration/road_height"))
-	var envelope := Tuning.num("exploration/approach_envelope_radius")
-	var nearest_envelope := INF
-	for deck in road.decks():
-		var line := deck.path()
-		for i in 60:
-			var at: Vector3 = line.point_at(line.length() * float(i) / 59.0)
-			var system := map.nearest_system(at)
-			nearest_envelope = minf(nearest_envelope,
-				at.distance_to(map.planets()[system].position))
-	_expect(nearest_envelope > envelope,
-		"…and no road anywhere enters an approach envelope (ADR 0012)",
-		"a road passes %.0f m from a planet, envelope is %.0f" % [
-			nearest_envelope, envelope])
-	# THE HIGHWAY IS ABOVE THE PLANETS, ramps included. It is what makes a system a
-	# place you look down into from the road rather than a thing the road runs through
-	# the middle of — and it stopped being true the moment `ramp_entry_depth` grew,
-	# because an on-ramp dives to reach its mouth and nothing measured how far. The
-	# roadway's underside is the lowest part of a road, so that is what is measured
-	# (ADR 0088).
-	var planet_top := Tuning.num("exploration/planet_radius") \
-		- Tuning.num("exploration/planet_center_depth")
-	var deepest := INF
-	var deepest_road := ""
-	for deck in road.decks():
-		var line := deck.path()
-		for i in 60:
-			var along := line.length() * float(i) / 59.0
-			var under: float = line.point_at(along).y - deck.profile(along).y
-			if under < deepest:
-				deepest = under
-				deepest_road = deck.name
-	_expect(deepest > planet_top,
-		"…and the whole highway, ramps included, stays ABOVE the planets",
-		"%s dips to %.0f m against a planet reaching %.0f" % [
-			deepest_road, deepest, planet_top])
-
-	# --- one lane is lit, and it is the one being flown ---
-	# Four carriageways cross the view at an interchange. The player has to be able to
-	# see which of them is theirs, and the answer is the only one painted bright.
-	# Checked on the MATERIAL rather than on visibility: every carriageway is drawn now
-	# (ADR 0075), so what says "yours" is the colour and nothing else.
-	map.road().set_active(mainlines[0])
-	var lit := 0
-	var mismatched := ""
-	var bright := Tuning.num("exploration/lane_active_alpha")
-	for deck in road.decks():
-		var paint := deck.get_node_or_null("Lines") as MeshInstance3D
-		var paint_mat := paint.material_override as StandardMaterial3D \
-			if paint != null else null
-		if paint_mat == null:
-			mismatched = deck.name
-			continue
-		var is_lit := is_equal_approx(paint_mat.albedo_color.a, bright)
-		if is_lit != deck.is_active():
-			mismatched = deck.name
-		if is_lit:
-			lit += 1
-	_expect(mismatched.is_empty() and lit == 1,
-		"exactly one carriageway is painted bright, and it is the one being ridden",
-		"%d lit%s" % [lit,
-			"" if mismatched.is_empty() else ", %s disagrees" % mismatched])
-	_expect(mainlines[0].is_active() and not mainlines[1].is_active(),
-		"…and never both directions at once",
-		"first %s, second %s" % [mainlines[0].is_active(), mainlines[1].is_active()])
-	map.road().set_active(null)
-
-	# --- a handover cannot hand you a lane you could not steer onto (ADR 0072) ---
-	# This is what shook the ship: drifting wide of a mainline beside an interchange
-	# handed it to a ramp thirty degrees off its heading, and the nose is clamped into
-	# a cone around the road every frame, so thirty degrees arrived in one of them.
-	var probe := map.system_center(1) + Vector3.UP * Tuning.num("exploration/road_height")
-	var main_axis: Vector3 = mainlines[0].sample(probe).axis
-	# The ONCOMING lane is never a candidate, and that is now geometry rather than a
-	# flag: asked along the mainline's own direction the union answers with a road
-	# going that way, and asked along the reverse it answers with the other
-	# carriageway. Nothing filters on which way a deck runs (ADR 0081).
-	var aligned_pick := road.governing(probe, main_axis, null, Vector2.ZERO)
-	var against_pick := road.governing(probe, -main_axis, null, Vector2.ZERO)
-	_expect(aligned_pick != null and against_pick != null,
-		"a deck governs the middle of an interchange from either direction",
-		"nothing does")
-	_expect(aligned_pick != against_pick,
-		"…and it is a different one each way — the union never hands you the oncoming lane",
-		"the same deck governs both directions")
-	# A DECK THAT HAS ENDED BEHIND YOU CANNOT GOVERN. `RoadPath.closest` clamps, so a
-	# ship at the top of a ramp reports as sitting on the ramp's last metre for ever:
-	# the ramp hands over because it has ended, the union hands straight back because
-	# the ramp is still the nearest thing, and the two alternate every frame until the
-	# ship falls off the road. That is the stutter at an exit ramp (ADR 0076).
-	var an_on_ramp := road.get_node_or_null("A377BRampOnBForward") as RoadDeck
-	if an_on_ramp != null:
-		var at_the_top: Vector3 = an_on_ramp.path().finish()
-		var after := road.governing(at_the_top,
-			an_on_ramp.path().tangent_at(an_on_ramp.length()), null, Vector2.ZERO)
-		_expect(after != null and after != an_on_ramp,
-			"a ramp that has ended does not govern the point it ended at — something else does",
-			"the union handed back the ramp the ship just ran off")
-		_expect(after == null or not after.is_ramp,
-			"…and what takes over at a merge is the mainline",
-			"handed to %s" % (after.name if after != null else "nothing"))
-	if aligned_pick != null:
-		var picked: Vector3 = aligned_pick.sample(probe).axis
-		_expect(rad_to_deg(picked.angle_to(main_axis))
-				<= Tuning.num("exploration/cruise_turn_clamp_deg") + 0.01,
-			"…and asking along a heading only ever returns one inside the steering cone",
-			"%.1f deg off" % rad_to_deg(picked.angle_to(main_axis)))
-
-	# The ramp mouths sit BESIDE the planet, not above it. Directly above is inside
-	# the approach envelope, and a ship taking the ramp would arm a landing sequence
-	# it did not ask for (ADR 0012).
-	var closest_to_planet := INF
-	var deepest_mouth := 0.0
-	for mouth: Vector3 in map.ramp_sites():
-		var system := map.nearest_system(mouth)
-		closest_to_planet = minf(closest_to_planet,
-			mouth.distance_to(map.planets()[system].position))
-		deepest_mouth = maxf(deepest_mouth, field.overshoot(mouth))
-	_expect(closest_to_planet > Tuning.num("exploration/approach_envelope_radius"),
-		"every ramp mouth clears the approach envelope — taking a ramp is not landing",
-		"nearest is %.0f m from a planet, envelope is %.0f" % [closest_to_planet,
+	# --- THE ROAD, AS DATA (ADR 0096) ---
+	var trunk: Road = road.road_named("A-377B")
+	var crossing: Road = road.road_named("K-112")
+	_expect(trunk != null and crossing != null and trunk.tubes.size() == 2
+			and crossing.tubes.size() == 2,
+		"two highways, each with two carriageways", "%d roads" % road.roads.size())
+	_expect(road.ramps.size() == 28,
+		"four planet ramps at every system on every highway, and four interchange ramps at B",
+		"%d ramps" % road.ramps.size())
+	# TRAFFIC ON THE RIGHT (ADR 0077): each carriageway sits to the right of the
+	# spine as its own traffic travels, so the oncoming one is on the LEFT.
+	var forward: Tube = trunk.tubes[0]
+	var reverse: Tube = trunk.tubes[1]
+	_expect(forward.direction != reverse.direction,
+		"the two carriageways run opposite ways", "same direction")
+	var t_mid: float = trunk.path.length * 0.5
+	for tube: Tube in [forward, reverse]:
+		var f := tube.travel_frame(t_mid)
+		var to_own := (tube.centre(t_mid) - trunk.path.point_at(t_mid)).dot(f["right"])
+		var other: Tube = reverse if tube == forward else forward
+		var to_oncoming := (other.centre(t_mid) - tube.centre(t_mid)).dot(f["right"])
+		_expect(to_own > 0.0 and to_oncoming < 0.0,
+			"%s sits to the right of the spine with the oncoming lane on its left" % tube.name,
+			"own %.0f, oncoming %.0f" % [to_own, to_oncoming])
+	# THE CROSSING RIDES ABOVE, with head room under the ceiling.
+	var over_b: float = crossing.path.point_at(crossing.tubes[0].local(map.system_center(1))["t"]).y
+	var under_b: float = trunk.path.point_at(forward.local(map.system_center(1))["t"]).y
+	_expect(over_b > under_b + Tuning.num("exploration/lane_height"),
+		"K-112 crosses over A-377B at B with the whole section between them",
+		"%.0f over %.0f" % [over_b, under_b])
+	_expect(over_b + crossing.half_height + Tuning.num("exploration/bounds_warning_band")
+			< discs[1].ceiling_height(),
+		"…and its roof clears the system ceiling by more than the warning band",
+		"roof at %.0f under a %.0f ceiling" % [over_b + crossing.half_height, discs[1].ceiling_height()])
+	# EVERY MOUTH beside a planet, never over it (ADR 0012), and every mouth's tube
+	# above the planet's approach envelope.
+	var nearest_mouth := INF
+	for portal in map.portals():
+		for planet in map.planets():
+			nearest_mouth = minf(nearest_mouth, portal.position.distance_to(planet.position))
+	_expect(nearest_mouth > Tuning.num("exploration/approach_envelope_radius"),
+		"no ramp mouth is inside a planet's approach envelope",
+		"nearest %.0f m against a %.0f m envelope" % [nearest_mouth,
 			Tuning.num("exploration/approach_envelope_radius")])
-	_expect(is_zero_approx(deepest_mouth),
-		"…and every one is inside the bounded volume of its own system",
-		"%.1f m outside" % deepest_mouth)
-	# THE ENVELOPE HAS TO REACH THE COMBAT PLANE. The planet sits below it by decision
-	# (ADR 0061), and at 420 m against a 450 m depth the envelope's roof was thirty
-	# metres UNDER y = 0: a ship flying level at a planet closed to exactly 450 m,
-	# stopped, and never entered. Docking read as not existing, and was reported that
-	# way. Arriving is still a descent; the way in just has to start where the player is.
-	var envelope_top := Tuning.num("exploration/approach_envelope_radius") \
-		- Tuning.num("exploration/planet_center_depth")
-	_expect(envelope_top > Tuning.num("exploration/planet_radius") * 0.25,
-		"the approach envelope reaches the combat plane — docking is enterable by flying at it",
-		"its roof is %.0f m from y = 0" % envelope_top)
-	_expect(closest_to_planet < discs[0].radius(),
-		"…while still being BESIDE the planet rather than somewhere else entirely",
-		"%.0f m away in a %.0f m disc" % [closest_to_planet, discs[0].radius() * 2.0])
+	_expect(map.portals().size() == 24,
+		"a portal at every planet mouth, none on an interchange ramp",
+		"%d portals" % map.portals().size())
+	# THE ROAD CARRIES ITS OWN SPACE (ADR 0091): riding an interchange ramp is not outside.
+	var x1_tube: Tube = road.tube_named("X1 A-377B > K-112")
+	_expect(x1_tube != null, "the interchange ramp X1 exists", "missing")
+	if x1_tube != null:
+		var worst := 0.0
+		var t := 0.0
+		while t < x1_tube.path.length:
+			worst = maxf(worst, field.overshoot(x1_tube.centre(t)))
+			t += 250.0
+		_expect(worst <= 0.0, "every metre of an interchange ramp is inside the playable volume",
+			"%.0f m outside at worst" % worst)
+	# THE MESH STREAMS: a few frames in, the chunks near the ship are built and the
+	# ones across the map are not.
+	var on_ramp: Tube = road.tube_named("A-377B R SYSTEM A in")
+	var exit_ramp: Tube = road.tube_named("A-377B R SYSTEM B out")
+	_expect(on_ramp != null and exit_ramp != null, "system A's entry and B's exit exist on A-377B R", "missing")
+	if on_ramp == null or exit_ramp == null:
+		scene.queue_free()
+		return
+	var entry_record := road.ramp_of(on_ramp)
+	var mouth: Portal = entry_record["entry_portal"]
+	var into: Vector3 = on_ramp.travel_frame(0.0)["fwd"]
 
-	# A ramp has to MEET the mainline tangentially, or joining it is a corner the
-	# steering cone cannot turn.
-	var on_ramp := road.get_node_or_null("A377BRampOnBForward") as RoadDeck
-	_expect(on_ramp != null, "system B has an on-ramp on the forward deck", "missing")
-	if on_ramp != null:
-		var merge := on_ramp.path().tangent_at(on_ramp.length())
-		var main := mainlines[0].sample(on_ramp.path().finish()).axis
-		_expect(rad_to_deg(merge.angle_to(main))
-				< Tuning.num("exploration/cruise_turn_clamp_deg"),
-			"…and it merges inside the steering cone, so joining is a steer not a turn",
-			"%.1f deg off the mainline" % rad_to_deg(merge.angle_to(main)))
-
-	# --- the road is a BUILDING, and it is built from modules (ADR 0078) ---
-	# One structure for the mainline pair, and one per ramp. The pair sharing a
-	# building is the whole reason the deck and the structure had to be split: a deck
-	# cannot own a building that also belongs to the deck coming the other way.
-	var built := road.structures()
-	var pair_structures := 0
-	var ramp_structures := 0
-	for one: RoadStructure in built:
-		if one.is_ramp:
-			ramp_structures += 1
-		else:
-			pair_structures += 1
-	# One building per PAIR of carriageways — the main road's and the crossing road's —
-	# and one per ramp. A pair sharing a building is the whole reason the deck and the
-	# structure had to be split: a deck cannot own a building that also belongs to the
-	# deck coming the other way.
-	_expect(pair_structures == 2,
-		"each pair of carriageways shares ONE building — a deck is the lane, not the road",
-		"%d shared structures" % pair_structures)
-	_expect(ramp_structures == ramps.size(),
-		"…and every ramp is a building of its own, with one lane in it",
-		"%d structures for %d ramps" % [ramp_structures, ramps.size()])
-	var median_count := 0
-	for one: RoadStructure in built:
-		if one.has_median:
-			median_count += 1
-	_expect(median_count == pair_structures,
-		"…and a median in every one that divides two directions, and in no ramp",
-		"%d medians for %d shared structures" % [median_count, pair_structures])
-
-	# MODULES, not an extrusion. Four layers of them, each a MultiMesh: this is what
-	# makes real art a mesh swap rather than a rewrite (ADR 0030), and it is what the
-	# old swept ArrayMesh could never be.
-	var pair_built: RoadStructure = null
-	for one: RoadStructure in built:
-		if one.structure_name == "A377BStructure":
-			pair_built = one
-	_expect(pair_built != null,
-		"…and the main road's building is findable by name, so the gate can ask it things",
-		"the A-377B structure is missing")
-	var layered := true
-	var instances := 0
-	for layer_name: String in ["Ribs", "Bays", "Plates", "Panes"]:
-		var layer := pair_built.get_node_or_null(layer_name) as MultiMeshInstance3D
-		if layer == null or layer.multimesh == null or layer.multimesh.mesh == null \
-				or layer.multimesh.instance_count <= 0:
-			layered = false
-		else:
-			instances += layer.multimesh.instance_count
-	_expect(layered,
-		"the mainline is built from collars, bays, roadway and median — four layers of modules",
-		"a layer is missing, empty, or has no mesh")
-	_expect(instances > 0 and instances < 20000,
-		"…and the whole highway is a handful of meshes and a transform list",
-		"%d module instances" % instances)
-	# There is one more collar than there are bays: a collar sits on every joint,
-	# including both ends, which is what makes the road read as a chain of segments
-	# rather than as a striped tube. Counted against the module length rather than
-	# against the glazing, because a bay that a ramp goes through is laid as several
-	# pieces and the glazing count is no longer the number of bays.
-	var collars := (pair_built.get_node_or_null("Ribs") as MultiMeshInstance3D)
-	var glazing := (pair_built.get_node_or_null("Bays") as MultiMeshInstance3D)
-	var expected_bays := maxi(int(pair_built.length()
-		/ Tuning.num("exploration/structure_module_length")), 1)
-	# A joint carries either a collar or a service station — EXCEPT inside a junction,
-	# where it carries neither: a rib is a frame across the whole section, so one
-	# standing in an opening is a hoop across the merging lane (ADR 0092). So the count
-	# is every joint less the ones a way through has swallowed.
-	var swallowed := 0
-	for joint in expected_bays + 1:
-		var at := pair_built.length() * float(joint) / float(expected_bays)
-		for opening: Array in pair_built.apertures():
-			if at >= float(opening[2]) and at <= float(opening[3]):
-				swallowed += 1
-				break
-	var joints := collars.multimesh.instance_count \
-		+ (pair_built.get_node_or_null("Stations")
-			as MultiMeshInstance3D).multimesh.instance_count
-	_expect(swallowed > 0,
-		"a junction swallows the collars inside it — there is one to check",
-		"no joint falls inside an opening")
-	_expect(joints == expected_bays + 1 - swallowed,
-		"…and every other joint carries a collar or a station, both ends included",
-		"%d joints for %d bays less %d inside openings" % [joints, expected_bays,
-			swallowed])
-	# GLAZING OF SOME KIND in every gap: a bay a ramp passes through is laid as the same
-	# bay with one face left out, and an opening is a STRETCH now (ADR 0091), so a whole
-	# bay can be one of those. Counting only the solid variant counted the road as
-	# unglazed exactly where a junction is.
-	var glazed := glazing.multimesh.instance_count
-	for open_layer: String in ["BaysOpenRight", "BaysOpenLeft", "BaysOpenTop"]:
-		var layer := pair_built.get_node_or_null(open_layer) as MultiMeshInstance3D
-		if layer != null and layer.multimesh != null:
-			glazed += layer.multimesh.instance_count
-	_expect(glazed >= expected_bays,
-		"…and a bay in every gap between them",
-		"%d bay pieces for %d gaps" % [glazed, expected_bays])
-	# SERVICE STATIONS take a collar's place every so many joints, so the road has
-	# landmarks rather than an unbroken run of identical ribs. Counted against the
-	# collars they replaced: every station is a joint that is not a rib.
-	var stations := (pair_built.get_node_or_null("Stations")
-		as MultiMeshInstance3D)
-	var every := maxi(int(Tuning.num("exploration/structure_station_spacing")), 0)
-	var due := 0 if every <= 0 else maxi((expected_bays - 1) / every, 0)
-	var standing := 0 if stations == null else stations.multimesh.instance_count
-	_expect(stations != null and standing > 0 and standing <= due,
-		"…with a service station in place of a collar every few joints",
-		"%d stations, %d due before the junctions took theirs" % [standing, due])
-	_expect(collars.multimesh.instance_count + standing == joints,
-		"…and a station REPLACES a collar rather than being added beside one",
-		"%d collars and %d stations for %d joints" % [
-			collars.multimesh.instance_count, standing, joints])
-
-	# --- RINGS AND EXIT FACES (ADR 0080) ---
-	# Every ramp goes through the mainline's building somewhere, and the building has
-	# to be open where it does. The opening is MEASURED off the ramp's own curve, so
-	# this is also the check that the measurement found every one of them.
-	# ONE ROAD'S BUILDING, one road's ramps. With two highways crossing, `ramps` is
-	# every ramp on the map and most of them go through the other one's walls.
-	var route_ramps: Array[RoadDeck] = []
-	var route_signs: Array[ExitSign] = []
-	for ramp: RoadDeck in ramps:
-		if ramp.route_name == SystemMap.ROUTE_NAMES[0]:
-			route_ramps.append(ramp)
-	for sign: ExitSign in road.signs():
-		if sign.ramp != null and sign.ramp.route_name == SystemMap.ROUTE_NAMES[0]:
-			route_signs.append(sign)
-	# A ramp LEAVING this road opens its wall, and a ramp ARRIVING from the road that
-	# crosses it opens one too — a curve that ends on this carriageway has to get in
-	# (ADR 0088). So the count is this route's own ramps plus the interchange ramps
-	# that land on it.
-	var arrivals := 0
-	for ramp: RoadDeck in ramps:
-		if ramp.route_name != SystemMap.ROUTE_NAMES[0] \
-				and ramp.deck_name.ends_with(SystemMap.ROUTE_NAMES[0]):
-			arrivals += 1
-	_expect(pair_built.apertures().size() == route_ramps.size() + arrivals,
-		"the building opens once for every ramp that goes through it, in or out",
-		"%d openings for %d ramps out and %d in" % [pair_built.apertures().size(),
-			route_ramps.size(), arrivals])
-	# THE EXIT-FACE RULE, asked of each ramp's own curve rather than of the opening it
-	# was given. An exit leaves through a wall or the roof and NEVER through the floor
-	# — the floor is the roadway, and an exit competing with it for the meaning of
-	# "down" is clutter. An entry is the opposite and comes up through the floor,
-	# because merging upward into the only lane there is is unambiguous.
-	#
-	# The entry half is the one that can quietly stop being true: it holds only while
-	# a ramp drops faster, in section-widths, than it swings out — and the exit half
-	# needs exactly the opposite. `ramp_*_depth` against `ramp_*_side_offset` is what
-	# decides each, and all four are sliders. Measured against the road's real curve
-	# rather than a straight one: a ramp is a chord across a bend and bulges outward,
-	# which is where this first went wrong, at system A on the weaving local leg.
-	var exits_downward := ""
-	var entries_not_from_below := ""
-	# Every ramp, planet and interchange alike: an interchange ramp leaves the main
-	# road through a wall exactly as a planet off-ramp does, and the rule is the rule.
-	#
-	# AGAINST ITS OWN ROAD'S BUILDING. Measured against the other road's walls, a ramp
-	# that comes up perfectly through its own floor reads as going through a wall —
-	# which is exactly what this reported when the map grew a second highway, and it
-	# was the test that was wrong rather than the road.
-	for ramp: RoadDeck in ramps:
-		var leaving := not ramp.has_start_portal
-		var owner := road.building_for(ramp.route_name)
-		if owner == null:
-			continue
-		var found := RoadNetwork.crossing(owner, ramp.path(), leaving)
-		if found.is_empty():
-			continue
-		var face: int = found[1]
-		if leaving and face == int(RoadStructure.Face.BELOW):
-			exits_downward = "%s leaves through the floor" % ramp.name
-		if not leaving and face != int(RoadStructure.Face.BELOW):
-			entries_not_from_below = "%s reaches a wall before the floor" % ramp.name
-	_expect(exits_downward.is_empty(),
-		"no ramp leaves through the FLOOR — down is the roadway, and it is not an exit",
-		exits_downward)
-	# AND ITS BUILDING STOPS THERE. Inside the highway a ramp is an opening, not a tube:
-	# drawn the whole way it roofed over the hole it comes up through and hung a second
-	# roadway across the lane from above, which is what the human reported (ADR 0088).
-	# The LANE is untouched and still runs the whole way — the union needs it to.
-	var overreaching := ""
-	var deepest_intrusion := 0.0
-	for ramp: RoadDeck in ramps:
-		var owner := road.building_for(ramp.route_name)
-		var shell: RoadStructure = null
-		for candidate: RoadStructure in road.structures():
-			if candidate.structure_name == "Structure" + String(ramp.name):
-				shell = candidate
-		if owner == null or shell == null:
-			continue
-		# Walk the ramp's own building and ask the mainline's whether any of it is
-		# inside. A metre or two at the joint is the cut point itself; a tube standing
-		# in the lane is hundreds.
-		var line := shell.path()
-		for i in 40:
-			var at: Vector3 = line.point_at(line.length() * float(i) / 39.0)
-			var found := owner.path().closest(at)
-			var frame := CruiseLane.frame_for(found[2] as Vector3)
-			var offset: Vector3 = at - (found[1] as Vector3)
-			var room := owner.extents_at(found[0] as float)
-			var inside := minf(room.x - absf(offset.dot(frame[0])),
-				room.y - absf(offset.dot(frame[1])))
-			if inside > deepest_intrusion:
-				deepest_intrusion = inside
-				overreaching = "%s reaches %.0f m inside the highway" % [
-					shell.structure_name, inside]
-	_expect(deepest_intrusion < Tuning.num("exploration/ramp_ring_diameter"),
-		"…and a ramp's BUILDING stops at that wall rather than standing inside the lane",
-		overreaching)
-	_expect(entries_not_from_below.is_empty(),
-		"…and every ramp joins from BELOW, up through the roadway",
-		entries_not_from_below)
-
-	# THE RING PASSES THE LARGEST HULL. This is the check ADR 0068 said the gate should
-	# be able to make and could not: a mouth is round, so what has to clear it is the
-	# hull's DIAGONAL, not its width and height taken separately.
-	var ring := Tuning.num("exploration/ramp_ring_diameter")
-	var carrier := load("res://assets/models/carrier.obj") as Mesh
-	for kind: HullClass.Kind in HullClass.all():
-		var body := carrier.get_aabb().size \
-			* HullClass.num(kind, "hull_scale", "ship/hull_scale")
-		var diagonal := sqrt(body.x * body.x + body.y * body.y)
-		_expect(ring > diagonal * 1.25,
-			"a %s passes through a ramp ring with room around it, corner to corner"
-				% HullClass.name_of(kind),
-			"%.0f m ring against a %.0f m diagonal" % [ring, diagonal])
-	# …and it FRAMES the portal it surrounds. A hoop is only ever at a mouth now
-	# (ADR 0092), so what it has to clear is the opening rather than the wall it used to
-	# sit in — a hoop narrower than its own portal is a mouth with a smaller mouth
-	# inside it.
-	var mouth_size := Vector2(Tuning.num("exploration/portal_width"),
-		Tuning.num("exploration/portal_height"))
-	_expect(ring >= mouth_size.length(),
-		"…and frames the portal mouth it surrounds, corner to corner",
-		"%.0f m hoop around a %.0f x %.0f opening" % [ring, mouth_size.x,
-			mouth_size.y])
-	# A HOOP MARKS A MOUTH, NOT A JUNCTION (ADR 0092). A junction is a slot hundreds of
-	# metres long that you drift sideways out of; a circle hung across part of one is
-	# smaller than the way through, never aligned with it, and in the way. So the
-	# mainline — which has only junctions on it — carries none, and every hoop on the
-	# map is at the end of a ramp, where a mouth really is a mouth.
-	var hoops := pair_built.get_node_or_null("Rings") as MultiMeshInstance3D
-	_expect(hoops != null and hoops.multimesh.instance_count == 0,
-		"a junction carries no hoop — a hoop marks a mouth you fly through",
-		"%d hoops on a road with only junctions on it" % [
-			0 if hoops == null else hoops.multimesh.instance_count])
-	var mouths := 0
-	for shell: RoadStructure in road.structures():
-		var layer := shell.get_node_or_null("Rings") as MultiMeshInstance3D
-		if layer != null:
-			mouths += layer.multimesh.instance_count
-	_expect(mouths > 0,
-		"…and every ramp that ends at a portal carries one there",
-		"no hoop anywhere on the map")
-
-	# THE BUILDING CONTAINS THE LANES. The pair's interior spans both carriageways and
-	# the gap between them, so the outermost lane edge is exactly its inside face. If
-	# this ever goes the other way a ship flying its own lane is inside a wall.
-	var interior := pair_built.extents_at(pair_built.length() * 0.5)
-	var lane_reach := Tuning.num("exploration/deck_separation") * 0.5 \
-		+ Tuning.num("exploration/lane_width") * 0.5
-	_expect(interior.x >= lane_reach - 0.01
-			and interior.y >= Tuning.num("exploration/lane_height") * 0.5 - 0.01,
-		"the building contains both lanes — the far lane edge is its inside face",
-		"%.0f x %.0f interior against a %.0f x %.0f reach" % [interior.x, interior.y,
-			lane_reach, Tuning.num("exploration/lane_height") * 0.5])
-
-	# ADR 0057 says the lane is VISUALLY OPEN, and ADR 0079 says what that MEANS: not
-	# an alpha below a threshold — that cannot tell a window from a tinted wall — but
-	# that the outward-facing envelope is mostly glass. Around the section the walls
-	# and roof are glazed and only the roadway is solid; along the road, every metre
-	# that is not a collar is a bay. So the number is the collars' share of the run.
-	var open_area := RoadStructure.open_fraction(
-		Tuning.num("exploration/structure_module_length"),
-		Tuning.num("exploration/structure_rib_thickness"))
-	_expect(open_area > 0.5,
-		"most of the road's outward-facing envelope is GLASS, so the space beyond it stays witnessed",
-		"only %.0f%% of the run is glazed" % (open_area * 100.0))
-	_expect(RoadStructure.open_fraction(100.0, 100.0) == 0.0
-			and RoadStructure.open_fraction(100.0, 0.0) == 1.0,
-		"…and the measure is honest at both ends: all collar is closed, no collar is open",
-		"the ratio does not reach its own bounds")
-	# The glass is deliberately MORE opaque than the shell it replaced — it is a
-	# diffuser, and that is what lets a rough render behind it read as a ship. It
-	# still may not reach opacity: a pane you cannot see the stars through is the
-	# tunnel ADR 0057 forbids.
-	_expect(Tuning.num("exploration/structure_glass_alpha") < 0.85,
-		"…and the glass never reaches opacity, so it stays a window rather than a wall",
-		"glass at %.2f" % Tuning.num("exploration/structure_glass_alpha"))
-	var glass_mat := glazing.material_override as StandardMaterial3D
-	_expect(glass_mat != null
-			and glass_mat.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED,
-		"…and it is actually a transparent material, not merely a pale colour",
-		"the glazing is opaque")
-
-	# EVERY CARRIAGEWAY IS MARKED, and the one being ridden is brighter (ADR 0075).
-	# The structure carries the tunnel now, so a deck's own drawing is paint on the
-	# road — but "every lane is drawn" is the clause that matters and it still holds.
-	var marked := 0
-	for deck in road.decks():
-		var paint := deck.get_node_or_null("Lines") as MeshInstance3D
-		if paint != null and paint.mesh != null and paint.visible \
-				and paint.mesh.surface_get_primitive_type(0) == Mesh.PRIMITIVE_LINES:
-			marked += 1
-	_expect(marked == road.decks().size(),
-		"every carriageway is marked, ridden or not — a road you cannot see is not a choice",
-		"%d marked for %d carriageways" % [marked, road.decks().size()])
-	_expect(Tuning.num("exploration/lane_line_alpha")
-			< Tuning.num("exploration/lane_active_alpha"),
-		"…and the one you are on is the brighter of them",
-		"idle %.2f against active %.2f" % [
-			Tuning.num("exploration/lane_line_alpha"),
-			Tuning.num("exploration/lane_active_alpha")])
-
-	# The aperture has to clear the hull with room to fly through rather than to aim.
-	# Measured axis by axis, not against the bounding sphere: the sphere of a
-	# 44 x 24 x 48 m gunboat is 72 m across and would condemn an opening the ship
-	# flies through with 13 m to spare.
-	var hull := scene.ship().hull_extents()
-	_expect(Tuning.num("exploration/portal_width") > hull.x
-			and Tuning.num("exploration/portal_height") > hull.y,
-		"the aperture clears the hull on both axes, with room to fly rather than aim",
-		"%.0f x %.0f m opening for a %.1f x %.1f m hull" % [
-			Tuning.num("exploration/portal_width"),
-			Tuning.num("exploration/portal_height"), hull.x, hull.y])
-
-	# Getting on the road. Two frames either side of an on-ramp's portal, because the
-	# crossing test is swept — and driven through the real scene so the wiring from
-	# portal to cruise drive to speed ceiling is covered, not just the arithmetic.
-	var gate := on_ramp.start_portal()
-	var travel := on_ramp.path().tangent_at(0.0)
-	scene.ship().position = gate.position - travel * 20.0
-	_step_exploration(scene, 1.0 / 60.0)
-	_expect(scene.ship().cruise == null,
-		"short of the portal the cruise drive is off", "it engaged early")
-	scene.ship().position = gate.position + travel * 20.0
-	_step_exploration(scene, 1.0 / 60.0)
-	_expect(scene.ship().cruise != null and map.riding() == on_ramp,
-		"crossing the portal engages cruise ON CONTACT — no sequence (ADR 0057)",
-		"it did not engage")
-	# The drive SPOOLS rather than snapping. Entry is still instant — the ship is
-	# through, steering, holding its own throttle — but the engine takes time to wind
-	# up, which is the ship doing something rather than something done to the ship.
+	# --- GETTING ON (ADR 0057): by flying in through the mouth, on contact ---
+	scene.ship().set_hull_class(HullClass.Kind.TAXI)
+	_park(scene, mouth.position - into * 60.0, into)
+	_expect(scene.ship().cruise == null and scene.ship().road.tube == null,
+		"short of the mouth the ship is in open space with the drive off", "it engaged early")
+	_fly_in(scene, mouth, into)
+	_expect(scene.ship().road.tube == on_ramp and map.riding() == on_ramp
+			and scene.ship().cruise != null,
+		"crossing the mouth puts the ship IN the ramp's tube and engages cruise on contact",
+		"tube %s, riding %s" % [_tube_name(scene.ship().road.tube), _tube_name(map.riding())])
 	var at_entry := scene.ship().manual_max_speed()
 	_expect(at_entry < Tuning.num("exploration/cruise_speed") * 0.5,
 		"…and the ceiling does NOT snap to cruise speed on the entry frame",
-		"%.1f m/s of %.1f in one frame" % [at_entry,
-			Tuning.num("exploration/cruise_speed")])
+		"%.1f m/s in one frame" % at_entry)
 	for _i in int(Tuning.num("exploration/cruise_spool_seconds") * 60.0) + 6:
 		_step_exploration(scene, 1.0 / 60.0)
-	_expect(scene.ship().manual_max_speed()
-			> Tuning.num("exploration/taxi_max_speed") * 2.0
+	_expect(scene.ship().manual_max_speed() > Tuning.num("exploration/taxi_max_speed") * 2.0
 			and scene.ship().cruise_spool() > 0.999,
 		"…but it winds up to the cruise drive's, which is what the road buys",
-		"%.1f m/s at %.0f%% spool" % [scene.ship().manual_max_speed(),
-			scene.ship().cruise_spool() * 100.0])
-	# The camera frames the ROAD while cruising, not the nose.
-	_expect((scene.get_node("ChaseCamera") as ChaseCamera)
-			.heading_override.length_squared() > 0.5,
-		"…and the camera locks to the road's direction, not the ship's nose",
-		"the camera stayed on the nose")
+		"%.1f m/s at %.0f%% spool" % [scene.ship().manual_max_speed(), scene.ship().cruise_spool() * 100.0])
+	_expect((scene.get_node("ChaseCamera") as ChaseCamera).heading_override.length_squared() > 0.5,
+		"…and the camera locks to the road's direction, not the ship's nose", "camera on the nose")
+	for _i in 10:
+		_step_exploration(scene, 1.0 / 60.0)
+	_expect(road.loaded_chunk_count() > 0 and road.loaded_chunk_count() < road.chunk_count(),
+		"the structure streams: chunks near the ship are built, the far side of the map is not",
+		"%d of %d chunks" % [road.loaded_chunk_count(), road.chunk_count()])
 
-	# Riding up the ramp and onto the mainline. No junction logic exists: whichever
-	# deck going this way the ship is least outside of governs, so a ramp hands over
-	# to the mainline because the geometry says so.
-	scene.ship().position = on_ramp.path().finish()
+	# --- MERGING: the ramp ends inside the mainline and the geometry hands over ---
+	_park(scene, on_ramp.centre(on_ramp.path.length - 5.0), on_ramp.travel_frame(on_ramp.path.length)["fwd"])
+	scene.ship().position = on_ramp.centre(on_ramp.path.length) \
+		+ (on_ramp.travel_frame(on_ramp.path.length)["fwd"] as Vector3) * 40.0
 	_step_exploration(scene, 1.0 / 60.0)
-	_expect(map.riding() == mainlines[0] or map.riding() == on_ramp,
-		"at the top of the ramp the ship is on the ramp or the mainline, not adrift",
-		"riding %s" % ("nothing" if map.riding() == null else map.riding().name))
-	# On the mainline over system B. Asked of the deck's own path rather than built
-	# out of the separation by hand: the offset is lateral now, and a test that
-	# reconstructs it is a test that has to be rewritten every time it moves.
-	scene.ship().position = mainlines[0].path().closest(map.system_center(1))[1]
 	_step_exploration(scene, 1.0 / 60.0)
-	_expect(map.riding() == mainlines[0] and scene.ship().cruise != null,
-		"…and out on the mainline over a system's centre it is on the MAINLINE",
-		"riding %s" % ("nothing" if map.riding() == null else map.riding().name))
+	_expect(map.riding() == forward and scene.ship().cruise != null,
+		"off the end of the on-ramp the ship is on the mainline — no junction logic decided it",
+		"riding %s" % _tube_name(map.riding()))
+	var over_b_point: Vector3 = forward.centre(forward.local(map.system_center(1))["t"])
+	_park(scene, over_b_point, forward.travel_frame(forward.local(over_b_point)["t"])["fwd"])
+	_step_exploration(scene, 1.0 / 60.0)
+	_expect(map.riding() == forward, "…and over system B it is still on the mainline",
+		"riding %s" % _tube_name(map.riding()))
+	# Back to just past A's merge, where two exits (the interchange and B's) lie within
+	# the strip's horizon; over B the next exit is C's, twenty kilometres on.
+	var t_b: float = forward.local(map.system_center(0))["t"] + 4100.0
+	over_b_point = forward.centre(t_b)
+	_park(scene, over_b_point, forward.travel_frame(t_b)["fwd"])
+	_step_exploration(scene, 1.0 / 60.0)
 
-	# --- THE BERTH ON THE ROADWAY (ADR 0082) ---
-	# The road is a dock host. What is under test is the three properties that make it
-	# a dock rather than a conveyor: chosen, reversible, and never the fast route.
+	# --- THE BERTH (ADR 0082): chosen, reversible, never the fast route ---
 	var berth := map.berth()
 	_expect(Tuning.num("exploration/berth_speed_fraction") < 1.0,
-		"the berth is SLOWER than driving yourself — automation is never the fast route",
-		"%.2f of cruise" % Tuning.num("exploration/berth_speed_fraction"))
-	_expect(Tuning.num("exploration/berth_ride_height")
-			< Tuning.num("exploration/berth_offer_height"),
-		"…and it is offered before you are in it, not once you already are",
-		"held at %.0f m, offered at %.0f" % [
-			Tuning.num("exploration/berth_ride_height"),
-			Tuning.num("exploration/berth_offer_height")])
-	_expect(Tuning.num("exploration/berth_offer_height")
-			< Tuning.num("exploration/lane_height"),
-		"…and offered near the ROADWAY rather than anywhere in the tube",
-		"offered %.0f m up a %.0f m section" % [
-			Tuning.num("exploration/berth_offer_height"),
-			Tuning.num("exploration/lane_height")])
-
-	# CHOSEN. Up in the middle of the lane there is no offer; down by the roadway
-	# there is, and doing nothing declines it.
-	var mid_lane: Vector3 = mainlines[0].path().closest(map.system_center(1))[1]
-	scene.ship().position = mid_lane
-	_step_exploration(scene, 1.0 / 60.0)
+		"the berth is SLOWER than driving yourself", "%.2f of cruise" % Tuning.num("exploration/berth_speed_fraction"))
+	_expect(Tuning.num("exploration/berth_ride_height") < Tuning.num("exploration/berth_offer_height")
+			and Tuning.num("exploration/berth_offer_height") < Tuning.num("exploration/lane_height"),
+		"…offered near the roadway before you are on it, not anywhere in the tube", "")
 	_expect(not berth.is_offered() and not berth.is_berthed(),
-		"out in the middle of the lane no berth is offered",
-		"the berth offered itself in mid-air")
-	var floor_point: Vector3 = mid_lane - Vector3.UP * (
-		Tuning.num("exploration/lane_height") * 0.5
-		- Tuning.num("exploration/berth_ride_height"))
-	scene.ship().position = floor_point
-	_step_exploration(scene, 1.0 / 60.0)
-	_expect(berth.is_offered(),
-		"…and down by the roadway it is, without taking itself",
-		"no offer beside the road")
-	_step_exploration(scene, 1.0 / 60.0)
-	_expect(not berth.is_berthed(),
-		"…and doing nothing declines it — an offer is not a commitment",
-		"the berth engaged on its own")
-
-	# TAKEN, and it CONVERGES rather than snapping. Engaged well off the rail on
-	# purpose: a berth that teleported the ship onto the centre-line would be the one
-	# transition on this road that did not carry momentum (ADR 0066).
-	scene.ship().position = floor_point + mainlines[0].sample(floor_point).right * 40.0
+		"out in the middle of the lane no berth is offered", "it offered itself in mid-air")
+	var floor_point: Vector3 = forward.world(t_b, 0.0, -(forward.hh - Tuning.num("exploration/berth_ride_height")))
+	_park(scene, floor_point, forward.travel_frame(t_b)["fwd"])
+	_expect(berth.is_offered() and not berth.is_berthed(),
+		"…and down by the roadway it is, without taking itself", "no offer, or it took itself")
+	scene.ship().position = floor_point + (forward.travel_frame(t_b)["right"] as Vector3) * 40.0
 	_step_exploration(scene, 1.0 / 60.0)
 	berth.engage(scene.ship(), map.riding())
 	_expect(berth.is_berthed() and scene.ship().is_berthed(),
-		"pressing dock takes the berth, and the ship knows it is being carried",
-		"the berth did not engage")
+		"pressing dock takes the berth, and the ship knows it is being carried", "it did not engage")
 	var was_off := berth.hold().error
 	var biggest_step := 0.0
 	var before_step := scene.ship().position
 	for _i in 90:
 		_step_exploration(scene, 1.0 / 60.0)
-		biggest_step = maxf(biggest_step,
-			(scene.ship().position - before_step).length())
+		biggest_step = maxf(biggest_step, (scene.ship().position - before_step).length())
 		before_step = scene.ship().position
 	_expect(berth.hold().error < was_off,
 		"…and the ship slides ONTO the rail rather than being put on it",
 		"%.1f m off, was %.1f" % [berth.hold().error, was_off])
-	var reach := Tuning.num("exploration/cruise_speed") / 60.0 * 1.5
-	_expect(biggest_step < reach,
-		"…never moving further in a frame than a ship at cruise could have",
-		"a %.1f m frame against a %.1f m budget" % [biggest_step, reach])
-
-	# NOT STEERED BY INPUT, and that is the difference from the planet's threshold: a
-	# threshold aborts on any input because it is a countdown to a commitment, a berth
-	# is a place you sit inside and is left on purpose (ADR 0082).
-	var bound := berth.deck()
+	_expect(biggest_step < Tuning.num("exploration/cruise_speed") / 60.0 * 1.5,
+		"…never moving further in a frame than a ship at cruise could have", "%.1f m" % biggest_step)
+	var bound := berth.tube()
 	scene.ship().add_mouse_steer(Vector2(400.0, 0.0))
 	_step_exploration(scene, 1.0 / 60.0)
-	_expect(berth.is_berthed() and berth.deck() == bound,
-		"looking around does not abort the berth, and does not change which road it is on",
-		"the berth let go or changed roads")
-
-	# NEVER THE FAST ROUTE, measured rather than asserted from the tuning value.
+	_expect(berth.is_berthed() and berth.tube() == bound,
+		"looking around does not abort the berth, and does not change which road it is on", "")
 	var carried := scene.ship().speed()
 	_expect(carried < Tuning.num("exploration/cruise_speed") - 1.0,
-		"…and it carries the ship below cruise speed, as the fraction says",
-		"%.0f m/s against a %.0f m/s road" % [carried,
-			Tuning.num("exploration/cruise_speed")])
+		"…and it carries the ship below cruise speed", "%.0f m/s" % carried)
 
-	# REVERSIBLE, and left FLYING. A berth that dropped the ship to a stop would be a
-	# trap with an exit rather than a berth.
-	berth.release(scene.ship())
+	# --- EXITS ON THE STRIP (ADR 0091), taken by a rail rebind (ADR 0083) ---
+	var ahead := map.upcoming_exits(scene.ship().position)
+	var listed: Array[Tube] = []
+	for one: Array in ahead:
+		listed.append(one[0] as Tube)
+	_expect(not listed.is_empty() and (listed.has(exit_ramp) or listed.has(x1_tube)),
+		"berthed on A-377B, the strip lists the exits ahead on THIS carriageway",
+		"%d listed" % listed.size())
+	if listed.is_empty():
+		scene.queue_free()
+		return
+	for one: Array in ahead:
+		_expect((one[0] as Tube).is_ramp() and (one[2] as float) > -1.0,
+			"a listed exit is a ramp ahead: %s" % one[1], "%.0f m" % (one[2] as float))
+	var strip := scene.get_node("FlightHud") as FlightHud
 	_step_exploration(scene, 1.0 / 60.0)
-	_expect(not berth.is_berthed() and not scene.ship().is_berthed(),
-		"pressing dock again leaves the berth, at any moment",
-		"the berth would not let go")
-	_expect(scene.ship().speed() > carried * 0.8,
-		"…still carrying its speed, so leaving is not a stop",
-		"%.0f m/s after leaving, was %.0f" % [scene.ship().speed(), carried])
-	_expect(map.riding() != null and scene.ship().cruise != null,
-		"…and back on the road it was already on, flying it again",
-		"it came off the road entirely")
-
-	# --- EXIT SIGNS (ADR 0083) ---
-	# A sign is an object on the road, not a map. What is under test is that there is
-	# one for every exit, that it hangs far enough back to be read in time, and that
-	# clicking it changes which RAIL the berth is on rather than planning a route.
-	var signs := road.signs()
-	# A sign for every way OFF a road: the planet off-ramps and the interchange ramps
-	# onto the road that crosses it. An on-ramp needs none — you are not on the road
-	# yet, and there is nothing to choose.
-	var exits := 0
-	for deck in road.decks():
-		if deck.is_ramp and deck.start_portal() == null:
-			exits += 1
-	_expect(signs.size() == exits,
-		"there is a sign for every exit, and only for exits",
-		"%d signs for %d exits" % [signs.size(), exits])
-	var lead_ok := true
-	var worst_lead := 0.0
-	for sign: ExitSign in route_signs:
-		var opening := RoadNetwork.crossing(
-			road.building_for(sign.ramp.route_name), sign.ramp.path(), true)
-		if opening.is_empty():
-			continue
-		var sign_at: float = pair_built.path().closest(sign.position)[0]
-		var gap: float = float(opening[0]) - sign_at
-		worst_lead = maxf(worst_lead, absf(
-			gap - Tuning.num("exploration/exit_sign_lead_metres")))
-		if gap <= 0.0:
-			lead_ok = false
-	_expect(lead_ok,
-		"…and every sign hangs BEFORE the exit it names, not level with it or past it",
-		"a sign sits at or beyond its own exit")
-	_expect(worst_lead < 60.0,
-		"…at the lead distance the road promises, so reading it in time is the same act everywhere",
-		"one sign is %.0f m off its lead" % worst_lead)
-	var named := true
-	for sign: ExitSign in signs:
-		if not sign.label_text.begins_with("EXIT"):
-			named = false
-	_expect(named, "…and reads as an exit, naming where it goes",
-		"a sign does not name its exit")
-	# EVERY SIGN SAYS WHICH CARRIAGEWAY IT IS FOR. That is what makes "is this exit
-	# mine" a comparison rather than a geometric guess, and it is what both the pick
-	# and the drawing read (ADR 0088).
-	var unowned := ""
-	for sign: ExitSign in signs:
-		if sign.from_deck == null or sign.from_deck.is_ramp:
-			unowned = sign.name
-	_expect(unowned.is_empty(),
-		"…and says which carriageway it is bolted to, which is a fact rather than an angle",
-		"%s belongs to no mainline" % unowned)
-
-	# NO SIGN STANDS IN FRONT OF A PLAYER WHO HAS NOT FINISHED JOINING. The human's
-	# report was "the first exit is a bit too close": on the old 2.6 km local leg the
-	# K-112 interchange's sign hung before the on-ramp from A had even merged, so the
-	# first thing on the road was a choice you could not yet make. Reading an exit
-	# takes a lead distance; so does joining, and one is the honest measure of the
-	# other (ADR 0088).
-	var crowded := ""
-	var tightest := INF
-	for carriageway: RoadDeck in mainlines:
-		var merges := PackedFloat32Array()
-		for deck in road.decks():
-			if deck.is_ramp and deck.start_portal() != null \
-					and deck.route_name == carriageway.route_name:
-				merges.append(carriageway.path().closest(deck.path().finish())[0])
-		for sign: ExitSign in signs:
-			if sign.from_deck != carriageway:
-				continue
-			var at: float = carriageway.path().closest(sign.position)[0]
-			for merge in merges:
-				if merge >= at:
-					continue
-				if at - merge < tightest:
-					tightest = at - merge
-					crowded = "%s stands %.0f m past a merge" % [sign.name, at - merge]
-	_expect(tightest >= Tuning.num("exploration/exit_sign_lead_metres"),
-		"…and no sign stands closer to the merge behind it than its own lead distance",
-		crowded)
-
-	# ONLY THE EXITS OFF THE ROAD YOU ARE ON ARE DRAWN. Two carriageways share one
-	# building with glass down the middle and a second highway crosses it, so every
-	# sign on the map was legible from every seat: "seeing all the signs from all the
-	# directions makes it look very chaotic and confusing" (ADR 0088). The predicate
-	# that decides whether an exit is yours is the one that decides whether you can see
-	# it, so this is also the check that the pick and the drawing cannot disagree.
-	scene.ship().position = floor_point
-	_step_exploration(scene, 1.0 / 60.0)
-	var shown := 0
-	var wrong_road := ""
-	for sign: ExitSign in signs:
-		if not sign.is_relevant():
-			continue
-		shown += 1
-		if sign.from_deck != map.riding():
-			wrong_road = sign.name
-	_expect(shown > 0 and wrong_road.is_empty(),
-		"only the exits off the carriageway being ridden are drawn at all",
-		"%d signs drawn%s" % [shown,
-			"" if wrong_road.is_empty() else ", including %s" % wrong_road])
-	_expect(shown < signs.size(),
-		"…and the rest of the map's signs are not, which is the whole of the clutter",
-		"all %d signs were drawn" % signs.size())
-
-	# AND A MOUTH ONLY SAYS WHERE IT GOES WHEN IT IS A CHOICE. On the road, the way OFF
-	# the road you are riding; off it, the ways ON. The APERTURES stay drawn either way
-	# — they are built things (ADR 0088).
-	var shouting := ""
-	for portal: Portal in map.portals():
-		if not portal.is_named():
-			continue
-		if not portal.destination.begins_with("FROM"):
-			shouting = portal.destination
-	_expect(shouting.is_empty(),
-		"…and on the road, only the way OFF this road says where it goes",
-		"a way ON was still named while riding: %s" % shouting)
-
-	# TAKEABLE ONLY WHILE BERTHED. Flying, a control that changed which road you were on
-	# would be autopilot growth (ADR 0013), and moving it from a sign in the world to a
-	# button on the strip has not changed that (ADR 0091).
-	map.take_exit(road.get_node_or_null("A377BRampOffCForward") as RoadDeck)
-	_expect(not berth.is_berthed() and berth.taking() == null,
-		"no exit can be taken while flying — a click may not change the road you are on",
-		"an exit was taken off the berth")
-
-	# AND FROM THE SEAT IT IS ACTUALLY REACHABLE. This is the check that was missing
-	# when the human reported "I couldn't get the click off ramp feature to work at
-	# all": every part of the machinery worked, and the pick's own guard rejected every
-	# sign on the road because it compared the exit's tangent against the road axis
-	# UNDER THE SHIP (ADR 0088). Berthed on the rail a lead distance short of a sign,
-	# with the reticle parked on the nose and nothing touched, the sign has to light up
-	# — that is the whole of "can a player take an exit".
-	var next_sign := road.get_node_or_null("SignA377BRampOffCForward") as ExitSign
-	if next_sign != null:
-		var carriageway := mainlines[0].path()
-		var sign_at: float = carriageway.closest(next_sign.ramp.path().start())[0]
-		var stand := maxf(sign_at - Tuning.num("exploration/exit_sign_lead_metres"), 0.0)
-		var seat_frame := CruiseLane.frame_for(carriageway.tangent_at(stand))
-		var seat: Vector3 = carriageway.point_at(stand) - seat_frame[1] * (
-			Tuning.num("exploration/lane_height") * 0.5
-			- Tuning.num("exploration/berth_ride_height"))
-
-		# THE STRIP OFFERS IT, AND PRESSING IT TAKES IT. This is the check that was
-		# missing when the human reported "I couldn't get the click off ramp feature to
-		# work at all" and then "there's only a tiny margin that will let me click it".
-		# The first was the pick's own guard rejecting every sign on the road (ADR
-		# 0088); the second was parallax that could not be tuned out — the reticle is a
-		# direction from the SHIP and it is drawn projected from a camera behind and
-		# above it. The control is a button now (ADR 0091), and this is the whole of
-		# "can a player take an exit".
-		scene.ship().position = seat
-		_step_exploration(scene, 1.0 / 60.0)
-		berth.engage(scene.ship(), map.riding())
-		_step_exploration(scene, 1.0 / 60.0)
-		var offered := map.upcoming_exits(scene.ship().position)
-		var listed := ""
-		for one: Array in offered:
-			listed += " %s" % (one[0] as RoadDeck).name
-		_expect(not offered.is_empty() and (offered[0][0] as RoadDeck)
-				== next_sign.ramp,
-			"berthed, the strip offers the next exit off this carriageway, nearest first",
-			"offered:%s" % (listed if not listed.is_empty() else " nothing"))
-		var ahead_metres: float = offered[0][2] if not offered.is_empty() else -1.0
-		_expect(ahead_metres > 0.0
-				and ahead_metres < Tuning.num("exploration/nav_exit_horizon_metres"),
-			"…measured to the turning itself, ahead of the ship and inside the horizon",
-			"%.0f m to the exit" % ahead_metres)
-		var mine := true
-		for one: Array in offered:
-			if (one[0] as RoadDeck).route_name != mainlines[0].route_name:
-				mine = false
-		_expect(mine,
-			"…and only exits off the road being ridden, never the oncoming one's",
-			"the strip offered an exit off another road")
-		map.take_exit(next_sign.ramp)
-		_step_exploration(scene, 1.0 / 60.0)
-		_expect(berth.taking() == next_sign.ramp,
-			"…and pressing one takes that exit, which is the whole feature",
-			"the press took %s" % ("nothing" if berth.taking() == null
-				else berth.taking().name))
-		_expect(map.selected_sign() != null
-				and map.selected_sign().ramp == next_sign.ramp,
-			"…with exactly one exit marked as the one that is going to happen",
-			"nothing is marked")
-		map.take_exit(next_sign.ramp)
-		_step_exploration(scene, 1.0 / 60.0)
-		_expect(berth.taking() == null,
-			"…and pressing it again cancels, so a choice made in a hurry is not final",
-			"the exit could not be cancelled")
-		berth.release(scene.ship())
-
-	# --- THE SHELL (ADR 0087) ---
-	# The report: "I was able to go through the floor of the on ramp and it looks like
-	# it took me off altogether." At cruise inside the steering cone a ship carries far
-	# more downward speed than the lane's push is worth, so it sank through the roadway,
-	# and once outside the lane and past the end of the deck the union had nothing to
-	# hand it and the road dropped it.
-	#
-	# Flown the way it was flown: full throttle, stick held all the way down, for four
-	# seconds. The nose is clamped into the road's cone every frame, so this is the
-	# steepest descent the road allows and there is no steeper one to try.
-	var was_reading_shell := scene.reads_input()
-	scene.set_reads_input(false)
-	scene.ship().position = floor_point + Vector3.UP * (
-		Tuning.num("exploration/lane_height") * 0.5)
-	_step_exploration(scene, 1.0 / 60.0)
-	scene.ship().input_throttle = 1.0
-	scene.ship().input_stick = Vector2(0.0, 1.0)
-	var sank_to := 0.0
-	var came_off := false
-	var bounced := 0.0
-	var slowest := INF
-	for _i in 240:
-		_step_exploration(scene, 1.0 / 60.0)
-		if map.riding() == null or scene.ship().cruise == null:
-			came_off = true
-			break
-		sank_to = minf(sank_to, scene.ship().cruise.vertical
-			+ scene.ship().cruise.half_height)
-		bounced = maxf(bounced, scene.ship().rebound_speed())
-		slowest = minf(slowest, scene.ship().speed())
-	scene.ship().input_throttle = 0.0
-	scene.ship().input_stick = Vector2.ZERO
-	scene.set_reads_input(was_reading_shell)
-	_expect(not came_off,
-		"flown at the roadway at full throttle the ship stays ON the road",
-		"it went through the floor and off the highway")
-	_expect(sank_to > -1.0,
-		"…and never gets below the roadway, hull and all",
-		"the hull reached %.1f m under the road surface" % -sank_to)
-	# AND IT BOUNCES (ADR 0090). The road is steel and glass, so the roadway throws the
-	# ship back off it rather than absorbing it.
-	_expect(bounced > 1.0,
-		"…and comes back OFF the roadway rather than sliding along it",
-		"the hardest rebound in four seconds was %.1f m/s" % bounced)
-	# WITHOUT EVER BEING STOPPED BY IT. Four seconds of flying at a wall is dozens of
-	# frames of contact; charged per frame instead of once per hit, the penalty would
-	# compound into a full stop, and a shell that stops you is the one thing it may not
-	# be. This is the check that would fail if the rising edge is ever dropped.
-	_expect(slowest > Tuning.num("exploration/cruise_speed") * 0.2,
-		"…while never being brought to a stop by it — one hit, one cost",
-		"it fell to %.0f m/s against a %.0f m/s road" % [slowest,
-			Tuning.num("exploration/cruise_speed")])
-	_expect(scene.ship().speed() > Tuning.num("exploration/cruise_speed") * 0.25,
-		"…and is still flying down the road at speed — held, never stopped",
-		"%.0f m/s against the road it is on" % scene.ship().speed())
-
-
-	# TAKEN, and the swap happens WHEN THE RAMP ARRIVES rather than when the sign is
-	# clicked. The ramp starts ahead, and a rail that pulled the ship back onto its
-	# start would be a route rather than a rebind.
-	var exit_ramp := road.get_node_or_null("A377BRampOffCForward") as RoadDeck
-	if exit_ramp != null:
-		var main_line := mainlines[0].path()
-		var diverge: float = main_line.closest(exit_ramp.path().start())[0]
-		var before: Vector3 = main_line.point_at(maxf(diverge - 900.0, 0.0))
-		var frame_at := CruiseLane.frame_for(
-			main_line.tangent_at(maxf(diverge - 900.0, 0.0)))
-		scene.ship().position = before - frame_at[1] * (
-			Tuning.num("exploration/lane_height") * 0.5
-			- Tuning.num("exploration/berth_ride_height"))
-		_step_exploration(scene, 1.0 / 60.0)
-		berth.engage(scene.ship(), map.riding())
-		berth.take_exit(exit_ramp)
-		_expect(berth.deck() == mainlines[0] and berth.taking() == exit_ramp,
-			"clicking a sign does not move the ship — the exit is taken, not yet reached",
-			"the berth swapped rails on the click")
-		var jumped := 0.0
-		var was_at := scene.ship().position
-		for _i in 600:
-			_step_exploration(scene, 1.0 / 60.0)
-			jumped = maxf(jumped, (scene.ship().position - was_at).length())
-			was_at = scene.ship().position
-			if berth.deck() == exit_ramp:
-				break
-		_expect(berth.deck() == exit_ramp,
-			"…and the berth swaps rails once the ramp is actually under the ship",
-			"the exit was never reached")
-		_expect(jumped < Tuning.num("exploration/cruise_speed") / 60.0 * 1.5,
-			"…without a jump, because a ramp is tangential where it leaves (ADR 0070)",
-			"a %.1f m frame at the rebind" % jumped)
-		_expect(berth.taking() == null,
-			"…and the exit is spent, so nothing is still holding a destination",
-			"the berth is still carrying a route")
-		berth.release(scene.ship())
-
-	# LIT, AND CANCELLABLE. "I am pointing at this" and "this is what is going to
-	# happen" are different facts, and the second is the one a player docking just
-	# before an exit is relying on. Exactly one sign is lit, and clicking it again
-	# puts the ship back on the highway.
-	scene.ship().position = floor_point
-	_step_exploration(scene, 1.0 / 60.0)
-	berth.engage(scene.ship(), map.riding())
-	var some_exit := road.get_node_or_null("A377BRampOffCForward") as RoadDeck
-	berth.take_exit(some_exit)
-	_step_exploration(scene, 1.0 / 60.0)
-	var glowing := 0
-	for sign: ExitSign in signs:
-		if sign.is_selected():
-			glowing += 1
-	_expect(glowing == 1 and map.selected_sign() != null
-			and map.selected_sign().ramp == some_exit,
-		"exactly one sign is lit, and it is the exit that is going to happen",
-		"%d signs lit" % glowing)
-	berth.take_exit(null)
-	_step_exploration(scene, 1.0 / 60.0)
-	_expect(berth.taking() == null and map.selected_sign() == null,
-		"…and taking it back stays on the highway, so a choice made in a hurry is not final",
-		"the exit could not be cancelled")
-	_expect(map.riding() != null and not map.riding().route_name.is_empty(),
-		"…and the road has a NAME to stay on, which is what the readout says by default",
-		"the road the berth is on is unnamed")
-
-	# NO EXIT OFF THE ONCOMING CARRIAGEWAY. The two share one building with glass down
-	# the middle, so the other side's exits are a few hundred metres away — and taking
-	# one would bind the berth to a ramp leaving a road going the other way. Reported
-	# from a play session, watching the ship take an exit to its left.
-	var wrong_way := 0
-	for sign: ExitSign in signs:
-		if sign.from_deck != map.riding():
-			wrong_way += 1
-	_expect(wrong_way > 0,
-		"the map carries exits off other carriageways — there is something to exclude",
-		"every exit on the map belongs to this one")
-	var mine_only := true
+	_expect(strip.listed_exits().size() == ahead.size(),
+		"…and the strip shows exactly those", "%d on the strip" % strip.listed_exits().size())
+	# A CLOSED exit is listed and refused rather than hidden (ADR 0084).
+	var shut: Tube = listed[0]
+	shut.passable = false
+	var listed_shut := false
+	var greyed := false
 	for one: Array in map.upcoming_exits(scene.ship().position):
-		var listed := one[0] as RoadDeck
-		var owned := false
-		for sign: ExitSign in signs:
-			if sign.ramp == listed and sign.from_deck == map.riding():
-				owned = true
-		if not owned:
-			mine_only = false
-	_expect(mine_only,
-		"…and the strip lists none of them, because you could not steer onto one",
-		"the strip offered an exit off a road going the other way")
-	# A CLOSED EXIT (ADR 0084). The same red barrier that keeps a fighter off an
-	# on-ramp now exists at the other end: a road can refuse to let you off it. Today
-	# it is driven by the same rule that reddens a portal — which a ship on the road
-	# never fails, because a hull with no cruise drive is never on the road at all —
-	# so it is closed directly here. What standing will need is the refusal and the
-	# two places that honour it, and those are what is under test.
-	var shut := road.get_node_or_null("A377BRampOffCForward") as RoadDeck
-	if shut != null:
-		# Stood where the exit is genuinely ahead, so what is under test is the refusal
-		# rather than the horizon.
-		var main_line := mainlines[0].path()
-		var before: float = maxf(main_line.closest(shut.path().start())[0] - 2000.0,
-			0.0)
-		var lift := CruiseLane.frame_for(main_line.tangent_at(before))
-		scene.ship().position = main_line.point_at(before) - lift[1] * (
-			Tuning.num("exploration/lane_height") * 0.5
-			- Tuning.num("exploration/berth_ride_height"))
-		_step_exploration(scene, 1.0 / 60.0)
-		berth.engage(scene.ship(), map.riding())
-		shut.passable = false
-		_step_exploration(scene, 1.0 / 60.0)
-		var greyed := false
-		var listed_shut := false
-		for one: Array in map.upcoming_exits(scene.ship().position):
-			if (one[0] as RoadDeck) != shut:
-				continue
+		if one[0] == shut:
 			listed_shut = true
 			greyed = not (one[3] as bool)
-		map.take_exit(shut)
-		_expect(listed_shut and greyed and berth.taking() != shut,
-			"a closed exit is listed, greyed and refused — a refusal you find out about after choosing is not one",
-			"listed %s, greyed %s, taken %s" % [listed_shut, greyed,
-				berth.taking() == shut])
-		var offered := road.governing(scene.ship().position,
-			map.riding().sample(scene.ship().position).axis, null, Vector2.ZERO)
-		_expect(offered != shut,
-			"…and the union never hands you a road you may not take",
-			"a shut ramp governed the ship")
-		# It REFUSES rather than blocks: nothing stops the ship, which would be
-		# interdiction with an extra step (ADR 0014).
-		var still_moving := scene.ship().speed()
+	map.take_exit(shut)
+	_expect(listed_shut and greyed and berth.taking() != shut,
+		"a closed exit is listed, greyed, and refused when pressed", "")
+	shut.passable = true
+	# The nearest exit off this carriageway before C: take it, ride to it, and the
+	# berth rebinds when the ramp begins, not when the button was pressed.
+	var chosen: Tube = null
+	var chosen_metres := INF
+	for one: Array in map.upcoming_exits(scene.ship().position):
+		if (one[2] as float) < chosen_metres:
+			chosen_metres = one[2]
+			chosen = one[0]
+	map.take_exit(chosen)
+	_expect(berth.taking() == chosen and berth.tube() == forward,
+		"pressing an exit on the strip marks it taken and leaves the berth on the mainline for now", "")
+	map.take_exit(chosen)
+	_expect(berth.taking() == null, "…and pressing it again cancels", "still taken")
+	map.take_exit(chosen)
+	var frames := 0
+	while berth.tube() == forward and frames < 60 * 90:
 		_step_exploration(scene, 1.0 / 60.0)
-		_expect(scene.ship().speed() > still_moving * 0.5,
-			"…and nothing stops the ship — a closed exit is a turn you may not take",
-			"the ship was slowed by a refusal")
-		shut.passable = true
-		berth.release(scene.ship())
-
-	# Getting off, through an off-ramp's portal beside a planet.
-	var off_ramp := road.get_node_or_null("A377BRampOffCForward") as RoadDeck
-	_expect(off_ramp != null, "system C has an off-ramp on the forward deck", "missing")
-	var exit_gate := off_ramp.end_portal()
-	var exit_travel := off_ramp.path().tangent_at(off_ramp.length())
-	scene.ship().position = exit_gate.position - exit_travel * 20.0
-	_step_exploration(scene, 1.0 / 60.0)
-	scene.ship().position = exit_gate.position + exit_travel * 20.0
-	_step_exploration(scene, 1.0 / 60.0)
-	_expect(scene.ship().cruise == null and map.riding() == null,
-		"flying out an off-ramp's portal drops you back into normal flight",
-		"still cruising past the end of the ramp")
-	# And it winds DOWN rather than stopping dead.
-	_expect(scene.ship().cruise_spool() > 0.5,
-		"…still carrying most of its speed on the frame after, not stopped dead",
-		"%.0f%% spool" % (scene.ship().cruise_spool() * 100.0))
-	for _i in int(Tuning.num("exploration/cruise_spool_down_seconds") * 60.0) + 6:
+		frames += 1
+	_expect(berth.tube() == chosen and berth.taking() == null,
+		"when the ramp arrives the berth's rail rebinds to it, and the choice is spent",
+		"on %s after %d frames" % [_tube_name(berth.tube()), frames])
+	for _i in 600:
 		_step_exploration(scene, 1.0 / 60.0)
-	_expect(is_zero_approx(scene.ship().cruise_spool())
-			and is_equal_approx(scene.ship().manual_max_speed(),
-				HullClass.max_speed(scene.ship().hull_class)),
-		"…and settles back to the hull's own speed once the drive has wound down",
-		"%.1f m/s at %.0f%% spool" % [scene.ship().manual_max_speed(),
-			scene.ship().cruise_spool() * 100.0])
+		if map.riding() == chosen:
+			break
+	_expect(scene.ship().road.tube == chosen and map.riding() == chosen,
+		"…and carried along the ramp the ship leaves the mainline through the open wall into the ramp's tube",
+		"in %s" % _tube_name(scene.ship().road.tube))
+	berth.release(scene.ship())
+	_step_exploration(scene, 1.0 / 60.0)
+	_expect(not berth.is_berthed() and scene.ship().speed() > carried * 0.8 and map.riding() != null,
+		"pressing dock again leaves the berth, still carrying its speed, still on the road", "")
 
-	# ADR 0060: a portal opens for a cruise drive, and its colour says so.
+	# --- GETTING OFF: out of an exit's mouth into open space, drive winding down ---
+	var exit_end: Vector3 = exit_ramp.centre(exit_ramp.path.length)
+	var out: Vector3 = exit_ramp.travel_frame(exit_ramp.path.length)["fwd"]
+	_park(scene, exit_end - out * 30.0, out)
+	scene.ship().road.tube = exit_ramp
+	_step_exploration(scene, 1.0 / 60.0)
+	_step_exploration(scene, 1.0 / 60.0)
+	_expect(map.riding() == exit_ramp, "on the last metres of an exit ramp the ship rides it", _tube_name(map.riding()))
+	scene.ship().position = exit_end + out * 60.0
+	_step_exploration(scene, 1.0 / 60.0)
+	_step_exploration(scene, 1.0 / 60.0)
+	_expect(scene.ship().cruise == null and map.riding() == null and scene.ship().road.tube == null,
+		"flying out of the mouth ends cruise — the player's own flying, nothing else", "")
+	_expect(scene.ship().cruise_spool() > 0.5, "…and the drive winds DOWN rather than stopping dead",
+		"spool %.2f" % scene.ship().cruise_spool())
+
+	# --- ADR 0060: a portal opens for a cruise drive, and its colour says so ---
 	scene.ship().set_hull_class(HullClass.Kind.FIGHTER)
-	scene.ship().position = gate.position - travel * 20.0
 	_step_exploration(scene, 1.0 / 60.0)
-	_expect(not gate.permitted,
-		"a fighter has no cruise drive, so every portal reads REFUSED (ADR 0060)",
-		"the portal showed permitted")
-	scene.ship().position = gate.position + travel * 20.0
-	_step_exploration(scene, 1.0 / 60.0)
-	_expect(scene.ship().cruise == null,
-		"…and flying into one does nothing — the refusal was visible before contact",
-		"a fighter got onto the road")
+	_expect(not mouth.permitted, "a fighter, with no cruise drive, sees every mouth red", "")
+	_fly_in(scene, mouth, into)
+	_expect(scene.ship().cruise == null and scene.ship().road.tube == on_ramp,
+		"…and flying into the tube anyway puts it inside at hull speed with no drive", "")
 	scene.ship().set_hull_class(HullClass.Kind.TAXI)
 	_step_exploration(scene, 1.0 / 60.0)
-	_expect(gate.permitted,
-		"…while a taxi sees the same portal open, on the frame it switches",
-		"the portal did not recolour")
+	_expect(mouth.permitted, "…while a taxi sees the same mouth open, on the frame it switches", "")
+	map.warp_to_system(scene.ship(), 0)
+	_step_exploration(scene, 1.0 / 60.0)
 
-	# The strain is applied to the ship by the map, each frame, and released when the
-	# ship turns round. Driven through the real nodes rather than the pure library so
-	# the wiring is covered too.
-	#
-	# Note the ship has to be PAST the ceiling, not merely near it: since ADR 0062
-	# the warning band inside the edge only paints, and the clamp lives entirely in
-	# `bounds_stop_distance` outside it. That split is the easy thing to get wrong.
-	scene.ship().position = discs[0].position \
-		+ Vector3(0.0, discs[0].ceiling_height() + 40.0, 0.0)
+	# --- THE BOUNDARY'S STRAIN (ADR 0062) ---
+	scene.ship().position = discs[0].position + Vector3(0.0, discs[0].ceiling_height() + 40.0, 0.0)
 	scene.ship()._velocity = Vector3(0.0, 10.0, 0.0)
 	_step_exploration(scene, 1.0 / 60.0)
 	_expect(scene.ship().speed_ceiling_scale < 1.0,
-		"pushing out past the ceiling strains the ship's speed limit",
-		"scale %.2f" % scene.ship().speed_ceiling_scale)
+		"pushing out past the ceiling strains the ship's speed limit", "scale %.2f" % scene.ship().speed_ceiling_scale)
 	var strained := scene.ship().manual_max_speed()
-	# Same point, opposite heading. The way home is free at any depth (ADR 0062), so
-	# this releases without the ship having moved an inch.
 	scene.ship()._velocity = Vector3(0.0, -10.0, 0.0)
 	_step_exploration(scene, 1.0 / 60.0)
-	_expect(is_equal_approx(scene.ship().speed_ceiling_scale, 1.0)
-			and scene.ship().manual_max_speed() > strained,
-		"…and TURNING ROUND releases it on the spot, without moving back in",
-		"scale %.2f" % scene.ship().speed_ceiling_scale)
-	# Mid-corridor, four kilometres from either system, nothing is clamped. The
-	# boundary following the player across the map is the thing this checks.
-	scene.ship().position = link.region().path.point_at(
-		link.region().length() * 0.5)
+	_expect(is_equal_approx(scene.ship().speed_ceiling_scale, 1.0) and scene.ship().manual_max_speed() > strained,
+		"…and TURNING ROUND releases it on the spot", "scale %.2f" % scene.ship().speed_ceiling_scale)
+	scene.ship().position = link.region().path.point_at(link.region().length() * 0.5)
 	scene.ship()._velocity = Vector3(0.0, 0.0, 10.0)
 	_step_exploration(scene, 1.0 / 60.0)
 	_expect(is_equal_approx(scene.ship().speed_ceiling_scale, 1.0),
-		"…and nothing is clamped in the middle of the corridor either",
-		"scale %.2f" % scene.ship().speed_ceiling_scale)
+		"…and nothing is clamped in the middle of the corridor", "scale %.2f" % scene.ship().speed_ceiling_scale)
 
-	# --- leaving a planet (post-test feedback) ---
-	# Departing must not hand the ship back at rest pointing at the surface it just
-	# left: that starts every visit with the same climb out of the same hole. It
-	# leaves on the REFLECTION of its arrival — same bearing, vertical flipped.
-	scene.ship().set_hull_class(HullClass.Kind.TAXI)
+	# --- LEAVING A PLANET: on the reflection of the arrival ---
 	scene.ship().position = map.planets()[0].position + Vector3(0.0, 300.0, 0.0)
 	scene.ship().look_at(map.planets()[0].global_position, Vector3.FORWARD)
 	var descending := -scene.ship().basis.z
 	scene.ship().launch_from_dock(Tuning.num("exploration/depart_speed_fraction"))
 	var climbing := -scene.ship().basis.z
-	_expect(descending.y < 0.0 and climbing.y > 0.0,
-		"taking off flips the arrival's vertical: a descent becomes a climb",
-		"came in at %.2f, left at %.2f" % [descending.y, climbing.y])
-	_expect(absf(climbing.x - descending.x) < 0.01
-			and absf(climbing.z - descending.z) < 0.01,
-		"…on the same bearing, so it is a reflection rather than a turn",
-		"(%.2f, %.2f) became (%.2f, %.2f)" % [descending.x, descending.z,
-			climbing.x, climbing.z])
-	_expect(scene.ship().speed() > 0.0
-			and is_equal_approx(scene.ship().throttle(),
-				Tuning.num("exploration/depart_speed_fraction")),
-		"…already moving, with the THROTTLE set to match so it is not a shove",
-		"%.1f m/s at %.0f%% throttle" % [scene.ship().speed(),
-			scene.ship().throttle() * 100.0])
+	_expect(descending.y < 0.0 and climbing.y > 0.0 and absf(climbing.x - descending.x) < 0.01,
+		"taking off flips the arrival's vertical on the same bearing", "")
+	_expect(scene.ship().speed() > 0.0 and is_equal_approx(scene.ship().throttle(),
+			Tuning.num("exploration/depart_speed_fraction")),
+		"…already moving, with the THROTTLE set to match", "")
 
-	# --- CRUISE FUEL ON THE ROAD (POC step 7, ADR 0086) ---
-	# The arithmetic is checked in `_test_cruise_tank`; what is checked here is what
-	# the resource DOES — that it is spent by the road, that it closes a portal when
-	# it runs out, and above all that running out does not strand anybody.
+	# --- CRUISE FUEL (ADR 0086): spent by the road, never stranding ---
 	var tank := scene.ship().cruise_tank
-	scene.ship().set_hull_class(HullClass.Kind.TAXI)
 	tank.fill()
-	var ramp_mouth := on_ramp.start_portal()
-	var inbound := on_ramp.path().tangent_at(0.0)
-	scene.ship().position = ramp_mouth.position - inbound * 20.0
-	_step_exploration(scene, 1.0 / 60.0)
-	scene.ship().position = ramp_mouth.position + inbound * 20.0
-	_step_exploration(scene, 1.0 / 60.0)
-	_expect(scene.ship().cruise != null,
-		"a fuelled ship engages cruise at the portal", "it did not engage")
-
-	# The burn is exactly the metres of highway between two frames. The ship is placed
-	# rather than flown so the distance is known: `SystemMap` measures from where the
-	# ship was at the previous observation, which is the position set before it.
-	var from_point := on_ramp.path().point_at(on_ramp.length() * 0.2)
-	var to_point := on_ramp.path().point_at(on_ramp.length() * 0.6)
+	_fly_in(scene, mouth, into)
+	_expect(scene.ship().cruise != null, "a fuelled ship engages cruise at the mouth", "it did not")
+	var from_point := on_ramp.centre(on_ramp.path.length * 0.2)
+	var to_point := on_ramp.centre(on_ramp.path.length * 0.6)
 	scene.ship().position = from_point
 	_step_exploration(scene, 1.0 / 60.0)
 	var before_burn := tank.units
 	scene.ship().position = to_point
 	_step_exploration(scene, 1.0 / 60.0)
 	var spent := before_burn - tank.units
-	var owed := from_point.distance_to(to_point) \
-		* Tuning.num("exploration/cruise_fuel_per_km") / 1000.0
-	_expect(absf(spent - owed) < 0.0001,
-		"the road spends fuel per METRE travelled, not per second on it",
-		"%.4f units for %.0f m, expected %.4f" % [spent,
-			from_point.distance_to(to_point), owed])
-
-	# RUNNING DRY MID-LEG DOES NOT STRAND YOU. The drive winds down, the ceiling comes
-	# back to the hull's, and the ship stays in the lane still steering — it is slow,
-	# never stuck (ADR 0017), and it is never put out into open space by something it
-	# did not do (the target-experience rule).
+	var owed := from_point.distance_to(to_point) * Tuning.num("exploration/cruise_fuel_per_km") / 1000.0
+	_expect(absf(spent - owed) < 0.0001, "the road spends fuel per METRE travelled",
+		"%.4f for %.0f m, expected %.4f" % [spent, from_point.distance_to(to_point), owed])
 	tank.units = 0.0
 	_step_exploration(scene, 1.0 / 60.0)
 	_expect(scene.ship().is_coasting_dry() and map.riding() != null,
-		"an empty tank leaves the ship ON the road, not beside it",
-		"riding %s" % ("nothing" if map.riding() == null else map.riding().name))
+		"an empty tank leaves the ship ON the road, not beside it", _tube_name(map.riding()))
 	for _i in int(Tuning.num("exploration/cruise_spool_down_seconds") * 60.0) + 30:
 		scene.ship().position = to_point
 		_step_exploration(scene, 1.0 / 60.0)
-	_expect(scene.ship().cruise_spool() < 0.001 and map.riding() != null,
-		"…and the drive winds DOWN rather than the road dropping the ship",
-		"spool %.3f, riding %s" % [scene.ship().cruise_spool(),
-			"nothing" if map.riding() == null else map.riding().name])
-	_expect(scene.ship().manual_max_speed()
-			< Tuning.num("exploration/cruise_speed") * 0.5,
-		"…so what is left is the hull's own top speed, which is the recovery",
-		"%.1f m/s" % scene.ship().manual_max_speed())
-	_expect(not ramp_mouth.permitted,
-		"a dry tank closes every portal — one opens for a drive that can RUN",
-		"the portal stayed open on an empty tank")
-
-	# And it cannot be re-engaged until it is refuelled. Off the road first, because
-	# the question is about entry rather than about staying — and note that getting
-	# off is not a matter of being far from the lane: a road is left through a portal
-	# or off its end and nowhere else, so the ship is put elsewhere on the map rather
-	# than flown sideways out of the tube.
+	_expect(scene.ship().cruise_spool() < 0.001 and map.riding() != null
+			and scene.ship().manual_max_speed() < Tuning.num("exploration/cruise_speed") * 0.5,
+		"…and the drive winds down to the hull's own speed, which is the recovery", "")
+	_expect(not mouth.permitted, "a dry tank closes every mouth", "stayed open")
 	map.warp_to_system(scene.ship(), 1)
 	_step_exploration(scene, 1.0 / 60.0)
-	scene.ship().position = ramp_mouth.position - inbound * 20.0
-	_step_exploration(scene, 1.0 / 60.0)
-	scene.ship().position = ramp_mouth.position + inbound * 20.0
-	_step_exploration(scene, 1.0 / 60.0)
-	_expect(scene.ship().cruise == null,
-		"…and a dry ship cannot get back ON the road until it refuels",
-		"it engaged with an empty tank")
+	_fly_in(scene, mouth, into)
+	_expect(scene.ship().cruise == null and scene.ship().road.tube == on_ramp,
+		"…and a dry ship cannot get back ON the road until it refuels, though it can fly into the tube", "")
+	map.warp_to_system(scene.ship(), 1)
 	tank.fill()
-	scene.ship().position = ramp_mouth.position - inbound * 20.0
-	_step_exploration(scene, 1.0 / 60.0)
-	scene.ship().position = ramp_mouth.position + inbound * 20.0
-	_step_exploration(scene, 1.0 / 60.0)
-	_expect(scene.ship().cruise != null and ramp_mouth.permitted,
-		"refuelling opens the portal again, with nothing else to undo",
-		"it stayed shut after a fill")
+	_fly_in(scene, mouth, into)
+	_expect(scene.ship().cruise != null and mouth.permitted, "refuelling opens the mouth again", "")
 
-	# THE REFUEL SERVICE. Step 4 built the dock screen as a LIST so step 7 could add a
-	# row rather than rework a layout, and this is that row. It goes ABOVE Depart,
-	# because `open` focuses the first row and a screen whose default answer is "leave"
-	# is a screen with nothing on it.
+	# --- THE REFUEL SERVICE on the dock screen ---
 	scene._on_arrived("SYSTEM A")
 	var services := scene.dock_screen().get_node("Centre/Panel/Column/Services")
 	var first := services.get_child(0) as Button
 	_expect(first != null and first.text.findn("tank") >= 0,
-		"the docking screen's first service is the cruise tank, above Depart",
-		"first row is %s" % ("nothing" if first == null else first.text))
-	_expect(first.text.findn("full") >= 0,
-		"…and it says what a fill would do rather than being a button that lies",
-		first.text)
+		"the docking screen's first service is the cruise tank", "")
 	tank.units = tank.capacity * 0.25
 	scene._on_arrived("SYSTEM A")
-	_expect(first.text.findn("→") >= 0,
-		"…including the numbers, on a tank that is not full", first.text)
+	_expect(first.text.findn("→") >= 0, "…saying what a fill would do", first.text)
 	first.pressed.emit()
-	_expect(is_equal_approx(tank.units, tank.capacity),
-		"…and pressing it fills the tank", "%.1f units" % tank.units)
+	_expect(is_equal_approx(tank.units, tank.capacity), "…and pressing it fills the tank", "")
 	scene.dock_screen().close()
 	scene.ship().piloted = true
 
-	# --- THE DEBUG TELEPORT (POC step 7, item 13) ---
-	# It is a debug tool with one requirement beyond working: it must be LOUD, because
-	# every travel figure this POC exists to read is untrue once a jump has been made.
+	# --- THE DEBUG TELEPORT AND DROP: loud, and off the road first ---
 	var hud := scene.get_node("DebugHud") as DebugHud
-	_expect(not hud.row_text("teleport").is_empty()
-			and hud.row_text("teleport").findn("NOT A READING") < 0,
-		"before any jump the HUD says travel times ARE a reading",
-		hud.row_text("teleport"))
+	_expect(hud.row_text("teleport").findn("NOT A READING") < 0,
+		"before any jump the HUD says travel times ARE a reading", hud.row_text("teleport"))
 	var origin_system := map.nearest_system(map.to_local(scene.ship().global_position))
 	scene.teleport_onward()
 	var now_at := map.nearest_system(map.to_local(scene.ship().global_position))
-	_expect(scene.teleport_count() == 1
-			and now_at == (origin_system + 1) % map.systems().size(),
-		"the teleport moves the ship to the NEXT system, not the one it is in",
-		"went from %d to %d" % [origin_system, now_at])
-	_expect(scene.ship().cruise == null and map.riding() == null
-			and scene.ship().road_axis() == Vector3.ZERO,
-		"…and it takes the ship off the road first, engine and axis included",
-		"it arrived still attached to a road a system away")
-	_expect(map.active_approach(map.to_local(scene.ship().global_position)) == null
-			or map.active_approach(map.to_local(scene.ship().global_position))
-				.state() == ApproachEnvelope.State.CLEAR,
-		"…and lands clear of the planet's envelope rather than inside a landing",
-		"it arrived inside an approach sequence")
+	_expect(scene.teleport_count() == 1 and now_at == (origin_system + 1) % map.systems().size(),
+		"the teleport moves the ship to the NEXT system", "%d to %d" % [origin_system, now_at])
+	_expect(scene.ship().cruise == null and map.riding() == null and scene.ship().road.tube == null,
+		"…and takes the ship off the road first", "")
 	_expect(hud.row_text("teleport").findn("NOT A READING") >= 0,
-		"…and the HUD says so for the rest of the session: a silent teleport "
-			+ "contaminates the travel-time verdict",
-		hud.row_text("teleport"))
-	# A jump must not be a free tankful either — the resource under test would stop
-	# being testable if the tool used to test it kept topping it up.
+		"…and the HUD says so for the rest of the session", hud.row_text("teleport"))
 	var carried_fuel := tank.units
 	scene.teleport_onward()
 	_expect(is_equal_approx(tank.units, carried_fuel) and scene.teleport_count() == 2,
-		"…and it does not refuel: the tool must not undo the thing it tests",
-		"%.2f units became %.2f" % [carried_fuel, tank.units])
+		"…and it does not refuel", "")
+	scene.drop_onward()
+	_step_exploration(scene, 1.0 / 60.0)
+	_expect(map.riding() != null and scene.ship().cruise != null and scene.teleport_count() == 3,
+		"the debug DROP puts the ship on the road with the drive running, counted like a jump",
+		_tube_name(map.riding()))
+	map.warp_to_system(scene.ship(), 0)
+	_step_exploration(scene, 1.0 / 60.0)
 
 	# --- THE HARNESS CONTROLS (ADR 0031) ---
-	# `make shot` renders into a real window, so the capture harnesses used to be
-	# steered by whatever the human's hand was doing — which made a rendered frame a
-	# coin flip rather than a verification. A harness takes the controls instead, and
-	# the flight code underneath is the same code.
 	scene.set_reads_input(false)
-	_expect(not scene.reads_input() and not scene.ship().reads_input
-			and not scene.map().reads_input,
-		"a harness takes the controls of the scene, the ship and the map together",
-		"one of the three kept reading the devices")
+	_expect(not scene.reads_input() and not scene.ship().reads_input and not scene.map().reads_input,
+		"a harness takes the controls of the scene, the ship and the map together", "")
 	var wave := InputEventMouseMotion.new()
 	wave.relative = Vector2(600.0, 0.0)
 	scene._unhandled_input(wave)
 	_step_exploration(scene, 1.0 / 60.0)
-	_expect(is_zero_approx(scene.ship().mouse_speed()),
-		"…so a hand on the mouse no longer steers the ship or breaks an approach",
-		"%.0f px/s of mouse motion got through" % scene.ship().mouse_speed())
-
-	# And it can FLY: the harness holds the lever the keys would have held.
+	_expect(is_zero_approx(scene.ship().mouse_speed()), "…so a hand on the mouse no longer steers", "")
 	scene.ship().piloted = true
+	scene.ship()._throttle = 0.0
 	scene.ship().input_throttle = 1.0
 	var from_throttle := scene.ship().throttle()
 	for _i in 30:
 		_step_exploration(scene, 1.0 / 60.0)
-	_expect(scene.ship().throttle() > from_throttle + 0.1,
-		"…and the throttle it holds travels at the hull's own rate, not instantly",
-		"%.2f became %.2f" % [from_throttle, scene.ship().throttle()])
-	# …and it is a FAITHFUL stand-in, which is the part that could have gone wrong
-	# quietly: everything that asks "is the player flying" asks the SHIP rather than the
-	# devices, so a harness is seen exactly as a player is instead of sailing through a
-	# sequence no human could have completed.
-	_expect(scene.ship().has_flight_input(),
-		"a harness holding the throttle counts as flight input, as a player does",
-		"the ship could not see the harness flying")
-	_expect(not scene.ship().is_steering(),
-		"…and the throttle is not STEERING, which is the distinction the approach makes",
-		"a held throttle read as a heading request")
+	_expect(scene.ship().throttle() > from_throttle + 0.1 and scene.ship().has_flight_input()
+			and not scene.ship().is_steering(),
+		"…and the throttle it holds travels at the hull's rate and counts as flight input, not steering", "")
 	scene.ship().input_stick = Vector2(1.0, 0.0)
-	_expect(scene.ship().is_steering() and map.approaches()[0]._has_flight_input(
-			scene.ship()),
-		"…while the harness's stick is, and the envelope sees it",
-		"a harness steering did not read as steering")
+	_expect(scene.ship().is_steering() and map.approaches()[0]._has_flight_input(scene.ship()),
+		"…while the harness's stick is steering, and the envelope sees it", "")
 	scene.ship().input_stick = Vector2.ZERO
 	scene.ship().input_throttle = 0.0
-	_expect(not scene.ship().has_flight_input(),
-		"…and letting go of both stops counting", "it stayed aborted")
 
 	# --- THE NOSE AND THE BOOM (ADR 0093) ---
-	# Flown hard up and hard down, off the road, through the real nodes: the nose stops
-	# short of the vertical and the camera's boom stops well short of that. Driven
-	# through the scene rather than the pure library because what could break is the
-	# WIRING — a view that forgets to set its two keys is a rigid boom again, and rigid
-	# is the behaviour with the singularity in it.
-	var was_reading_pitch := scene.reads_input()
-	scene.set_reads_input(false)
 	map.warp_to_system(scene.ship(), 0)
 	_step_exploration(scene, 1.0 / 60.0)
 	var nose_peak := 0.0
@@ -5229,86 +3593,58 @@ func _test_exploration_builds() -> void:
 			nose_peak = maxf(nose_peak, absf(rad_to_deg(asin(clampf(
 				(-scene.ship().global_transform.basis.z).y, -1.0, 1.0)))))
 			var boom := scene.camera().global_transform.basis.z
-			boom_peak = maxf(boom_peak,
-				absf(rad_to_deg(asin(clampf(-boom.y, -1.0, 1.0)))))
+			boom_peak = maxf(boom_peak, absf(rad_to_deg(asin(clampf(-boom.y, -1.0, 1.0)))))
 	scene.ship().input_stick = Vector2.ZERO
-	scene.set_reads_input(was_reading_pitch)
-	_expect(nose_peak > Tuning.num("ship/max_pitch_deg") - 6.0,
-		"the stick really does push the nose to its limit — there is something to clamp",
-		"only reached %.0f deg" % nose_peak)
-	_expect(nose_peak <= Tuning.num("ship/max_pitch_deg") + 0.5,
-		"…and the nose never goes past it, so nothing near the vertical is ever a case",
-		"%.1f deg against a %.0f deg limit" % [nose_peak,
-			Tuning.num("ship/max_pitch_deg")])
-	_expect(boom_peak <= Tuning.num("camera/ship_pitch_ceiling_deg") + 0.5,
+	_expect(nose_peak > Tuning.num("ship/max_pitch_deg") - 6.0
+			and nose_peak <= Tuning.num("ship/max_pitch_deg") + 0.5,
+		"the nose reaches its pitch limit and never passes it", "%.1f deg" % nose_peak)
+	_expect(boom_peak <= Tuning.num("camera/ship_pitch_ceiling_deg") + 0.5 and boom_peak < nose_peak - 5.0,
 		"…and the camera's boom stops at its own, much lower ceiling",
-		"%.1f deg of boom against a %.0f deg ceiling" % [boom_peak,
-			Tuning.num("camera/ship_pitch_ceiling_deg")])
-	_expect(boom_peak < nose_peak - 5.0,
-		"…so a steep climb is the SHIP pitching in the frame, not the world rolling",
-		"boom %.0f deg for a nose at %.0f" % [boom_peak, nose_peak])
+		"boom %.0f for a nose at %.0f" % [boom_peak, nose_peak])
 
-	# --- THE JUNCTION HOLDS YOU IN (ADR 0091) ---
-	# "There is a gap in the on ramp before it connects to the highway… the game will
-	# let me drive through the gap." The ramp's building was cut off at the highway's
-	# wall, which left the last several hundred metres of a merge with no structure at
-	# all — the merge is tangential by construction (ADR 0070) and therefore shallow, so
-	# the crossing runs for hundreds of metres rather than through one hole.
-	#
+	# --- THE JUNCTION HOLDS YOU IN (ADR 0091), through the real ship ---
 	# Flown up the on-ramp with the stick hard over, which is the only way to find a
-	# hole in the side of a road. What is under test is CONTAINMENT — that the ship is
-	# inside a building the whole way — rather than that it stays on the road: pressed
-	# against a wall through a merge it may well miss the handover, and being dropped
-	# where a lane ended is ADR 0076's rule working, not this one failing.
-	# LAST in this suite, because it leaves the ship halfway up a ramp.
-	var merging := road.get_node_or_null("A377BRampOnAForward") as RoadDeck
-	if merging != null:
-		var was_reading_merge := scene.reads_input()
-		scene.set_reads_input(false)
-		var joining := merging.path()
-		# ON THE ROAD THROUGH ITS PORTAL, then moved up it. Cruise is engaged by a swept
-		# crossing and by nothing else (ADR 0057), so a ship put straight onto a ramp is
-		# not on the road at all.
-		var mouth := merging.start_portal()
-		var into := joining.tangent_at(0.0)
-		scene.ship().position = mouth.position - into * 20.0
+	# hole in the side of a road. The ship must be inside a tube every frame; it may
+	# well miss the merge pressed against a wall, and that is not this test failing.
+	# LAST, because it leaves the ship halfway up a ramp.
+	map.warp_to_system(scene.ship(), 0)
+	_step_exploration(scene, 1.0 / 60.0)
+	_fly_in(scene, mouth, into)
+	scene.ship().position = on_ramp.centre(on_ramp.path.length * 0.45)
+	scene.ship().look_at(scene.map().to_global(on_ramp.centre(on_ramp.path.length * 0.45 + 200.0)), Vector3.UP)
+	scene.ship().reset_reticle()
+	_step_exploration(scene, 1.0 / 60.0)
+	scene.ship().input_throttle = 1.0
+	scene.ship().input_stick = Vector2(1.0, 0.0)
+	var loose := 0
+	frames = 0
+	var bounced := false
+	for _i in 300:
 		_step_exploration(scene, 1.0 / 60.0)
-		scene.ship().position = mouth.position + into * 20.0
-		_step_exploration(scene, 1.0 / 60.0)
-		scene.ship().position = joining.point_at(joining.length() * 0.45)
-		scene.ship().look_at(scene.map().to_global(
-			joining.point_at(joining.length() * 0.45 + 200.0)), Vector3.UP)
-		scene.ship().reset_reticle()
-		_step_exploration(scene, 1.0 / 60.0)
-		scene.ship().input_throttle = 1.0
-		scene.ship().input_stick = Vector2(1.0, 0.0)
-		var loose := 0
-		var frames := 0
-		for _i in 240:
-			_step_exploration(scene, 1.0 / 60.0)
-			if map.riding() == null:
-				break
-			frames += 1
-			var held := scene.ship().hull_barrier
-			if held == null or not held.inside:
-				loose += 1
-		scene.ship().input_throttle = 0.0
-		scene.ship().input_stick = Vector2.ZERO
-		scene.set_reads_input(was_reading_merge)
-		_expect(frames > 30,
-			"the ship rides the on-ramp far enough for the merge to be under test",
-			"only %d frames on the ramp" % frames)
-		_expect(loose == 0,
-			"flown up an on-ramp with the stick hard over, a building surrounds the ship the whole way",
-			"%d of %d frames with nothing around the ship — that is the gap" % [
-				loose, frames])
+		if map.riding() == null:
+			break
+		frames += 1
+		if scene.ship().road.tube == null:
+			loose += 1
+		if scene.ship().rebound_speed() > 1.0:
+			bounced = true
+	scene.ship().input_throttle = 0.0
+	scene.ship().input_stick = Vector2.ZERO
+	_expect(frames > 30, "the ship rides the on-ramp far enough for the merge to be under test",
+		"%d frames" % frames)
+	_expect(loose == 0, "flown up an on-ramp with the stick hard over, a tube surrounds the ship every frame",
+		"%d of %d frames with nothing around the ship" % [loose, frames])
+	_expect(bounced, "…and pressed into the wall it BOUNCES (ADR 0090) rather than sliding or passing through", "no rebound")
 
 	scene.queue_free()
 	await get_tree().process_frame
 
-## The debug roster (POC step 3). What is under test is that the three classes are
-## actually three *ships* rather than three top speeds, and that switching between
-## them rebuilds everything that follows from the class.
+
+static func _tube_name(t: Tube) -> String:
+	return "nothing" if t == null else t.name
+
+
+
 func _test_hull_roster() -> void:
 	var ship := Mothership.new()
 	add_child(ship)

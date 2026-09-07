@@ -42,8 +42,8 @@ These are settled. Do not re-litigate them; raise a flag if implementation revea
 - **Traffic runs on the right.** Each carriageway sits to the right of the spine as its own traffic travels, so the oncoming lane is on your left from either driver's seat, at any bearing. This is self-orienting and replaces the retired upper/lower deck convention: which lane is yours is a fact about the section, not a rule to remember.
 - **A carriageway declares nothing but its direction.** There is no deck to assign and nothing to check an assignment against. See *Enforced Invariants* below.
 - **Cross-section is wide and flat**, matching monitor aspect, ship proportions, and the locked-roll control scheme. Shape is a rounded lozenge rather than a rectangle, so no boundary edge is dramatically nearer than another.
-- **The lane boundary is soft.** Drifting out slows the player and pushes them back. It is an incentive, not a wall, and never a hard stop.
-- **Junctions do not exist.** Route choice happens at portals. Exits are frequent enough that a missed turn costs one hop off and back on in the other direction.
+- **The lane boundary is soft; the structure is not.** Drifting out of the lane slows the player and pushes them back — an incentive, not a wall. The tube's walls, floor, roof and median are hard and BOUNCE, normal only, costing the throttle once per contact and never stopping the ship (ADRs 0090, 0096). *(Amended 2026-09-07.)*
+- **Route choice happens at exits, on the strip.** A ramp leaves a carriageway through its wall and ends at a mouth beside a planet or merges into another highway from below; while berthed the player picks the exit on the strip along the bottom of the screen and the berth's rail rebinds when the ramp begins (ADRs 0083, 0091). Exits are frequent enough that a missed turn costs one hop off and back on in the other direction. *(Was "junctions do not exist"; amended 2026-09-07.)*
 
 ### Access and propulsion
 
@@ -65,7 +65,7 @@ These are settled. Do not re-litigate them; raise a flag if implementation revea
 ### Presentation
 
 - **The camera is fixed to the road's direction while in cruise**, with a limited maximum turn angle off the road axis.
-- **Roads curve, climb, and descend.** This is load-bearing, not decoration: a clamped heading on a straight road is a screensaver. Curvature is what makes the clamp acceptable and is the primary source of driving demand.
+- **Roads curve, climb, and descend.** This is load-bearing, not decoration: a clamped heading on a straight road is a screensaver. Curvature is what makes the clamp acceptable and is the primary source of driving demand. A road is waypoints with corner radii in `data/routes.json`; no bend may use more than `road_turn_share` of the ship's turn rate (ADR 0096).
 - **The lane is visually open.** Markers, lights, and structure define it, but the player can see out into the system and the space around them. An opaque tunnel would convert the living overworld from *witnessed* to *reported*, violating Pillar 7.
 - **Events happen beside the road, never on it.** A battle visible off to one side, which the player may choose to exit and join, is the intended shape. The road is a vantage point on the war, not a tunnel away from it.
 - **The comms network** carries chatter, distress calls, and exit alerts. All of it is opt-in information. None of it forces an encounter.
@@ -148,7 +148,7 @@ This list is illustrative. Actual ships emerge from faction catalogues.
 
 These are machine-checkable and belong in headless tests.
 
-1. **No road may bend tighter than the two carriageways are far apart.** Minimum curve radius must exceed `deck_separation`. The carriageways are offset sideways from the spine, so through a bend the inner one is genuinely shorter than the outer — which is what a divided highway does, and is fine until the radius drops below the offset, at which point the inner lane folds through itself and stops being a lane. A test measures the spine's own `max_turn_deg_per_metre` against the separation. *(Replaced 2026-08-31 by ADR 0077. It was: no road segment's heading may cross the northwest–southeast divider, resolved by a physical twist where the two decks roll past each other.)*
+1. **No road may bend tighter than `road_turn_share` of the ship's turn rate allows, nor tighter than the two carriageways are far apart.** The first is the binding one at today's numbers (842 m at 250 m/s, 34 deg/s and a half); `make roads` and the gate name any bend that breaks it (ADR 0096). Minimum curve radius must also exceed `deck_separation`. The carriageways are offset sideways from the spine, so through a bend the inner one is genuinely shorter than the outer — which is what a divided highway does, and is fine until the radius drops below the offset, at which point the inner lane folds through itself and stops being a lane. A test measures the spine's own `max_turn_deg_per_metre` against the separation. *(Replaced 2026-08-31 by ADR 0077. It was: no road segment's heading may cross the northwest–southeast divider, resolved by a physical twist where the two decks roll past each other.)*
    - **Consequence:** long ring roads are now **legal**. The old invariant forbade a road from turning more than 180 degrees over its whole length, which made X4's signature ring road impossible here; right-hand traffic is self-orienting at every bearing, so nothing breaks when a road comes back on itself.
    - **What was lost:** the twist as a landmark, and the mistake-catcher the convention was for. Neither is needed — the section itself says which lane is yours.
    - **Why enforce hard:** a folded lane is not a tuning problem. It is geometry that has stopped being a road, and no feel value can rescue it.

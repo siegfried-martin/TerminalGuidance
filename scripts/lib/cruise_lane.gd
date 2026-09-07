@@ -5,7 +5,7 @@ extends RefCounted
 ## tree, no tuning, no disk.
 ##
 ## A sample rather than a description, because everything the ship needs from the
-## road depends on where it is in it. `RoadDeck` fills one of these in each frame
+## road depends on where it is in it. `Tube.sample` fills one of these in each frame
 ## and hands it to the ship; the ship never looks the road up.
 ##
 ## **The lane boundary pushes, and the system boundary does not** (ADR 0064). That

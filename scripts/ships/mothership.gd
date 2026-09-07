@@ -74,22 +74,24 @@ var cruise: CruiseLane = null
 ## between a threshold you might cross by accident and a berth you deliberately
 ## entered. It is left the way it was entered: by pressing the key again.
 var berth: BerthHold = null
-## The road's shell, where the ship is, or null out in the open. Handed down by the
-## map each frame exactly as `cruise` is, and for the same reason: the road belongs to
-## the map and the ship never looks it up.
+## The road's collision, for this hull (ADR 0096). Given by the map once; the ship
+## keeps it because "which tube am I in" is a fact about the hull that geometry
+## updates rather than re-derives. Null in the arena, where there is no road.
 ##
-## **The lane is soft and the shell is not** (ADR 0087). The lane's push is a slope
-## that keeps you near the centre-line; this is the building, and you do not fly
+## **The lane is soft and the structure is not.** The lane's push is a slope that
+## keeps you near the centre-line; the structure is the building, and you do not fly
 ## through a building — you bounce off it (ADR 0090).
-var hull_barrier: HullBarrier = null
+var road: RoadCollider = null
 ## The bounce, still bleeding off. Carried rather than applied in one frame, because a
 ## rebound that lasts one frame is a displacement and reads as a stutter; over a few
 ## tenths it reads as coming off a wall.
 var _rebound: Vector3 = Vector3.ZERO
 ## Whether the hull was against a surface last frame. The cost of a bounce is charged
 ## on the RISING EDGE and nowhere else: charged per frame, a ship sliding along a wall
-## would be brought to a stop by it, which is the one thing the shell may not do.
-var _shell_contact: bool = false
+## would be brought to a stop by it, which is the one thing the structure may not do.
+var _road_contact: bool = false
+## Where the ship was before this frame's flying, for the road's swept hold.
+var _before_move: Vector3 = Vector3.ZERO
 
 ## The cruise drive's tank (POC step 7, ADR 0017). It is the SHIP's rather than the
 ## map's because it is a fitting on this hull, and because the arena — which has no
@@ -245,6 +247,7 @@ func _process(delta: float) -> void:
 	_mouse_speed = _mouse_pixels / delta
 	_mouse_pixels = 0.0
 	_spool(delta)
+	_before_move = position
 	if berth != null:
 		_fly_berthed(delta)
 	elif autopilot:
@@ -258,9 +261,9 @@ func _process(delta: float) -> void:
 		# nothing is acting on it — there is no flight model here, and there is not
 		# meant to be one (ADR 0003).
 		position += _velocity * delta
-	# LAST, and for every way the ship can have moved. A shell you can pass through by
-	# picking the right flight mode is not a shell (ADR 0087).
-	_hold_against_the_shell(delta)
+	# LAST, and for every way the ship can have moved. A structure you can pass
+	# through by picking the right flight mode is not a structure.
+	_hold_against_the_road(delta)
 
 
 # --- autopilot ---------------------------------------------------------------
@@ -753,41 +756,36 @@ func _fly_berthed(delta: float) -> void:
 
 ## Put back against the face it was crossing, and **bounced off it** (ADR 0090).
 ##
+## The road decides where the hull may be (`RoadCollider`); this applies the answer.
 ## The rebound is carried and bled off over `structure_bounce_seconds`, because a
 ## rebound applied in one frame is a displacement rather than a bounce.
 ##
 ## **The cost is charged on the rising edge of contact, and it is charged to the
-## THROTTLE.** Two things follow from that and both are deliberate. Charged per frame,
-## a ship sliding along a wall would be brought to a stop by it — a shell that stops
-## you is the one thing this may not be. And `_speed` climbs straight back to
-## `_throttle * top` on the next frame because acceleration is paced by the throttle's
-## own travel (`brake_limited` only limits going down), so cutting the speed alone
-## would have been invisible; cutting the throttle means the ship spools back up over
-## its own `accel_seconds`, which is what makes flying straight worth something.
-##
-## The penalty scales with how SQUARE the hit was. A glancing touch costs nearly
-## nothing and a dive into the roadway costs the whole of it.
-func _hold_against_the_shell(delta: float) -> void:
+## THROTTLE.** Charged per frame, a ship sliding along a wall would be brought to a
+## stop by it. And `_speed` climbs straight back to `_throttle * top` on the next
+## frame, so cutting the speed alone would be invisible; cutting the throttle means
+## the ship spools back up over its own `accel_seconds`, which is what makes flying
+## straight worth something. The penalty scales with how SQUARE the hit was. It never
+## takes the throttle below `structure_bounce_throttle_floor`, so nothing stops you.
+func _hold_against_the_road(delta: float) -> void:
 	var fade := maxf(Tuning.num("exploration/structure_bounce_seconds"), 0.01)
 	_rebound *= maxf(1.0 - delta / fade, 0.0)
-	if hull_barrier == null:
-		_shell_contact = false
+	if road == null:
+		_road_contact = false
 		position += _rebound * delta
 		return
-	var arriving := _velocity.length()
-	var held := hull_barrier.hold(position, _velocity)
-	position = held[0]
-	_velocity = held[1]
-	var into_wall: float = held[3]
-	var touching := into_wall > 0.0
-	if touching and not _shell_contact:
-		_rebound = held[2]
-		var square := clampf(into_wall / maxf(arriving, 0.001), 0.0, 1.0)
-		var keep := lerpf(1.0,
-			Tuning.num("exploration/structure_bounce_speed_keep"), square)
-		_throttle *= keep
+	var held := road.hold(_before_move, position, _velocity, basis, hull_extents() * 0.5, delta)
+	position = held["pos"]
+	_velocity = held["vel"]
+	var touching: bool = held["hit"]
+	if touching and not _road_contact:
+		_rebound = held["kick"]
+		var keep := lerpf(1.0, Tuning.num("exploration/structure_bounce_speed_keep"),
+			float(held["squareness"]))
+		_throttle = maxf(Tuning.num("exploration/structure_bounce_throttle_floor"),
+			_throttle * keep)
 		_speed *= keep
-	_shell_contact = touching
+	_road_contact = touching
 	position += _rebound * delta
 	_velocity += _rebound
 

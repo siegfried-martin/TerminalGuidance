@@ -1,28 +1,25 @@
 class_name RampGate
 extends Node3D
-## The permission surface across the mouth of an exit: blue if you may take it, red if
-## you may not.
+## The permission surface across an exit, where the ramp has cleared the highway's
+## wall: blue if you may take it, red if you may not.
 ##
-## **The steel ring is the building; this is the permission** — the same split ADR 0060
-## makes at a portal, in the same colours, on the other end of the ramp. An on-ramp has
-## carried one since ADR 0060 and it is what a fighter sees red everywhere; an exit had
-## nothing, so there was no way for a road to refuse to let you off it.
-##
-## Today it is closed by the same rule that reddens a portal. What it is actually FOR
-## is standing: a system that will not let you off its highway because you are not in
-## good terms with whoever runs it. That belongs to a reputation system that does not
-## exist yet, so what is built here is the surface, the refusal, and the two places
-## that have to honour it — the lane union and the exit sign.
+## **The structure is the building; this is the permission** — the same split ADR 0060
+## makes at a portal, in the same colours, on the other end of the ramp. What it is
+## FOR is standing: a system that will not let you off its highway because you are not
+## in good terms with whoever runs it. That belongs to a reputation system that does
+## not exist yet, so what is built here is the surface, the refusal, and the two places
+## that honour it — the tube's `passable` flag and the strip.
 ##
 ## It refuses by making the ramp **not a candidate**, not by putting a wall in front of
 ## the ship. A road that could stop you would be interdiction with an extra step (ADR
 ## 0014), and a closed exit is a turn you may not take, not a collision.
 
-## The road this gate lets you onto. The gate is the surface; the deck carries the
-## `passable` flag the union and the sign both read.
-var deck: RoadDeck = null
+## The ramp this gate stands across. The gate is the surface; the tube carries the
+## `passable` flag the strip reads.
+var tube: Tube = null
 
 var _sheen: MeshInstance3D
+var _size: Vector2 = Vector2(100.0, 60.0)
 var _elapsed: float = 0.0
 
 
@@ -33,8 +30,7 @@ func _ready() -> void:
 	var mat := StandardMaterial3D.new()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	# Seen from the road on the way past and from the ramp once through, so it has to
-	# read from both sides.
+	# Seen from the road on the way past and from the ramp once through.
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	mat.emission_enabled = true
 	_sheen.material_override = mat
@@ -43,23 +39,31 @@ func _ready() -> void:
 	rebuild()
 
 
+## Stand across the ramp at `at`, facing along `direction`, filling `size`.
+func place(at: Vector3, direction: Vector3, size: Vector2) -> void:
+	position = at
+	_size = size
+	var z_col := -direction.normalized()
+	var frame := RoadPath.frame_from_tangent(direction.normalized())
+	var x_col: Vector3 = (frame["up"] as Vector3).cross(z_col).normalized()
+	basis = Basis(x_col, z_col.cross(x_col).normalized(), z_col)
+	rebuild()
+
+
 func rebuild() -> void:
 	if _sheen == null:
 		return
-	# Exactly the ring's opening, because the ring is the frame this sits in.
-	var across := Tuning.num("exploration/ramp_ring_diameter")
-	(_sheen.mesh as QuadMesh).size = Vector2(across, across)
+	(_sheen.mesh as QuadMesh).size = _size
 	repaint(0.0)
 
 
-## Blue or red, and shimmering, the same as a portal (ADR 0060). The shimmer is what
-## makes it read as a working aperture rather than as a painted panel.
+## Blue or red, and shimmering, the same as a portal (ADR 0060).
 func repaint(delta: float) -> void:
 	if _sheen == null:
 		return
 	_elapsed += delta
 	var color := Tuning.color("exploration/portal_sheen_color") \
-		if deck == null or deck.passable \
+		if tube == null or tube.passable \
 		else Tuning.color("exploration/portal_denied_color")
 	var shimmer := 0.5 + 0.5 * sin(_elapsed * TAU
 		* Tuning.num("exploration/portal_sheen_scroll_hz"))

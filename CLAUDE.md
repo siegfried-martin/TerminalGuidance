@@ -13,8 +13,7 @@ session; the rules below are not suggestions.
 | What is being built first, and its scope boundary | `docs/COMBAT_POC_IMPLEMENTATION.md` |
 | What is being built *right now*, in detail | `docs/EXPLORATION_POC_IMPLEMENTATION.md` |
 | The travel layer's locked decisions — roads, portals, the speed ladder, crew | `docs/EXPLORATION_DESIGN.md` |
-| **The road as straight edges on a lattice — the plan of record, steps A–E** | `docs/HIGHWAY_LATTICE_PLAN.md` |
-| The highway's rebuild as a built structure (section, glass, docking; its construction half is superseded) | `docs/HIGHWAY_STRUCTURE_PLAN.md` |
+| **The highway: how the road is built, authored in `data/routes.json`, and verified by flying** | `docs/HIGHWAY.md` |
 | The combat bet, now built | `docs/TURRET_MODE_IMPLEMENTATION.md` |
 | What comes after the combat bet, and in what order | `docs/ROADMAP.md` |
 | The full design of record | `docs/PROJECT_OVERVIEW.md` |
@@ -138,7 +137,10 @@ protect is not implemented yet.
 - **LOD / collision.** Distant planets and stations are background-layer visuals
   with no physics body and nothing queryable. Only the swapped-in real mesh has
   collision. Never raycast, overlap-test, or query a distant object — that bug
-  looks like a physics bug and is not.
+  looks like a physics bug and is not. **This is a rule about distant stand-ins,
+  not a ban on collision.** Near geometry may collide however suits it; the road's
+  analytic collider (ADR 0096) and the missile's swept test (ADR 0032) are choices,
+  and the engine's collision shapes are as available as anything else.
 - **No interdiction.** Cruise is dropped by player input alone. Never by an NPC's
   decision, and never by taking damage — "drops on damage" is interdiction with an
   extra step. Damage degrades top cruise speed instead. Flag any proposal that
@@ -162,6 +164,11 @@ protect is not implemented yet.
   open space. Inside the tube: no camera cut, no scene load, no non-interactive
   transit, the surrounding space stays rendered, and floating origin and
   LOD/collision rules apply exactly as everywhere else.
+- **On the road, what you see is what you hit** (ADR 0096). The mesh and the
+  collider share one rule for where a wall is open; the ship is always in exactly
+  one tube or in open space; ramps are built by a rule from `data/routes.json`,
+  never measured. The road is verified by FLYING it in the gate against its own
+  rendered triangles — a road check that only reads the data is not a check.
 
 ## Testing convention
 
@@ -179,6 +186,8 @@ protect is not implemented yet.
   the asset harness. One command per scene rather than a `SCENE=` argument to
   remember: the scenes are separate because they carry different stations, and
   telling the human the wrong one wastes a session.
+- `make roads` builds the map from `data/routes.json` headless and lists every
+  problem. It is the loop while authoring a route; `make check` is the stop.
 - Systems logic is verified by tests. Physics and feel are verified by the human.
 
 ## Project layout
@@ -187,19 +196,22 @@ protect is not implemented yet.
 project.godot          minimal; autoloads and window config only
 tuning.cfg             every feel value in the game, with inline comments
 data/input_map.json    input bindings
+data/routes.json       the map: systems, highways as waypoints, ramps (hot-reloaded)
 scenes/arena.tscn      main scene: the combat POC arena (shell only)
 scenes/sandbox.tscn    asset/harness scene with the debug fly-cam (shell only)
-scripts/autoload/      Tuning, Bindings
+scripts/autoload/      Tuning, Bindings, Routes
 scripts/arena/         the combat arena builder
 scripts/ships/         mothership, target ship
 scripts/weapons/       missile, turret rounds, and the one shot resolver
 scripts/view/          camera/control state machine, chase camera, the gun station
-scripts/world/         marker lattice, reference field, the system map and road
+scripts/world/         marker lattice, reference field, the system map, the road
+                       network and its mesh, the berth
 scripts/effects/       detonation flash, pulse-beam tracer
 scripts/lib/           pure helpers — no scene tree, no disk, unit tested:
                        FlightGeometry, ReticleSteering, Damage, HullClass,
-                       BoundaryField and its regions, CruiseLane, RoadPath,
-                       EnvelopeMeter, TuningSchema, TuningWriter
+                       BoundaryField and its regions, CruiseLane, RoadPath, Tube,
+                       Road, RoadCollider, RoadProbe, EnvelopeMeter, TuningSchema,
+                       TuningWriter
 scripts/sandbox/       the asset harness scene
 scripts/debug/         HUD, debug fly-cam, the F2 tuning panel
 assets/                models and textures (+ committed .import files)
@@ -229,9 +241,13 @@ autoloads are nouns (`Tuning`, `Bindings`), `_private` members prefixed.
 
 - Update `STATUS.md` at the end of a working session: what works, what is next,
   open feel questions. Parallel sessions and future ones resume from it.
-- One short ADR in `decisions/` per irreversible or surprising decision, with the
-  reasoning and the date. See `decisions/README.md` for the template and the
-  supersede rule — accepted ADRs are never edited to change their decision.
+- One short ADR in `decisions/` per irreversible or surprising decision **about the
+  game**, with the reasoning and the date. See `decisions/README.md` for the
+  template and the supersede rule — accepted ADRs are never edited to change their
+  decision. **A bug-fix session is not an ADR.** How a collision is computed, which
+  face a mesh opens, what a gate measures: those are commit messages and doc
+  sections. Thirteen ADRs about the old road's mechanism were deleted on 2026-09-07
+  because their forbids had boxed the road in (ADR 0096); do not rebuild that pile.
 - Record feel observations as they happen, especially
   **`ship.max_engagement_envelope`** (the largest distance a fight sprawls across).
   It is the first link in the exploration numbers chain, free to observe now and

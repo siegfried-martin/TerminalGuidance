@@ -2,6 +2,8 @@
 
 *Status: accepted · 2026-08-31 · from the human's "the bottom is a road you can dock with"*
 
+**Still holds under ADR 0096**: the berth rides a `Tube` now and rebinds to a ramp's tube when the ramp begins.
+
 ## Decision
 
 **The roadway is a dock host.** Come down near it on the road and a berth is offered;
