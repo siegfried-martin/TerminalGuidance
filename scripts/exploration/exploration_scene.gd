@@ -160,6 +160,9 @@ func _build_hud() -> void:
 	_hud = DebugHud.new()
 	_hud.name = "DebugHud"
 	add_child(_hud)
+	# Put away at the start: the readout covers the left half of the view and the
+	# human cannot steer with it up. F1 brings it back.
+	_hud.visible = false
 
 	# Its own layer, above the world and below the dock screen, exactly as the arena
 	# stacks it. The tube gauge is off: there is no launch tube here, and a reload

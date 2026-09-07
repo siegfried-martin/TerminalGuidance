@@ -131,9 +131,6 @@ func build(data: Dictionary, system_positions: Dictionary) -> void:
 	_finish()
 	_plan_chunks()
 	for road in roads:
-		var far := RoadMesh.build_far(road, _floor_thickness, _beam)
-		_mesh_root.add_child(far)
-		_far[road.name] = far
 		for tube in road.tubes:
 			var lines := RoadMesh.markings(tube)
 			_mesh_root.add_child(lines)
@@ -499,11 +496,27 @@ func _plan_chunks() -> void:
 			for n in tube.neighbours:
 				if not foreign.has(n):
 					foreign.append(n)
+		# The far version leaves a ramp's head and tail out: unclipped, they would stand
+		# inside the carriageway the ramp joins.
+		var far_from := 0.0
+		var far_to := road.path.length
+		if road.kind == "ramp":
+			var record := ramp_of(road.tubes[0])
+			if not record.is_empty() and record["from_tube"] != null:
+				far_from = Tuning.num("exploration/ramp_exit_lead") \
+					+ Tuning.num("exploration/ramp_exit_length") + 400.0
+			if not record.is_empty() and record["to_tube"] != null:
+				far_to = road.path.length - Tuning.num("exploration/ramp_merge_lead") \
+					- Tuning.num("exploration/ramp_merge_drop") \
+						/ tan(deg_to_rad(Tuning.num("exploration/ramp_merge_pitch_deg"))) - 400.0
 		for chunk in RoadMesh.plan(road):
 			chunk["road"] = road
 			chunk["foreign"] = foreign
 			chunk["key"] = "%s/%d" % [road.name, chunk["index"]]
 			_chunks.append(chunk)
+			var far := RoadMesh.build_far(road, chunk, far_from, far_to, _floor_thickness, _beam)
+			_mesh_root.add_child(far)
+			_far[chunk["key"]] = far
 
 
 ## Build the chunks near `here` and drop the ones far from it. Called every frame by
@@ -530,8 +543,9 @@ func stream(here: Vector3) -> void:
 	for key: String in gone:
 		(_loaded[key] as Node3D).queue_free()
 		_loaded.erase(key)
-	if not gone.is_empty():
-		_refresh_far()
+		var far: Node3D = _far.get(key)
+		if far != null:
+			far.visible = true
 	var wanted: Array = []
 	for chunk in _chunks:
 		var key: String = chunk["key"]
@@ -563,21 +577,10 @@ func _commit_chunk(chunk: Dictionary, built: Dictionary) -> void:
 	var node := RoadMesh.commit(chunk["road"], chunk["index"], built)
 	_mesh_root.add_child(node)
 	_loaded[chunk["key"]] = node
-	_refresh_far()
-
-
-## A road's far version shows only while none of its chunks is loaded: the simplest
-## rule that never draws two coincident surfaces.
-func _refresh_far() -> void:
-	for road in roads:
-		var any := false
-		for key: String in _loaded:
-			if key.begins_with(road.name + "/"):
-				any = true
-				break
-		var far: Node3D = _far.get(road.name)
-		if far != null:
-			far.visible = not any
+	# The far version of this stretch steps aside for the detailed one.
+	var far: Node3D = _far.get(chunk["key"])
+	if far != null:
+		far.visible = false
 
 
 func _chunk_named(key: String) -> Dictionary:

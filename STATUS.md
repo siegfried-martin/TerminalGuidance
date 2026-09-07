@@ -52,6 +52,30 @@ which.
 has not. The old road's session notes are gone from here on purpose; the design
 rules that survived them are restated in ADR 0096.
 
+### The first drive — 2026-09-07
+
+The human: *"overall very big improvement"*, and three things from the seat, all
+landed the same day:
+
+- **The debug HUD starts put away.** It covers the left half of the view; F1 brings
+  it back.
+- **Dock mode "occasionally wouldn't take an exit I told it to."** It did take it —
+  and then `berth_ramp_release_metres` (400, the old road's number) handed the ship
+  back 100 m into the divergence while it was still inside the mainline. An exit runs
+  300 m level and then 860 m more before it clears the wall. Now 3200, and the gate
+  asserts the release comes after the ramp has cleared the highway.
+- **"Felt like I was getting caught on something" taking the first exit.** Reproduced
+  with the probe: steering into an exit sharper than its 8° divergence rides the
+  ramp's outer wall for the whole diverging leg, and while pinned there the ship is
+  "outside the lane" of a ramp whose centre is 100 m inboard, so the edge penalty
+  halved its speed for two kilometres. Inside a junction — where the ramp's tube still
+  overlaps the highway's — the speed penalty is lifted; the push toward the ramp's
+  centre stays. The probe now takes every exit on the map at 15° and must hold 70%
+  of cruise, and does (about 200 of 250).
+- Also fixed: the far version of a road vanished entirely once one of its chunks
+  loaded (it is per chunk now), and a ramp's far version stood unclipped inside the
+  carriageway until its chunk streamed in (ramps' heads and tails are left out of it).
+
 ### What to fly first, and the feel calls that come with it
 
 - **The road at all.** `make fly`, fly the on-ramp at A onto A-377B, ride to B, take

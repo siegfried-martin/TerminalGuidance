@@ -304,6 +304,7 @@ func _ride_the_road(ship: Mothership, here: Vector3) -> void:
 			return
 		_riding = inside
 		ship.cruise = inside.sample(here, clearance)
+		_forgive_the_junction(ship, here, clearance)
 		ship.adopt_road_axis(ship.cruise.axis)
 		ship.reset_reticle()
 		return
@@ -319,6 +320,24 @@ func _ride_the_road(ship: Mothership, here: Vector3) -> void:
 	# the tube on the far side is the road now (ADR 0063's rule, applied to lanes).
 	_riding = inside
 	ship.cruise = _riding.sample(here, clearance)
+	_forgive_the_junction(ship, here, clearance)
+
+
+## INSIDE A JUNCTION THE LANE DOES NOT PENALISE. A ramp's tube overlaps its host for
+## the whole of its lead and diverging leg, and a ship steering into an exit a little
+## sharper than the ramp diverges rides the ramp's OUTER wall through all of it —
+## which is "outside the lane" of the ramp, whose centre is a hundred metres inboard,
+## and the edge penalty halves the ship's speed for two kilometres. From the seat that
+## is being caught on something. Where two tubes overlap the ship is on the road
+## either way, so the speed penalty is lifted; the push toward the ramp's centre
+## stays, because that is the road helping you line up.
+func _forgive_the_junction(ship: Mothership, here: Vector3, clearance: Vector2) -> void:
+	if ship.cruise == null or _riding == null:
+		return
+	for other in _riding.neighbours:
+		if other.contains(here):
+			ship.cruise.edge_speed_penalty = 1.0
+			return
 
 
 ## The exits ahead on the tube being ridden, nearest first, as

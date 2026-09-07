@@ -70,6 +70,7 @@ func run() -> void:
 	_containment()
 	_laps()
 	_ramps()
+	_exits_steered()
 	_dives()
 	_drunk()
 	for w in _warnings:
@@ -129,6 +130,38 @@ func _ramps() -> void:
 			route.append(ramp["to_tube"])
 		var seconds := (2000.0 + road.path.length + 3000.0) / _probe.cruise_speed + 20.0
 		_fly("ramp %s" % road.name, route, start_tube, start_t, seconds, to_mouth)
+
+
+## Every exit, taken the way a player takes one: steering into it sharper than it
+## diverges, from short of the junction. The probe rides the ramp's outer wall for
+## the diverging leg, and it must arrive in the ramp without being slowed — which is
+## the "caught on something" the human reported from the seat.
+func _exits_steered() -> void:
+	for ramp in _network.ramps:
+		if ramp["from_tube"] == null:
+			continue
+		var host: Tube = ramp["from_tube"]
+		var rt: Tube = (ramp["road"] as Road).tubes[0]
+		var start := host.path.wrap_t(float(ramp["from_t"]) - 600.0 * host.direction)
+		_probe.place(host, start)
+		_probe.throttle = 1.0
+		_probe.velocity = _probe.forward() * _probe.cruise_speed
+		var f := host.travel_frame(start)
+		_probe.aim = (f["fwd"] as Vector3).rotated(f["up"], -deg_to_rad(15.0))
+		var slowest := INF
+		var label := "steering 15 deg into exit %s" % rt.name
+		var ok := true
+		for i in int(9.0 / DT):
+			if not _step_checked(label, i):
+				ok = false
+				break
+			if i * DT > 1.0:
+				slowest = minf(slowest, _probe.speed())
+		_expect(ok and _probe.tube() == rt, label + " ends in the ramp",
+			"in %s" % _name(_probe.tube()))
+		_expect(slowest > _probe.cruise_speed * 0.7,
+			label + " is never slowed below 70%% of cruise on the way",
+			"%.0f m/s at slowest" % slowest)
 
 
 ## Into every wall at every junction edge and every bend.

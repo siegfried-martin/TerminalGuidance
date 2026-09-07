@@ -2661,6 +2661,14 @@ func _test_lane_geometry() -> void:
 	_expect(Tuning.num("exploration/lane_edge_speed_penalty") > 0.0,
 		"outside the lane is SLOWER, never stopped — the boundary is soft (ADR 0014)",
 		"a zero penalty is a wall")
+	# A berth on a planet exit must carry the ship OUT of the highway before it lets go
+	# (ADR 0092): released inside the carriageway, the dock reads as having ignored the
+	# exit that was pressed.
+	var clears_at := Tuning.num("exploration/ramp_exit_lead") + Tuning.num("exploration/ramp_exit_length")
+	_expect(Tuning.num("exploration/berth_ramp_release_metres") > clears_at,
+		"a berth on a planet exit lets go only after the ramp has cleared the highway's wall",
+		"released at %.0f m, the ramp clears the wall at %.0f" % [
+			Tuning.num("exploration/berth_ramp_release_metres"), clears_at])
 
 	# The portal is the on-ramp mouth and is deliberately NARROWER than the road it
 	# feeds. What must hold is that it clears the hull: a ship that cannot fit

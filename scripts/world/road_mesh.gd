@@ -117,23 +117,27 @@ static func build_chunk(road: Road, foreign: Array[Tube], chunk: Dictionary,
 	return {"verts": b._verts, "norms": b._norms, "faces": b._faces}
 
 
-## The whole road, coarse and unclipped, for the distance. Main thread only.
-static func build_far(road: Road, floor_thickness: float, beam: float) -> Node3D:
+## One chunk's stretch of road, coarse and unclipped, for the distance. Main thread
+## only. `from_t`..`to_t` bounds the stretch actually drawn: a ramp leaves its head and
+## tail out, because unclipped they would stand inside the carriageway they join.
+static func build_far(road: Road, chunk: Dictionary, from_t: float, to_t: float,
+		floor_thickness: float, beam: float) -> Node3D:
 	var b := RoadMesh.new()
 	b._road = road
 	b._floor_thickness = floor_thickness
 	b._beam = beam
 	b._reset()
-	var n := maxi(int(ceil(road.path.length / FAR_RING_METRES)), 1)
-	var ring := road.path.length / n
-	for i in n:
-		var f0 := road.path.frame(i * ring)
-		var f1 := road.path.frame(minf((i + 1) * ring, road.path.length))
-		if road.path.closed and i + 1 == n:
-			f1 = road.path.frame(0.0)
-		b._strip(f0, f1)
-	var node := commit(road, -1, {"verts": b._verts, "norms": b._norms})
-	node.name = "Far " + road.name
+	var t0 := maxf(float(chunk["t0"]), from_t)
+	var t1 := minf(float(chunk["t1"]), to_t)
+	if t1 > t0:
+		var n := maxi(int(ceil((t1 - t0) / FAR_RING_METRES)), 1)
+		var ring := (t1 - t0) / n
+		for i in n:
+			var f0 := road.path.frame(t0 + i * ring)
+			var f1 := road.path.frame(minf(t0 + (i + 1) * ring, road.path.length))
+			b._strip(f0, f1)
+	var node := commit(road, int(chunk["index"]), {"verts": b._verts, "norms": b._norms})
+	node.name = "Far %s chunk %d" % [road.name, chunk["index"]]
 	return node
 
 

@@ -21,6 +21,9 @@ var half: Vector3 = Vector3(7.0, 4.0, 24.0)
 var frame: Dictionary = {}
 var lane: CruiseLane = null
 var time: float = 0.0
+## Whether the hull was against a surface last step: the bounce cost is charged on
+## the rising edge of contact, as the mothership charges it.
+var _contact: bool = false
 var turn_rate_deg: float = 34.0
 var pitch_limit_deg: float = 7.0
 var cruise_speed: float = 250.0
@@ -67,6 +70,11 @@ func step(dt: float) -> void:
 	if here != null:
 		lane = here.sample(position, Vector2(half.x, half.y))
 		frame = here.travel_frame(here.local(position)["t"])
+		# Inside a junction the lane does not penalise (see `SystemMap`).
+		for other in here.neighbours:
+			if other.contains(position):
+				lane.edge_speed_penalty = 1.0
+				break
 	else:
 		lane = null
 		frame = RoadPath.frame_from_tangent(forward())
@@ -100,8 +108,10 @@ func step(dt: float) -> void:
 	position = held["pos"]
 	velocity = (held["vel"] as Vector3) + (held["kick"] as Vector3) \
 		- (lane.push() if lane != null else Vector3.ZERO)
-	if held["hit"]:
+	var touching: bool = held["hit"]
+	if touching and not _contact:
 		var keep := lerpf(1.0, Tuning.num("exploration/structure_bounce_speed_keep"),
 			float(held["squareness"]))
 		throttle = maxf(Tuning.num("exploration/structure_bounce_throttle_floor"),
 			throttle * keep)
+	_contact = touching
