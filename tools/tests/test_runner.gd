@@ -225,7 +225,8 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/star_radius_planet_multiple", "exploration/star_gap_below_floor",
 	"exploration/star_offset_metres", "exploration/star_color", "exploration/star_emission",
 	"exploration/star_light_energy", "exploration/star_light_range",
-	"exploration/star_light_attenuation", "exploration/ambient_energy", "exploration/debug_teleport_enabled",
+	"exploration/star_light_attenuation", "exploration/ambient_energy",
+	"exploration/spawn_behind_mouth_metres", "exploration/debug_teleport_enabled",
 ]
 
 const REQUIRED_ACTIONS: Array[String] = [

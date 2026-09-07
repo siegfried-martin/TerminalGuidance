@@ -183,6 +183,35 @@ The lane markings and the glass's sheen are what you steer by out there. Godot's
 omni light multiplies by distance^-attenuation, so a star is attenuation 0 with a
 system-sized range; the star keys are under `;;; The star`.
 
+**The near-system pass** — 2026-09-07, from the human: *"the highway is a little
+too dim near a system… partially because the distance is a bit too large now
+between the highway and the planet. also the current build drops me too far from a
+planet or highway entrance. also the detection range for a planet landing sequence
+needs to be much smaller."* Done as numbers, not code, except the spawn:
+
+- **The highways came down.** A-377B from 720 m to 400, K-112 from 1200 to 800;
+  K-112's mouths sit at 500 above the plane and A-377B's at 100 (`ramp_mouth_height`,
+  now 100). The interchange ramps came down with them; X1 threads between two parts
+  of B's K-112 entry and validates with a few tens of metres either side, so it is
+  the corner `make roads` will name first if the heights move again.
+- **The star is brighter** (`star_light_energy` 3.0) but note the roadway faces UP:
+  the floor's lit side is the top, the star is below it, so what the star lights from
+  below is the underside and the glass. The floor you see is lit by ambient and by
+  the star's light coming back off the walls. Raising `star_light_energy` brightens
+  the walls and the planet's cap first; `exploration/ambient_energy` (0.06) is what
+  brightens the floor itself, everywhere, including between systems.
+- **A run starts behind the first entry mouth** (`spawn_behind_mouth_metres`, 500),
+  facing into it, so the first thing on screen is the way onto the road.
+  `SystemMap.place_ship` is still the one placement rule; the debug teleport
+  (`warp_to_system`) uses it too.
+- **The landing envelope is smaller** (`approach_envelope_radius` 900, was 2400).
+  The gate still checks it leaves a fighter's countdown outside the surface.
+- **A hole in the median, found by the gate and closed.** A ramp's tail runs
+  coincident with its host carriageway, so its wall there IS the median, and the one
+  wall-open rule saw the other carriageway a quarter-metre through it. A ramp and its
+  host's other carriageway are no longer each other's neighbours (`_finish`). The
+  drunk probe on E's entry to K-112 L found it once the ramp was 100 m shorter.
+
 **Flagged, not built (scope, per CLAUDE.md):** lamps along the road, a headlight or
 searchlight as ship equipment, and what the dark costs off-road. Each is a design
 decision with a trade-off in it, and a doc or ADR before code.
@@ -191,24 +220,26 @@ decision with a trade-off in it, and a doc or ADR before code.
 
 - **The road at all.** `make fly`, fly the on-ramp at A onto A-377B, ride to B, take
   the exit on the strip while berthed. `K` drops you at each junction in turn.
-- **`exploration/road_detail_radius`** (6000 m): how far ahead the detailed structure
+- **`exploration/road_detail_radius`** (12000 m): how far ahead the detailed structure
   is built. Too short and a junction's walls appear late; too long and a chunk build
   hitches. Watch the `tube` row on the HUD for the chunk count.
-- **`exploration/ramp_exit_angle_deg`** (8), **`ramp_exit_length`** (2000): how an
-  exit peels off. The POC's numbers; the human said sizing "could maybe be a little
-  smaller".
+- **`exploration/ramp_exit_angle_deg`** (15, the human's number: *"feels good"*),
+  **`ramp_exit_length`** (1000): how an exit peels off.
 - **`exploration/lane_width` / `lane_height`** (100 × 60): scaled down 2026-09-07
   for the planets. Saving either rebuilds the structure.
 - **The floor.** The POC drew a textured roadway; the human preferred this project's
   painted lane lines. The floor is plain metal with the five markings per carriageway.
-- **`exploration/planet_radius`** (900) and `planet_center_depth` (1300): the cap's
-  height through the floor is their difference. `approach_envelope_radius` must stay
+- **`exploration/planet_radius`** (500) and `planet_center_depth` (2000): the cap's
+  height through the floor is their difference (the human's revert; 500 is a bead). `approach_envelope_radius` must stay
   more than a fighter's countdown outside the surface; the gate checks.
-- **The structure's rib beat** (`structure_module_length`, 400) is continuous along
+- **The structure's rib beat** (`structure_module_length`, 800) is continuous along
   a road and a ramp continues its host's phase; the old road's stations are gone.
-- **Mouth height.** A-377B's mouths sit 160 m above the plane, K-112's at 400 so its
+- **Mouth height.** A-377B's mouths sit 100 m above the plane, K-112's at 500 so its
   ramps at B clear A-377B's (`mouth_height` in `data/routes.json`). Whether an exit
   that climbs to its mouth reads right is a feel call.
+- **How dark, and how lit.** `star_light_energy`, `exploration/ambient_energy`,
+  `star_gap_below_floor` and `star_offset_metres` are the four knobs; the roadway
+  faces up, so the ambient is the floor's light and the star is the walls'.
 
 ### Known, not done
 

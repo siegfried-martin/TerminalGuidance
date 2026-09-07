@@ -529,17 +529,36 @@ func system_name(index: int) -> String:
 	return "—" if index < 0 or index >= NAMES.size() else NAMES[index]
 
 
-## Put a ship in a system, back from one of its apertures and facing out along it.
-## One placement rule, used by the spawn and by the debug teleport.
+## Put a ship in a system: a short way behind the system's first entry mouth, facing
+## into it, so the first thing on screen is the way onto the road. One placement
+## rule, used by the spawn and by the debug teleport. A system with no entry (none
+## on this map) falls back to the middle of the disc facing its aperture.
 func place_ship(ship: Node3D, index: int) -> void:
 	if ship == null or index < 0 or index >= _discs.size():
 		return
 	var disc := _discs[index]
+	for record in _road.ramps:
+		var portal: Portal = record["entry_portal"]
+		if portal == null or String(record["mouth_of"]) != NAMES[index]:
+			continue
+		var back := Tuning.num("exploration/spawn_behind_mouth_metres")
+		ship.global_position = to_global(portal.position - portal.travel * back)
+		_face(ship, to_global(portal.position))
+		return
 	var home := disc.position
 	var mouth := disc.aperture_mouth(disc.aperture_count() - 1)
 	var out := (mouth - home).normalized()
 	ship.global_position = to_global(home - out * disc.radius() * 0.45)
-	ship.look_at(to_global(mouth), Vector3.UP)
+	_face(ship, to_global(mouth))
+
+
+## Point a placed ship at something. The nose follows the reticle every frame, so a
+## bare `look_at` is undone within a second as the ship turns back to where the
+## reticle was left; the reticle has to come with it, as the debug drop's does.
+func _face(ship: Node3D, target: Vector3) -> void:
+	ship.look_at(target, Vector3.UP)
+	if ship is Mothership:
+		(ship as Mothership).reset_reticle()
 
 
 ## Take the ship off whatever it was on. Being moved kilometres while a lane sample

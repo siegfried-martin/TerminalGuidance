@@ -8,7 +8,8 @@ extends Node
 ## open exactly where the ramp is.
 ##
 ## `ROAD_SHOT_SPOT` picks the spot by label prefix ("Exit", "Merge", "Bend 1", "Mouth");
-## the default is the first exit. Lives in tools/ rather than in the scene, because
+## the default is the first exit. "Spawn" leaves the ship where a run starts, engine
+## off, which is what a new player sees first. Lives in tools/ rather than in the scene, because
 ## the game should not carry a code path that exists for screenshots.
 
 var _scene: ExplorationScene
@@ -28,6 +29,11 @@ func _process(_delta: float) -> void:
 	var wanted := OS.get_environment("ROAD_SHOT_SPOT")
 	if wanted.is_empty():
 		wanted = "Exit"
+	if wanted.to_lower() == "spawn":
+		_scene.camera().snap()
+		_armed = true
+		print("[shot] spawn")
+		return
 	for spot in _scene.map().spots():
 		if String(spot["label"]).to_lower().begins_with(wanted.to_lower()):
 			_scene.map().drop_on_road(_scene.ship(), spot["tube"], float(spot["t"]))

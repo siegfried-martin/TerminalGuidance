@@ -435,6 +435,22 @@ func _finish() -> void:
 		for b in tubes:
 			if a.road != b.road and a.bounds.intersects(b.bounds):
 				a.neighbours.append(b)
+	# A ramp's head and tail run inside its host's building, coincident with the host
+	# carriageway, so the ramp's wall there IS the median. It must not open into the
+	# host's other carriageway, nor that carriageway into it: the one wall-open rule
+	# (a point through the wall is inside a neighbour) would see the other carriageway
+	# a quarter-metre through the median and open a hole across the road.
+	for ramp in ramps:
+		var road: Road = ramp["road"]
+		for host: Tube in [ramp["from_tube"], ramp["to_tube"]]:
+			if host == null:
+				continue
+			for other in host.road.tubes:
+				if other == host:
+					continue
+				for t in road.tubes:
+					t.neighbours.erase(other)
+					other.neighbours.erase(t)
 	for road in roads:
 		if road.kind != "highway":
 			continue
