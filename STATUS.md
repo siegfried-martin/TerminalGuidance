@@ -169,8 +169,11 @@ Beyond `road_detail_radius`, planets, stars and the road's far mesh and markings
 drawn smaller than perspective by `far_compress_power` (`FarLayer`, one formula shared
 by the nodes and the shaders; the far mesh carries each vertex's ring centre in a
 custom attribute and shrinks toward it). At 1.0, something twice as far looks four
-times smaller. From an entry mouth the next system's highway is a hairline and its
-planet a dot.
+times smaller; **at 2.0, where it sits since 2026-09-08** (the human: *"it needs to
+be stronger/more pronounced"*), eight times. From an entry mouth the next system's
+highway is a hairline and its planet a dot. The slider is `far_compress_power`; the
+distance it starts at is `road_detail_radius`, because the detailed chunks inside
+that are exact and only the far mesh beyond it is compressed.
 
 **Each system has a star, and it is the light.** Below the floor and beside the
 planet at a seeded bearing, three planet diameters across, an emissive disc with an
