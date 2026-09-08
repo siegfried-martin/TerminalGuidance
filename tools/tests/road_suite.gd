@@ -183,18 +183,25 @@ func _exits_steered() -> void:
 		var slowest := INF
 		var label := "steering 15 deg into exit %s" % rt.name
 		var ok := true
+		var entered := false
 		for i in int(9.0 / DT):
 			# Once in the ramp, fly it: what is under test is what ENTERING sharply
 			# costs, not holding a fixed heading into the ramp's own bends.
 			if _probe.tube() == rt:
+				entered = true
 				var lc := rt.local(_probe.position)
 				_probe.aim = (rt.centre(float(lc["t"]) + 400.0) - _probe.position).normalized()
+			elif entered:
+				# Out through the mouth: a planet ramp is short enough to be flown end
+				# to end inside the window, and that is the ramp taken.
+				break
 			if not _step_checked(label, i):
 				ok = false
 				break
 			if i * DT > 1.0:
 				slowest = minf(slowest, _probe.speed())
-		_expect(ok and _probe.tube() == rt, label + " ends in the ramp",
+		_expect(ok and entered and (_probe.tube() == rt or _probe.tube() == null),
+			label + " ends in the ramp, or out through its mouth",
 			"in %s" % _name(_probe.tube()))
 		_expect(slowest > _probe.cruise_speed * 0.7,
 			label + " is never slowed below 70%% of cruise on the way",

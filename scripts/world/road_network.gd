@@ -152,62 +152,76 @@ func _side_of(road: Road, side: String) -> Tube:
 	return road.tubes[1] if side == "L" and road.tubes.size() == 2 else road.tubes[0]
 
 
-## The planet ramp rule: a STRAIGHT SHOT. The highway runs along the bottom of the
-## system and the mouths sit up beside the planet, so an EXIT peels off the
-## carriageway at the exit angle and then climbs in one straight leg at
-## `ramp_climb_deg` to its mouth, and an ENTRY drops from its mouth in one straight
-## leg at the same angle onto the merge approach. The climb angle sets the ramp's
-## length: steeper is shorter. Both mouths sit beside the system's centre, never over
-## it, outside the planet's approach envelope (the gate checks).
+## The planet ramp rule: an S-BEND. The highway runs along the bottom of the system
+## and the mouths sit low beside the planet, a little above the road and a little to
+## its right, so a ramp is two bends of `ramp_bend_radius` through `ramp_bend_deg`
+## with one straight between them. An EXIT leaves the carriageway level, bends up
+## and right, runs straight, and bends back level into its mouth; an ENTRY leaves its
+## mouth level, bends down and left, runs straight, and bends back level onto the
+## merge lead inside the carriageway — in from above, never up through the floor.
+## The mouth's offset from the carriageway sets the ramp's length: it is the offset
+## over the tangent of the bend angle, plus a bend's tangent length at each end. Both
+## mouths sit beside the system's centre, outside the planet's approach envelope (the
+## gate checks).
 func _planet_ramp(tube: Tube, system: String, centre: Vector3, kind: String) -> void:
 	var t_s: float = tube.local(centre)["t"]
-	var f := tube.travel_frame(t_s)
-	var fwd: Vector3 = f["fwd"]
-	var right: Vector3 = f["right"]
-	var road_y: float = (f["pos"] as Vector3).y
 	# A highway may also push its mouths further along (`mouth_along` in routes.json),
 	# so a road crossing another can put its mouths clear of the other's building.
 	var along: float = float(tube.road.get_meta("mouth_along",
 		Tuning.num("exploration/ramp_mouth_along_offset")))
 	var side := Tuning.num("exploration/ramp_mouth_side_offset")
-	# A highway may lift its mouths (`mouth_height` in routes.json) so that where two
-	# highways cross, their ramps to the same planet pass over rather than through
-	# each other.
+	# A highway may lift or lower its mouths (`mouth_height` in routes.json) so that
+	# where two highways cross, their ramps to the same planet pass clear of each
+	# other.
 	var mouth_y: float = centre.y + float(tube.road.get_meta("mouth_height",
 		Tuning.num("exploration/ramp_mouth_height")))
-	var climb := tan(deg_to_rad(clampf(Tuning.num("exploration/ramp_climb_deg"), 1.0, 80.0)))
-	var lead := Tuning.num("exploration/ramp_exit_lead")
-	var length := Tuning.num("exploration/ramp_exit_length")
-	var angle := deg_to_rad(Tuning.num("exploration/ramp_exit_angle_deg"))
-	var merge_lead := Tuning.num("exploration/ramp_merge_lead")
+	var theta := deg_to_rad(clampf(Tuning.num("exploration/ramp_bend_deg"), 5.0, 75.0))
+	var r := Tuning.num("exploration/ramp_bend_radius")
+	# A bend's tangent length: how far before and after its corner the arc reaches.
+	# Each straight has to be two of these, or the arcs would overlap.
+	var d := r * tan(theta * 0.5) + 1.0
 	# The mouth's offset to the driver's right of THIS carriageway's centre-line: the
 	# side offset is from the system's centre, which the road's own centre-line passes
 	# through, and the carriageway sits u0 to one side of that.
 	var lateral := side - tube.u0 * tube.direction
 	var name := "%s %s %s" % [tube.name, system, "out" if kind == "exit" else "in"]
 	if kind == "exit":
-		var mouth := centre - fwd * along + right * side
-		mouth.y = mouth_y
-		# The straight leg starts where the diverging leg ends, `length` at the exit
-		# angle past the lead, and reaches the mouth at the climb angle: its run over
-		# the ground is the height to climb over the tangent of the angle.
-		var rise := absf(mouth_y - road_y)
-		var ground := rise / climb
+		# An exit is taken by steering RIGHT, so it leaves through the wall the way
+		# every ramp's head does — the level peel at the exit angle — and only then
+		# bends up to its mouth: the S-bend carries the climb and whatever of the
+		# side offset the peel did not.
+		var angle := deg_to_rad(Tuning.num("exploration/ramp_exit_angle_deg"))
+		var lead := Tuning.num("exploration/ramp_exit_lead")
+		var length := Tuning.num("exploration/ramp_exit_length")
+		var t_mouth := tube.path.wrap_t(t_s - tube.direction * along)
+		var f := tube.travel_frame(t_mouth)
+		var c: Vector3 = f["pos"]
+		var mouth: Vector3 = c + (f["right"] as Vector3) * lateral + (f["up"] as Vector3) * (mouth_y - c.y)
 		var across := lateral - length * sin(angle)
-		var ahead := sqrt(maxf(ground * ground - across * across, 0.0))
-		var t0 := tube.path.wrap_t(t_s - tube.direction * (along + ahead + lead + length * cos(angle)))
-		_ramp(name, tube, t0, null, 0.0, [mouth], [0.0], system)
+		var off: Vector3 = (f["right"] as Vector3) * across + (f["up"] as Vector3) * (mouth_y - c.y)
+		var run := off.length() / tan(theta)
+		var t0 := tube.path.wrap_t(t_mouth - tube.direction * (lead + length * cos(angle) + run + 2.0 * d))
+		var f0 := tube.travel_frame(t0)
+		var p0: Vector3 = f0["pos"]
+		var p1: Vector3 = p0 + (f0["fwd"] as Vector3) * lead
+		var p2: Vector3 = p1 + (f0["fwd"] as Vector3).rotated(f0["up"], -angle) * length
+		var m2: Vector3 = mouth - (f["fwd"] as Vector3) * 2.0 * d
+		_ramp_build(name, tube, t0, null, 0.0, [p0, p1, p2, m2, mouth],
+			[0.0, minf(Tuning.num("exploration/ramp_exit_radius"), (lead * 0.5 - 1.0) / maxf(tan(angle * 0.5), 0.001)), r, r, 0.0], system)
 	else:
-		var mouth := centre + fwd * along + right * side
-		mouth.y = mouth_y
-		# The straight leg drops from the mouth onto the start of the merge lead,
-		# `merge_lead` short of the merge point, coming in through the roof or the
-		# wall rather than up through the floor.
-		var rise := absf(mouth_y - road_y)
-		var ground := rise / climb
-		var ahead := sqrt(maxf(ground * ground - lateral * lateral, 0.0))
-		var t_m := tube.path.wrap_t(t_s + tube.direction * (along + ahead + merge_lead))
-		_ramp(name, null, 0.0, tube, t_m, [mouth], [0.0], system, true)
+		var t_mouth := tube.path.wrap_t(t_s + tube.direction * along)
+		var f := tube.travel_frame(t_mouth)
+		var c: Vector3 = f["pos"]
+		var mouth: Vector3 = c + (f["right"] as Vector3) * lateral + (f["up"] as Vector3) * (mouth_y - c.y)
+		var off := mouth - c
+		var run := off.length() / tan(theta)
+		var merge_lead := maxf(Tuning.num("exploration/ramp_merge_lead"), 2.0 * d)
+		var t_m := tube.path.wrap_t(t_mouth + tube.direction * (2.0 * d + run + merge_lead))
+		var fm := tube.travel_frame(t_m)
+		var e0: Vector3 = fm["pos"]
+		var e1: Vector3 = e0 - (fm["fwd"] as Vector3) * merge_lead
+		var m1: Vector3 = mouth + (f["fwd"] as Vector3) * 2.0 * d
+		_ramp_build(name, null, 0.0, tube, t_m, [mouth, m1, e1, e0], [0.0, r, r, 0.0], system)
 
 
 func _authored_ramp(r: Dictionary, by_name: Dictionary, systems: Dictionary) -> Road:
@@ -292,7 +306,7 @@ func _t_of(tube: Tube, end: Dictionary, systems: Dictionary) -> float:
 ## waypoints between the standard exit head and the standard merge tail, each with a
 ## corner radius (0 at a mouth endpoint).
 func _ramp(name: String, from_tube: Tube, from_t: float, to_tube: Tube, to_t: float,
-		mids: Array, mid_radii: Array, mouth_of: String, from_above := false) -> Road:
+		mids: Array, mid_radii: Array, mouth_of: String) -> Road:
 	var pts: Array = []
 	var radii: Array = []
 	var lead := Tuning.num("exploration/ramp_exit_lead")
@@ -321,19 +335,20 @@ func _ramp(name: String, from_tube: Tube, from_t: float, to_tube: Tube, to_t: fl
 		var e0: Vector3 = f["pos"]
 		var e1: Vector3 = e0 - (f["fwd"] as Vector3) * Tuning.num("exploration/ramp_merge_lead")
 		var rm := Tuning.num("exploration/ramp_merge_radius")
-		if from_above:
-			# A planet entry drops straight onto the merge lead from its mouth up
-			# beside the planet: one bend, at the lead's start.
-			pts += [e1, e0]
-			radii += [rm, 0.0]
-		else:
-			# An interchange ramp comes up from below: `drop` under the carriageway,
-			# climbing at the merge pitch through the floor onto the lead.
-			var drop := Tuning.num("exploration/ramp_merge_drop")
-			var run := drop / tan(deg_to_rad(Tuning.num("exploration/ramp_merge_pitch_deg")))
-			var e2: Vector3 = e1 - (f["fwd"] as Vector3) * run - (f["up"] as Vector3) * drop
-			pts += [e2, e1, e0]
-			radii += [rm, rm, 0.0]
+		# An interchange ramp comes up from below: `drop` under the carriageway,
+		# climbing at the merge pitch through the floor onto the lead.
+		var drop := Tuning.num("exploration/ramp_merge_drop")
+		var run := drop / tan(deg_to_rad(Tuning.num("exploration/ramp_merge_pitch_deg")))
+		var e2: Vector3 = e1 - (f["fwd"] as Vector3) * run - (f["up"] as Vector3) * drop
+		pts += [e2, e1, e0]
+		radii += [rm, rm, 0.0]
+	return _ramp_build(name, from_tube, from_t, to_tube, to_t, pts, radii, mouth_of)
+
+
+## Build a ramp from its waypoints and corner radii: fit the arcs, make the road and
+## its tube, record the junctions, place the portals, gate and spots.
+func _ramp_build(name: String, from_tube: Tube, from_t: float, to_tube: Tube, to_t: float,
+		pts: Array, radii: Array, mouth_of: String) -> Road:
 	if pts.size() < 2:
 		problems.append("ramp %s has no shape" % name)
 		return null
@@ -500,13 +515,17 @@ func _validate() -> void:
 	var v := Tuning.num("exploration/cruise_speed")
 	var w := deg_to_rad(Tuning.num("exploration/cruise_turn_rate_deg_per_sec"))
 	var share := clampf(Tuning.num("exploration/road_turn_share"), 0.05, 1.0)
-	var r_needed := v / (share * w)
+	var ramp_share := clampf(Tuning.num("exploration/ramp_turn_share"), 0.05, 1.0)
 	var pitch_max := Tuning.num("exploration/road_pitch_max_deg")
 	for road in roads:
+		# A ramp may bend harder than a highway: it is short, it is taken on purpose,
+		# and a ramp built to a highway's bends is a ramp no engineer would build.
+		var s := ramp_share if road.kind == "ramp" else share
+		var r_needed := v / (s * w)
 		var r := road.path.min_radius()
 		if r < r_needed:
 			problems.append("%s: bend radius %.0f m under the %.0f m that %.0f%% of the turn rate allows" % [
-				road.name, r, r_needed, share * 100.0])
+				road.name, r, r_needed, s * 100.0])
 		if road.kind == "highway" and road.path.max_pitch_deg() > pitch_max + 0.01:
 			problems.append("%s: pitch %.1f deg over road_pitch_max_deg" % [
 				road.name, road.path.max_pitch_deg()])

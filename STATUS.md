@@ -215,6 +215,15 @@ needs to be much smaller."* Done as numbers, not code, except the spawn:
   (`_open_at`). The first version un-neighboured them instead, which left those
   collars standing inside the carriageway; the smaller hull found one on 09-08.
 
+**Marker lights and a lower star** — 2026-09-08, from the human: *"the ship needs a
+few tiny dim lights on it so the player can at least see the ship but it doesn't
+illuminate the area around, and the star needs to be a bit lower so it doesn't shine
+so much on parts of the highway."* Four glowing dots on the hull's extremities
+(`MarkerLights`: port red, starboard green, white at the tail and the tower), dots
+rather than light sources, keys `ship_marker_*` under `;;; Lights`. The star sits
+2500 m under the floor now (`star_gap_below_floor`), so its light meets the road's
+undersides at a lower angle.
+
 **The lights** — 2026-09-07, from the human, with a screenshot of the star throwing a
 hot spot down the roadway: *"the sun from a distance forms a very unrealistic cone of
 light. we can reduce this light and have headlights on the ship and tracklights on the
@@ -260,26 +269,28 @@ as values plus ADR 0097, which supersedes 0061:
   The floor went down to 1900 to give the mouths room; the star sits 600 under it.
 - **Hulls smaller, camera closer**: `hull_scale` 0.35, fighter 0.1, capital 0.6,
   `ship_follow_distance` 52 and height 13 (the boom already follows hull size).
-- **The highways are at the bottom and the planet ramps are a straight shot** —
-  2026-09-08, from the human: *"if the highway is at the bottom it should be at the
-  bottom of the playable area or close, and on/off ramps should just be a straight
-  shot angled up or down. this will also keep the ramps shorter."* A-377B runs at
-  −1650 and K-112 at −1250 over a floor at −1900. A planet exit peels off and climbs
-  in one straight leg at `ramp_climb_deg` (25) to its mouth beside the planet
-  (`ramp_mouth_side_offset` 1200, `ramp_mouth_height` 0; K-112's at −250 so its
-  ramps at B pass under A-377B's); an entry drops from its mouth straight onto the
-  merge lead, through the roof rather than up through the floor. Steeper is shorter;
-  the bends at each end have to fit at the turn-rate floor, which is why the peel is
-  1300 and the merge lead 1400 now, and why a mouth cannot sit too low for its side
-  offset. The swing and reach keys are gone. X1 re-authored to leave A-377B earlier
-  and join K-112 later, clear of B's climbing ramps. **They are not shorter yet**:
-  5.3–5.8 km against 4.0–4.3 before, because the mouths beside the planet are 1650 m
-  above the road and 25° over that rise is a 3.5 km run. The shorteners are
-  `ramp_climb_deg` (30° and 35° fail `make roads` on K-112's entry bends as the map
-  stands, because K-112's mouths have 400 m less rise) and `ramp_mouth_height` (lower
-  mouths, shorter ramps, until the bend at the mouth end gets too sharp for its side
-  offset). The next move is probably to put the highways ON the floor and the mouths
-  lower on the planet's flank, and to let a planet ramp bend tighter than a highway.
+- **The highways are at the bottom and a planet ramp is a short S-bend** —
+  2026-09-08, from the human, twice: *"on/off ramps should just be a straight shot
+  angled up or down. this will also keep the ramps shorter"*, and when the first
+  version was a 5 km diagonal: *"No engineer in their right mind would build this
+  long of a ramp for no reason… It only needs maybe 1 or 2 straight segments before
+  it curves to the highway… on ramps should enter from above."* A-377B runs at −1650
+  and K-112 at −1250 over a floor at −1900. A ramp is now two bends of
+  `ramp_bend_radius` (950) through `ramp_bend_deg` (40) with one straight between:
+  an exit leaves level, bends up and right, and bends back level into its mouth; an
+  entry leaves its mouth level, bends down and left, and comes back level onto the
+  merge lead, in from above. An exit peels right first, level, the way every ramp's
+  head does — an exit is taken by steering right, and a bend that went up-and-right
+  from the carriageway put the opening in the roof — and only then bends up; so an
+  exit is 3.1 km and an entry 2.4. A-377B is flat at −1650 all the way now (its
+  raised stretch near C left C's mouths too little rise). Mouths sit low on the planet's flank
+  (`ramp_mouth_side_offset` 500, `ramp_mouth_height` −1150; K-112's at −750 and
+  1000 along, so its ramps at B clear A-377B's). **2.4 km each, 700 m of that inside
+  the carriageway**, against 5.3–5.8 before. (`planet_radius` is 300 as of this
+  writing: the human's own in-game edit, saved from the F2 panel.) What made that possible is
+  `ramp_turn_share` (0.9): a ramp may bend at nearly the ship's full turn rate,
+  where a highway keeps to half, and `make roads` floors each road at its own share.
+  The swing, reach and climb keys are gone.
 - **Not done**: "some variance" in planet height per system. It is a seeded offset
   and a few lines, but the mouths, the envelope and the star all key off the planet's
   position, so it wants a look at what varies with it first.

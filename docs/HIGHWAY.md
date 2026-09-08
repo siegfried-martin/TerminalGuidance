@@ -121,17 +121,17 @@ Every ramp's two ends are built the same way, from the `exploration/ramp_*` keys
 - **Merge tail** of an interchange ramp: `ramp_merge_drop` below the carriageway's
   centre, climbing at `ramp_merge_pitch_deg` through the floor, then level inside it
   for `ramp_merge_lead`, ending at `to`. Bends of `ramp_merge_radius`.
-- **Planet ramps are a straight shot** (ADR 0097: the highway runs along the bottom,
-  the mouths sit up beside the planet). An exit's diverging leg is followed by ONE
-  straight leg climbing at `ramp_climb_deg` to the mouth — `ramp_mouth_along_offset`
-  short of the system's centre, `ramp_mouth_side_offset` to the right,
-  `ramp_mouth_height` above the plane. An entry drops from its mouth (past the centre)
-  in one straight leg at the same angle onto the merge lead, through the roof or the
-  wall rather than up through the floor. The climb angle sets the ramp's length:
-  steeper is shorter. The bend where the climb meets the peel, or the drop meets the
-  lead, has to fit at the turn-rate floor, which is what sizes `ramp_exit_length` and
-  `ramp_merge_lead`; a mouth too low for its side offset makes that bend too sharp,
-  and `make roads` names it.
+- **Planet ramps are an S-bend** (ADR 0097: the highway runs along the bottom, the
+  mouths sit low beside the planet). Two bends of `ramp_bend_radius` through
+  `ramp_bend_deg` with one straight between: an exit leaves the carriageway level,
+  bends up and right, runs straight, and bends back level into its mouth
+  (`ramp_mouth_along_offset` short of the system's centre, `ramp_mouth_side_offset`
+  to the right, `ramp_mouth_height` above the plane); an entry leaves its mouth
+  level, bends down and left, and comes back level onto the merge lead, in from
+  above rather than up through the floor. The mouth's offset from the carriageway
+  sets the length — about 2.4 km, most of it inside the carriageway. A ramp may use
+  `ramp_turn_share` of the ship's turn rate, more than a highway's `road_turn_share`,
+  so its bends are tighter; `make roads` floors each road at its own share.
 
 Where a ramp's tube overlaps its host's, the host's wall, roof or floor is open — and
 only there.

@@ -162,6 +162,8 @@ var _orbit_sign: float = 1.0
 var _hull: MeshInstance3D
 ## The lamp on the nose (`Headlight`). L toggles it.
 var headlight: Headlight
+## The tiny lamps on the hull's extremities (`MarkerLights`), so the ship can be seen.
+var markers: MarkerLights
 var _last_standoff: float = -1.0
 var _last_depth: float = -1.0
 ## 0 to 1. Held, not impulsive: this is the difference the human asked for between
@@ -201,6 +203,8 @@ func _ready() -> void:
 	add_child(_hull)
 	headlight = Headlight.new()
 	add_child(headlight)
+	markers = MarkerLights.new()
+	add_child(markers)
 
 	# The view controller sets this from the crew roster on the first frame; this is
 	# only so a Mothership built on its own (the headless gate does that) starts
@@ -235,6 +239,7 @@ func _apply_tuning() -> void:
 	# On the hull's foremost point, at the hull's scale, so it moves with the roster.
 	var aabb: AABB = _hull.mesh.get_aabb()
 	headlight.fit(Vector3(0.0, 0.0, aabb.position.z) * hull_scale(), hull_scale())
+	markers.fit(aabb, hull_scale())
 	var mat := _hull.material_override as StandardMaterial3D
 	mat.albedo_color = Tuning.color("ship/hull_tint")
 	mat.metallic = Tuning.num("ship/metallic")

@@ -216,7 +216,7 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/ramp_exit_length", "exploration/ramp_exit_radius",
 	"exploration/ramp_merge_pitch_deg", "exploration/ramp_merge_drop",
 	"exploration/ramp_merge_lead", "exploration/ramp_merge_radius",
-	"exploration/ramp_bend_radius", "exploration/ramp_climb_deg",
+	"exploration/ramp_bend_radius", "exploration/ramp_bend_deg", "exploration/ramp_turn_share",
 	"exploration/ramp_mouth_side_offset",
 	"exploration/ramp_mouth_along_offset", "exploration/ramp_mouth_height",
 	"exploration/exit_approach_metres",
@@ -231,6 +231,9 @@ const REQUIRED_TUNING_KEYS: Array[String] = [
 	"exploration/headlight_range", "exploration/headlight_angle_deg", "exploration/headlight_pitch_deg",
 	"exploration/headlight_attenuation", "exploration/headlight_lamp_glow",
 	"exploration/headlight_fixture_metres", "exploration/headlight_spread_metres",
+	"exploration/ship_marker_metres", "exploration/ship_marker_glow",
+	"exploration/ship_marker_port_color", "exploration/ship_marker_starboard_color",
+	"exploration/ship_marker_white_color",
 	"exploration/track_lights_enabled", "exploration/track_light_color",
 	"exploration/track_light_energy", "exploration/track_light_range",
 	"exploration/track_light_attenuation", "exploration/track_light_reach",
@@ -3216,6 +3219,8 @@ func _test_exploration_builds() -> void:
 		"the ship has a headlight on its nose", "")
 	_expect(lit_ship.headlight.position.z < 0.0,
 		"the headlight sits forward of the hull's origin", str(lit_ship.headlight.position))
+	_expect(lit_ship.markers != null and lit_ship.markers.get_child_count() == 4,
+		"the ship carries four marker lights", "")
 	_expect(road.lamps != null, "the road has its lamp pool", "")
 	var on_road := road.tubes[0].centre(2000.0)
 	road.light(on_road, road.tubes[0])
