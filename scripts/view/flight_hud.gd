@@ -25,7 +25,7 @@ extends CanvasLayer
 
 ## Emitted when the player picks an exit. The scene hands it to the berth, which
 ## rebinds when the ramp actually arrives — clicking is choosing, not steering.
-signal exit_picked(ramp: RoadDeck)
+signal exit_picked(ramp: Tube)
 
 var _panel: PanelContainer
 var _row: HBoxContainer
@@ -41,7 +41,7 @@ var _exits: HBoxContainer
 ## Which ramps the exit row is currently built for. The row is rebuilt only when the
 ## LIST changes — rebuilding Controls every frame throws away focus and hover, and a
 ## button that is replaced under the pointer cannot be clicked.
-var _listed: Array[RoadDeck] = []
+var _listed: Array[Tube] = []
 var _buttons: Array[Button] = []
 
 
@@ -168,14 +168,14 @@ func show_ship(throttle: float, hull: float) -> void:
 ## only in a berth — flying, a click that changed which road you were on would be
 ## autopilot growth (ADR 0013), and that has not changed just because the control moved
 ## from the world onto a strip.
-func show_road(road_name: String, exits: Array, taking: RoadDeck,
+func show_road(road_name: String, exits: Array, taking: Tube,
 		clickable: bool) -> void:
 	_flight.visible = false
 	_nav.visible = true
 	_road.text = road_name
-	var ramps: Array[RoadDeck] = []
+	var ramps: Array[Tube] = []
 	for one: Array in exits:
-		ramps.append(one[0] as RoadDeck)
+		ramps.append(one[0] as Tube)
 	if ramps != _listed:
 		_rebuild_exits(exits)
 		_listed = ramps
@@ -183,7 +183,7 @@ func show_road(road_name: String, exits: Array, taking: RoadDeck,
 		if i >= exits.size():
 			break
 		var one: Array = exits[i]
-		var ramp := one[0] as RoadDeck
+		var ramp := one[0] as Tube
 		var metres: float = one[2]
 		var may_take: bool = one[3]
 		_buttons[i].text = "%s  %s%s" % [one[1] as String, _distance(metres),
@@ -213,7 +213,7 @@ func _rebuild_exits(exits: Array) -> void:
 		button.queue_free()
 	_buttons.clear()
 	for one: Array in exits:
-		var ramp := one[0] as RoadDeck
+		var ramp := one[0] as Tube
 		var button := Button.new()
 		button.name = String(ramp.name)
 		button.focus_mode = Control.FOCUS_NONE
@@ -238,5 +238,5 @@ func _style(button: Button) -> void:
 
 
 ## Which exits the strip is currently offering. For the gate; nothing in the game asks.
-func listed_exits() -> Array[RoadDeck]:
+func listed_exits() -> Array[Tube]:
 	return _listed

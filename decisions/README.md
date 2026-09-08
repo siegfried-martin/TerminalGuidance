@@ -60,7 +60,7 @@ The reasoning, including what the alternative was and why it lost.
 | [0057](0057-the-highway-is-a-place.md) | The highway is a place, not a travel mode — supersedes 0009 |
 | [0059](0059-hull-class-is-the-table.md) | Every ship number is keyed by hull class, with a shared default |
 | [0060](0060-a-portal-opens-for-a-cruise-drive.md) | A portal opens for a cruise drive, and its colour says so |
-| [0061](0061-planets-sit-below-the-combat-layer.md) | Planets sit below the combat layer, because down is already a direction |
+| [0061](0061-planets-sit-below-the-combat-layer.md) | ~~Planets sit below the combat layer~~ — superseded by 0097 |
 
 ### Framing corrections
 | # | Decision |
@@ -116,32 +116,31 @@ The reasoning, including what the alternative was and why it lost.
 | [0067](0067-lanes-unite-there-are-no-junctions.md) | Getting on and off the road is a union of lanes, not a junction |
 | [0068](0068-the-lane-is-measured-against-the-hull.md) | The lane is measured against the hull, not against the ship's centre |
 | [0069](0069-the-space-past-the-edge-is-furnished.md) | The space past the edge is furnished, in three layers |
-| [0070](0070-no-road-out-turns-the-ship.md) | No road out-turns the ship — the weave and the cubic ramp are superseded by 0095 |
 | [0071](0071-a-ceiling-that-drops-does-not-drop-the-ship.md) | A ceiling that drops does not drop the ship with it |
-| [0072](0072-the-road-axis-is-followed-not-adopted.md) | The road's direction is followed at a bounded rate, and a handover cannot hand you a lane you could not steer onto |
+| [0072](0072-the-road-axis-is-followed-not-adopted.md) | The road's direction is followed at a bounded rate — the handover half is superseded by 0096 (geometry decides) |
 | [0073](0073-the-fighter-may-outrun-a-missile.md) | The fighter may outrun a missile; the classes a missile is *for* may not |
-| [0074](0074-the-lane-is-a-translucent-solid.md) | ~~The lane is a translucent solid~~ — superseded by 0079; the road is a building with windows |
-| [0075](0075-every-lane-is-drawn-and-a-lane-has-a-floor.md) | Every lane is drawn and the one you are on is brighter — the shell mechanism is superseded by 0078 |
-| [0076](0076-a-lane-that-has-ended-cannot-govern.md) | A lane that has ended behind you cannot govern, and a ramp is drawn darker |
 | [0077](0077-traffic-runs-on-the-right.md) | Traffic runs on the right, and the deck convention is retired |
-| [0078](0078-the-road-is-built-from-modules.md) | The road is built from modules, and a deck is the lane rather than the building |
-| [0079](0079-glass-is-a-diffuser.md) | The glass is a diffuser, and "visually open" is measured as area |
-| [0080](0080-a-ring-marks-every-way-through.md) | A steel ring marks every MOUTH, and which face a ramp uses is authored — junctions carry none, per 0092 |
-| [0081](0081-the-map-carries-more-than-one-road.md) | The map carries more than one road, so the union's guard is geometric and a ramp is declared |
 | [0082](0082-the-road-is-a-dock-host.md) | The road is a dock host, and a berth is left on purpose |
 | [0083](0083-a-sign-is-clicked-not-planned.md) | An exit is chosen where it can be seen, and taking it is a rail rebind — the *sign* is superseded by 0091 |
+| [0096](0096-the-road-is-a-tube-you-fly-and-what-you-see-is-what-you-hit.md) | The road is a tube you fly, and what you see is what you hit — replaces the old road's ADRs (see below) |
+| [0097](0097-the-planet-is-the-thing-you-fly-around.md) | The planet is the thing you fly around: mid-volume, the highways along the bottom, the star below the floor — supersedes 0061 |
 | [0084](0084-a-road-may-refuse-to-let-you-off-it.md) | A road may refuse to let you off it, and it refuses by not being a candidate |
-| [0085](0085-the-map-is-a-network-of-routes.md) | The map is a network of routes, and an interchange swings out before it changes height |
 
 | [0086](0086-a-dry-tank-is-slow-not-stranded.md) | A dry tank is slow, never stranded, and the road spends fuel by the metre |
-| [0087](0087-the-lane-is-soft-the-shell-is-not.md) | The lane is soft; the shell is not — a hull does not pass through the road's structure. The "never bumps" clause is superseded by 0090 |
-| [0088](0088-a-ramp-is-an-opening-inside-the-highway.md) | Inside the highway a ramp is an opening, not a tube; and a sign belongs to a carriageway — the *cut* is superseded by 0091 |
 | [0089](0089-the-throttle-does-not-abort-an-approach.md) | The throttle does not abort an approach; steering does |
-| [0090](0090-the-road-bounces.md) | The road bounces, and a bounce costs the throttle — supersedes 0087's "never bumps" |
-| [0091](0091-a-junction-is-two-buildings-meeting.md) | A junction is two buildings meeting; the road is playable space; an exit is a button on a strip |
-| [0092](0092-a-hoop-marks-a-mouth-not-a-junction.md) | A hoop marks a mouth, not a junction; an exit's building starts where it clears the highway; a ramp hands the berth back |
-| [0093](0093-the-nose-never-reaches-the-vertical.md) | The nose never reaches the vertical and the boom follows it less and less; a wall opens where a ramp goes through it |
-| [0094](0094-a-straight-box-on-a-curve-does-not-meet-its-neighbour.md) | ~~A straight box on a curve does not meet its neighbour~~ — superseded by 0095; coplanar faces still flicker |
-| [0095](0095-the-road-is-straight-edges-on-a-lattice.md) | The road is straight edges on a lattice, and a direction change is an angle at a vertex — supersedes 0094 and the curves in 0070 and 0085 |
+| [0090](0090-the-road-bounces.md) | The road bounces, and a bounce costs the throttle — the mechanism is `RoadCollider` now (0096) |
+| [0091](0091-a-junction-is-two-buildings-meeting.md) | The road is playable space; an exit is a button on a strip — the "two buildings" half is superseded by 0096 |
+| [0092](0092-a-hoop-marks-a-mouth-not-a-junction.md) | A ramp to a planet hands the berth back; the tuning file is grouped — the hoop and building halves are superseded by 0096 |
+| [0093](0093-the-nose-never-reaches-the-vertical.md) | The nose never reaches the vertical and the boom follows it less and less — the aperture half is superseded by 0096 |
 
-*Next number: 0096.*
+*Next number: 0097.*
+
+### Deleted, 2026-09-07
+
+ADRs 0070, 0074, 0075, 0076, 0078, 0079, 0080, 0081, 0085, 0087, 0088, 0094 and 0095
+described the mechanism of the road that ADR 0096 replaced — modules, the shell
+barrier, apertures, rings, the lattice — and were deleted with it rather than left as
+a trail of superseded forbids for a future session to wrestle with. The rules in them
+that still hold are restated in 0096. This is the one exception to append-only, made
+at the human's direction: a decision record whose subject no longer exists is not a
+record, it is a trap.

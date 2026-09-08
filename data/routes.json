@@ -1,0 +1,234 @@
+{
+  "_comment": [
+    "THE MAP (ADR 0096). Coordinates are metres in the map's frame, Y up; the combat plane is y = 0.",
+    "systems: where each system disc sits on the plane. highways: a centre-line as waypoints",
+    "with a corner radius per waypoint (0 at an open end), two carriageways side by side,",
+    "traffic on the right. planet_ramps: an exit and an entry on each carriageway at that",
+    "system, shaped by the ramp rule in RoadNetwork from the exploration/ramp_* tuning keys.",
+    "ramps: interchanges, authored as the waypoints BETWEEN the standard exit head and the",
+    "standard merge tail; 'near' or 'at'+'offset' says where on the carriageway each end is,",
+    "and 'mirror_of'+'about' turns a ramp half a turn about a system to serve the reverse",
+    "carriageways. Saving this file relays the map out under the ship. The gate (and the",
+    "console on load) names any bend that is too tight, any ramp that touches a road it does",
+    "not join, and any highway that pitches too steeply.",
+    "A highway may carry mouth_height (m above the plane) and mouth_along (m from the system centre) to move its planet mouths; K-112 rides 240 m above A-377B and its mouths at B sit higher and further out so its ramps pass over A-377B's.",
+    "Scaled x2 on 2026-09-07: every distance doubled and cruise speed with it, so pacing is unchanged and everything far away is half the size against the ships and the tube, which did not scale."
+  ],
+  "systems": {
+    "SYSTEM A": [
+      0,
+      0,
+      0
+    ],
+    "SYSTEM B": [
+      23000,
+      0,
+      0
+    ],
+    "SYSTEM C": [
+      76000,
+      0,
+      -4000
+    ],
+    "SYSTEM D": [
+      7500,
+      0,
+      -26846
+    ],
+    "SYSTEM E": [
+      36146,
+      0,
+      37136
+    ]
+  },
+  "highways": [
+    {
+      "name": "A-377B",
+      "systems": [
+        "SYSTEM A",
+        "SYSTEM B",
+        "SYSTEM C"
+      ],
+      "closed": false,
+      "points": [
+        [
+          -14000,
+          -1650,
+          0
+        ],
+        [
+          48000,
+          -1650,
+          0
+        ],
+        [
+          60000,
+          -1650,
+          -4000
+        ],
+        [
+          68000,
+          -1650,
+          -4000
+        ],
+        [
+          89000,
+          -1650,
+          -4000
+        ]
+      ],
+      "radii": [
+        0.0,
+        5000.0,
+        5000.0,
+        5000.0,
+        0.0
+      ]
+    },
+    {
+      "name": "K-112",
+      "systems": [
+        "SYSTEM D",
+        "SYSTEM B",
+        "SYSTEM E"
+      ],
+      "closed": false,
+      "points": [
+        [
+          500,
+          -1250,
+          -38972
+        ],
+        [
+          32500,
+          -1250,
+          16454
+        ],
+        [
+          38404,
+          -1250,
+          49938
+        ]
+      ],
+      "radii": [
+        0.0,
+        5000.0,
+        0.0
+      ],
+      "mouth_height": -750,
+      "mouth_along": 1000
+    }
+  ],
+  "planet_ramps": [
+    {
+      "highway": "A-377B",
+      "system": "SYSTEM A"
+    },
+    {
+      "highway": "A-377B",
+      "system": "SYSTEM B"
+    },
+    {
+      "highway": "A-377B",
+      "system": "SYSTEM C"
+    },
+    {
+      "highway": "K-112",
+      "system": "SYSTEM D"
+    },
+    {
+      "highway": "K-112",
+      "system": "SYSTEM B"
+    },
+    {
+      "highway": "K-112",
+      "system": "SYSTEM E"
+    }
+  ],
+  "ramps": [
+    {
+      "name": "X1 A-377B > K-112",
+      "from": {
+        "highway": "A-377B",
+        "side": "R",
+        "near": [
+          13000,
+          -1650,
+          100
+        ]
+      },
+      "to": {
+        "highway": "K-112",
+        "side": "R",
+        "at": "SYSTEM B",
+        "offset": 8000
+      },
+      "points": [
+        [
+          20200,
+          -1350,
+          900
+        ],
+        [
+          24500,
+          -1350,
+          2600
+        ]
+      ],
+      "radii": [
+        2400,
+        2400
+      ]
+    },
+    {
+      "name": "X2 K-112 > A-377B",
+      "from": {
+        "highway": "K-112",
+        "side": "R",
+        "at": "SYSTEM B",
+        "offset": -8000
+      },
+      "to": {
+        "highway": "A-377B",
+        "side": "R",
+        "near": [
+          32500,
+          -1650,
+          100
+        ]
+      },
+      "points": [
+        [
+          20300,
+          -1360,
+          -3200
+        ],
+        [
+          22500,
+          -1560,
+          -1500
+        ],
+        [
+          27000,
+          -1770,
+          -600
+        ]
+      ],
+      "radii": [
+        2400,
+        2400,
+        2400
+      ]
+    },
+    {
+      "name": "X3 A-377B > K-112 (reverse)",
+      "mirror_of": "X1 A-377B > K-112",
+      "about": "SYSTEM B"
+    },
+    {
+      "name": "X4 K-112 > A-377B (reverse)",
+      "mirror_of": "X2 K-112 > A-377B",
+      "about": "SYSTEM B"
+    }
+  ]
+}

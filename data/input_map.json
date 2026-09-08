@@ -131,13 +131,20 @@
     "debug_cycle_hull": [
       "key:H"
     ],
+    "debug_drop": [
+      "key:K"
+    ],
     "debug_teleport": [
       "key:J"
+    ],
+    "headlight": [
+      "key:L"
     ],
     "quit": [
       "key:Escape"
     ]
   },
   "_note_berth": "dock (C) takes and leaves the berth on the roadway. It TOGGLES, and no other input leaves it: a threshold aborts on any input because it is a countdown to a commitment, a berth is a place you sit inside and is left on purpose (ADR 0082).",
+  "_note_drop": "K is the debug DROP: it puts the ship on the road at the next bend, exit, merge or entry mouth, drive running, so a junction can be looked at without flying to it. Same gate and same loudness as J.",
   "_note_teleport": "J is the exploration POC's debug teleport (POC step 7, item 13): it jumps the ship to the next system so fuel limits and route choices can be tested without flying every leg. Debug only — nothing in the game calls it, it is gated on exploration/debug_teleport_enabled, and every use is printed and carried on the HUD's first row, because a silent teleport contaminates the travel-time verdict this POC is measuring. It is NOT on T: T takes the helm (ADR 0056) and one letter meaning two things in two scenes is how a binding stops being readable."
 }

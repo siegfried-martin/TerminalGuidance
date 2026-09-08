@@ -55,11 +55,11 @@ Where this section and the body below disagree, this section wins.
   The crew roster (ADR 0056) is not exercised; `T` is the only job there is.
 - **The highway runs THROUGH a system and never stops** (ADR 0065). It is one
   continuous mainline per direction spanning the whole map; the way on and off is a
-  **ramp** that leaves it tangentially and curves down to a portal beside the planet.
-  A ramp that serves nobody is not built, so an end system has two and a system the
-  road passes through has four. This supersedes "each system has portals at both ends
-  where a road connects" below. Which deck you are on is a union of lanes rather than
-  a junction (ADR 0067).
+  **ramp** that leaves it through the wall and runs down to a mouth beside the planet,
+  or arrives from below through the floor (ADR 0096). Every system on a highway gets
+  an exit and an entry on each carriageway, by rule from `data/routes.json`. This
+  supersedes "each system has portals at both ends where a road connects" below.
+  Which tube you are in is decided by the road's geometry, never by a rule.
 - **The speed ladder was retuned after the first play session**: taxi 30, fighter 50,
   capital 25, cruise 140, and the capital's turn rate up by half. The per-class
   ceiling fractions had to rise with them — at the old ones a taxi asked for 30 would
@@ -125,7 +125,7 @@ Faction ownership of portals, reputation gating, the economy, missions, combat (
 - Each system is a disc **3–4 km in diameter** with the existing ceiling/floor treatment.
 - Each system has **one planet** with a docking envelope.
 - Each system has **portals at both ends** where a road connects, one per direction, each on its own carriageway's side of the road (ADR 0077; they were stacked upper/lower until 2026-08-31).
-- Roads must **curve** — at minimum the trunk leg needs sustained curvature and at least one elevation change. A straight trunk road cannot test success criterion 1.
+- Roads must **curve** — at minimum the trunk leg needs sustained curvature and at least one elevation change. A straight trunk road cannot test success criterion 1. *(A-377B bends twice and climbs 200 m between B and C; K-112 bends once past B. Bends are waypoints with a radius in `data/routes.json`, bounded by `road_turn_share` of the ship's turn rate.)*
 - ~~The **northwest–southeast divider**…~~ *Retired 2026-08-31 by ADR 0077: traffic runs on the right, the deck convention is gone, and there is no divider. What the trunk leg's curvature must now respect is a floor — no bend tighter than `deck_separation`. See `EXPLORATION_DESIGN.md`, Enforced Invariants #1.*
 
 ### In scope
@@ -227,12 +227,11 @@ debug_teleport_enabled = true      ; false in any session judging travel feel
 
 ## Build Order
 
-> **Amended 2026-09-06.** Steps 9 and 10 do **not** start next. The road is being rebuilt
-> first, on a lattice, and that work has its own build order: `docs/HIGHWAY_LATTICE_PLAN.md`
-> §10, steps A to E, decided in ADR 0095. Step 8 below is built but its mechanism (the
-> weave, the fitted ramps) is what the lattice replaces; the checkpoint it opened, success
-> criterion 1, is judged on the lattice road instead. Traffic (9 and 10) follows the
-> lattice's step D.
+> **Amended 2026-09-07.** The road was replaced whole (ADR 0096, `docs/HIGHWAY.md`):
+> the mechanism named in steps 6 and 8 below — decks, the weave, fitted ramps, a swept
+> portal crossing — is gone, and the map is `data/routes.json`. The checkpoints those
+> steps opened are judged on the new road. Traffic (9 and 10) is next after the human
+> has flown it.
 
 Each numbered step should leave the build in a playable state.
 
@@ -241,9 +240,9 @@ Each numbered step should leave the build in a playable state.
 3. **Ship switching roster.** ✅ **built 2026-08-29** — `H` cycles taxi → fighter → capital in both scenes. Each class differs in top speed, turn rate, throttle travel, thruster authority, silhouette and cruise drive, not in speed alone. Taxi, fighter, capital. Debug key only. Fly each around one system and feel the class differences at the corrected speeds. **First checkpoint** — is 15.5 m/s the right taxi speed, or does it need adjusting up or down? This is the anchor for everything downstream and is best settled before roads exist, which is why it moved ahead of docking. *The key itself landed in step 1, in the combat arena.*
 4. **Planet docking.** ✅ **built 2026-08-29** — `ApproachEnvelope` (reusable, mounted on the planet now and on the ramp stations in step 6) and `DockScreen`. *Refuel and rearm are **not** on the screen yet: cruise fuel is step 7 and the exploration scene carries no missiles, so the screen is a list of services with `Depart` in it and step 7 adds a row. Dead placeholder buttons would teach the player that the screen lies.* Approach envelope, abortable sequence, refuel and rearm screen. **Second checkpoint** — does approach feel like arriving somewhere, or like a menu with a runway? The envelope is built once and reused: the portal stations in step 6 get the same mechanism, since that is where the fuel, market and customs content actually lives.
 5. ✅ **built 2026-08-29** — `SystemMap` (the layout, the composed boundary, the hot reload), `SystemLink` (the corridor), `BoundaryRegion`/`DiscRegion`/`TubeRegion` (ADR 0063). Two systems 7.5 km apart centre to centre, joined by the 4 km corridor, flown by hand: 4.3 min each way in a taxi against 41 s at cruise, which is the ratio step 6 is asking about. *`aperture_bearing_deg` became the map's own bearing rather than a placeholder, so the apertures and the legs cannot disagree.* **Second system and the local leg, off-road only.** No highway yet. Fly A to B manually at each hull speed. This establishes the baseline the highway must beat and is the control condition for success criterion 2.
-6. ✅ **built 2026-08-29** — `RoadDeck` (two decks per leg, stacked, one-way), `Portal` (swept crossing, blue/red by hull class, destination label), `CruiseLane` (the lane sample the ship is handed), `Mothership._fly_cruise`, and the camera's road lock. The corridor was **not replaced** — the road was laid inside it, so declining the portal is still a real choice and step 5's 258 s baseline is still flyable alongside the 41 s one. ADR 0064 records why the lane pushes and the world does not. **Portals and the highway tube, local leg only.** Cruise drive, camera clamp, lane boundary, deck geometry. **⬅ THIRD CHECKPOINT, open** — is a 41-second hop worth the portal at all, or does it feel like ceremony around nothing?
+6. ✅ **built 2026-08-29, replaced 2026-09-07** — the road is `RoadNetwork` on `data/routes.json` now (ADR 0096): `Tube` is the lane, `Portal` is a mouth's sign and colour (blue/red by hull class, destination label), `CruiseLane` (the lane sample the ship is handed), `Mothership._fly_cruise`, and the camera's road lock survive. The corridor was **not replaced** — the road was laid inside it, so declining the portal is still a real choice and step 5's 258 s baseline is still flyable alongside the 41 s one. ADR 0064 records why the lane pushes and the world does not. **Portals and the highway tube, local leg only.** Cruise drive, camera clamp, lane boundary, deck geometry. **⬅ THIRD CHECKPOINT, open** — is a 41-second hop worth the portal at all, or does it feel like ceremony around nothing?
 7. ✅ **built 2026-09-01** — `CruiseTank` (pure), burned per metre of highway by `SystemMap`, a `fuel` row on the HUD, the leg row quoting what the leg ahead costs, a refuel service above `Depart` on the docking screen, and the teleport on **J**. **Cruise fuel and the debug teleport.** Fuel gauge, consumption, empty behaviour. Teleport bound and logged. *Two decisions came out of building it, both in ADR 0086: an empty tank refuses a **portal** but never takes a ship off the road — running dry winds the drive down and leaves you in the lane at hull speed, which is slow rather than stranded (ADR 0017) — and a **berth burns the same fuel as flying**, because a free berth would be the range-optimal way to cross the map. The teleport jumps to the NEXT system rather than the nearest, which is almost always the one you are standing in, and it never refuels: a tool that quietly undid the resource it exists to test would be worse than not having it.*
-8. ✅ **built 2026-08-30**, in two parts. The third system and the trunk leg landed first — the human needed the full three-system map to judge how the on and off ramps read in the case that matters, a system the road passes through. The curvature followed: `RoadPath.weave` (a sine weave across the bearing and a slower one in elevation, both tapered to zero value *and* zero slope at each mouth, so the legs curve and no system moves), `TubeRegion` following a path rather than an axis, and `RoadNetwork` laid on a single spine through the whole map. Curvature is expressed as an ANGLE with a period rather than an amplitude in metres, because the same amplitude is a sweep on an 18 km leg and a hairpin on a 2.6 km one (ADR 0070). *Also in this step, from the same play session: the ramps were too steep and are now cubics tangential at both ends; the lane is measured against the hull rather than the ship's centre (ADR 0068); the space past the boundary is furnished (ADR 0069); the decks are stacked flush.* **⬅ FOURTH CHECKPOINT, open, and the important one** — success criterion 1. Ten minutes on the trunk road. Tune `cruise_turn_clamp_deg` against `road_curve_deg` and `road_curve_period` here, together, never separately.
+8. ✅ **built 2026-08-30, replaced 2026-09-07** — the curvature is authored now (waypoints and radii in `data/routes.json`), the ramps are built by a rule, and everything below about `RoadPath.weave` and cubic ramps describes the road that was replaced. *Originally:* in two parts. The third system and the trunk leg landed first — the human needed the full three-system map to judge how the on and off ramps read in the case that matters, a system the road passes through. The curvature followed: `RoadPath.weave` (a sine weave across the bearing and a slower one in elevation, both tapered to zero value *and* zero slope at each mouth, so the legs curve and no system moves), `TubeRegion` following a path rather than an axis, and `RoadNetwork` laid on a single spine through the whole map. Curvature is expressed as an ANGLE with a period rather than an amplitude in metres, because the same amplitude is a sweep on an 18 km leg and a hairpin on a 2.6 km one (ADR 0070). *Also in this step, from the same play session: the ramps were too steep and are now cubics tangential at both ends; the lane is measured against the hull rather than the ship's centre (ADR 0068); the space past the boundary is furnished (ADR 0069); the decks are stacked flush.* **⬅ FOURTH CHECKPOINT, open, and the important one** — success criterion 1. Ten minutes on the trunk road. Tune `cruise_turn_clamp_deg` against `road_curve_deg` and `road_curve_period` here, together, never separately.
 9. **NPC traffic, road first.** Same-direction, speed spread, overtaking. **Fifth checkpoint** — does traffic make the road feel populated, and at what density does it tip into busy?
 10. **Open-space traffic.** Sparse. Fly a leg off-road with traffic present and compare against step 5's memory of it empty.
 11. **Verdict session.** Thirty minutes minimum, moving freely between all three systems, switching hulls, choosing routes. All four success criteria.
@@ -254,11 +253,11 @@ Expected scale: larger than the combat POC. Steps 3, 6, and 8 are the substantia
 
 ## Notes for the Implementation Agent
 
-- **The clamp and the curvature are one tuning problem.** `cruise_turn_clamp_deg` cannot be evaluated on a straight road. If step 8 arrives with a straight trunk leg, the verdict on success criterion 1 will be wrong and will be blamed on the clamp. Build the curvature first.
+- **The clamp and the curvature are one tuning problem.** `cruise_turn_clamp_deg` cannot be evaluated on a straight road. Author bends into `data/routes.json` and judge the clamp against them.
 - **Do not add a docking or alignment sequence to portals.** `portal_entry_seconds` defaults to zero on purpose. If a sequence seems necessary for legibility, flag it rather than adding it.
 - **Build every speed as a table keyed by hull class from the start**, with a default. They are POC globals in the tuning file for convenience, but the consumers should already be asking "what class is this ship?" See `EXPLORATION_DESIGN.md`, Enforced Invariants #5.
 - **Autopilot arc speed and enemy drift must become fractions of hull maximum**, not absolutes, before the corrected taxi speed lands. See Enforced Invariants #3 and #4. At 15.5 m/s taxi speed the existing absolute values invert the intended relationships.
 - **The tube must not become a loading screen.** Floating origin and collision-on-real-meshes-only apply inside the highway exactly as everywhere else. The lane is visually open and the surrounding space is real. See `EXPLORATION_DESIGN.md`, Enforced Invariants #6.
 - **Weapons-disabled is a rule of the zone, not NPC behaviour.** Implement it as a property of being in cruise, checked in one place.
 - ~~**The deck convention is not exercised by this map**…~~ *Retired 2026-08-31 by ADR 0077. There is no deck to declare: right-hand traffic makes the side a consequence of the direction, and `runs_forward` is a grouping key that carries nothing else. Do not reintroduce a declared deck.*
-- **Flag, do not resolve, scope questions.** Several omissions here are deferrals rather than decisions — no faction access control, no comms chatter, no junctions. Do not write ADRs asserting these do not exist.
+- **Flag, do not resolve, scope questions.** Several omissions here are deferrals rather than decisions — no faction access control, no comms chatter, no traffic. Do not write ADRs asserting these do not exist.

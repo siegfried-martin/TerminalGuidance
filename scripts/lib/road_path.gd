@@ -1,267 +1,341 @@
 class_name RoadPath
 extends RefCounted
-## A road's centre-line, as a polyline. Pure — no scene tree, no tuning, no disk.
+## A road's centre-line: straight legs joined by circular arcs. Pure — no scene tree,
+## no tuning, no disk.
 ##
-## A polyline rather than two endpoints, because a road is not a straight line: a
-## ramp curves away from the mainline it leaves, and the trunk leg has to curve or
-## success criterion 1 cannot be tested at all (*"a generous clamp on a straight road
-## still feels like nothing"*). Both are the same shape with different points in it.
+## Built from waypoints and a corner radius per waypoint. The tangent is continuous
+## everywhere, so nothing steering by it ever snaps, and every query is analytic: no
+## baking, no sampled polyline, no approximation. The mesh, the collision and the lane
+## all read this one curve, which is what lets them agree to the millimetre (ADR 0096).
 ##
-## Distances are measured ALONG the path, not through it. A ship a third of the way
-## round a curve is a third of the way along the road, which is the only reading that
-## makes "how much further" mean anything.
+## Coordinates are the map's frame, Y up. A path may be CLOSED (a loop) or open; an
+## open path's ends are mouths.
 
-## How finely a weaving leg is tessellated. Infrastructure, not feel: fine enough
-## that the polyline reads as a curve and that `max_turn_deg_per_metre` measures the
-## curve rather than the tessellation.
-const WEAVE_SEGMENT_METRES := 250.0
+const STRAIGHT := 0
+const ARC := 1
+const UP := Vector3.UP
 
-var points: PackedVector3Array = PackedVector3Array()
-## Cumulative distance to each point, so `length` and `point_at` are lookups rather
-## than walks. Rebuilt whenever the points change.
-var _milestones: PackedFloat32Array = PackedFloat32Array()
-
-
-func set_points(line: PackedVector3Array) -> void:
-	points = line
-	_milestones = PackedFloat32Array()
-	var run := 0.0
-	_milestones.append(0.0)
-	for i in range(1, points.size()):
-		run += points[i - 1].distance_to(points[i])
-		_milestones.append(run)
+## Each piece: `{kind, t0, len, a (start position), dir (start tangent)}`, and for an
+## arc also `{centre, axis, radius, angle}`.
+var pieces: Array[Dictionary] = []
+## A bounding sphere per piece, `{centre, radius}`, so a closest-point query can skip
+## pieces that cannot beat the best distance found so far.
+var _spheres: Array[Dictionary] = []
+var length: float = 0.0
+var closed: bool = false
+var waypoints: Array[Vector3] = []
+## Every rounded corner, as `{pos, radius, angle_deg, t}` with `t` where its arc begins.
+var corners: Array[Dictionary] = []
 
 
-func length() -> float:
-	return 0.0 if _milestones.is_empty() else _milestones[_milestones.size() - 1]
+static func build(points: Array, radii: Array, is_closed: bool) -> RoadPath:
+	var path := RoadPath.new()
+	path._build(points, radii, is_closed)
+	return path
+
+
+## A two-point straight, for corridors and anything else with no bend in it.
+static func straight(from: Vector3, to: Vector3) -> RoadPath:
+	return build([from, to], [0.0, 0.0], false)
+
+
+func _build(points: Array, radii: Array, is_closed: bool) -> void:
+	closed = is_closed
+	waypoints.clear()
+	for q in points:
+		waypoints.append(q as Vector3)
+	var n := waypoints.size()
+	assert(n >= 2, "a path needs two waypoints")
+	# Corner data: for each waypoint that is a corner, where its arc enters and leaves.
+	var arcs := {}
+	var first_c := 1 if not closed else 0
+	var last_c := n - 2 if not closed else n - 1
+	for i in range(first_c, last_c + 1):
+		var prev: Vector3 = waypoints[(i - 1 + n) % n]
+		var cur: Vector3 = waypoints[i]
+		var next: Vector3 = waypoints[(i + 1) % n]
+		var a := (cur - prev).normalized()
+		var b := (next - cur).normalized()
+		var ang := a.angle_to(b)
+		if ang < deg_to_rad(0.05):
+			continue
+		var r := float(radii[i]) if i < radii.size() else 0.0
+		assert(r > 0.0, "corner %d needs a radius" % i)
+		var d := r * tan(ang * 0.5)
+		var axis := a.cross(b).normalized()
+		var start := cur - a * d
+		var centre := start + axis.cross(a) * r
+		arcs[i] = {"start": start, "end": cur + b * d, "centre": centre, "axis": axis,
+			"radius": r, "angle": ang, "dir": a, "d": d}
+	# Walk the waypoints emitting straight and arc pieces.
+	pieces.clear()
+	corners.clear()
+	var t := 0.0
+	var cursor: Vector3 = waypoints[0]
+	if closed and arcs.has(0):
+		cursor = arcs[0]["end"]
+	var seq_end := n - 1 if not closed else n
+	for k in range(1, seq_end + 1):
+		var i := k % n
+		var target: Vector3 = waypoints[i]
+		if arcs.has(i):
+			var arc: Dictionary = arcs[i]
+			t = _add_straight(t, cursor, arc["start"])
+			corners.append({"pos": waypoints[i], "radius": arc["radius"],
+				"angle_deg": rad_to_deg(arc["angle"]), "t": t})
+			t = _add_arc(t, arc)
+			cursor = arc["end"]
+		else:
+			t = _add_straight(t, cursor, target)
+			cursor = target
+	length = t
+	_spheres.clear()
+	for p in pieces:
+		var a: Vector3 = p["a"]
+		var b: Vector3 = a + (p["dir"] as Vector3) * float(p["len"])
+		if p["kind"] == ARC:
+			var c: Vector3 = p["centre"]
+			b = c + (a - c).rotated(p["axis"], p["angle"])
+			var mid: Vector3 = c + (a - c).rotated(p["axis"], float(p["angle"]) * 0.5)
+			var centre := (a + b + mid) / 3.0
+			_spheres.append({"centre": centre, "radius": maxf(maxf(centre.distance_to(a),
+				centre.distance_to(b)), centre.distance_to(mid)) + 1.0})
+		else:
+			_spheres.append({"centre": (a + b) * 0.5, "radius": a.distance_to(b) * 0.5 + 1.0})
+
+
+func _add_straight(t: float, from: Vector3, to: Vector3) -> float:
+	var len := from.distance_to(to)
+	if len < 1e-3:
+		return t
+	pieces.append({"kind": STRAIGHT, "t0": t, "len": len, "a": from,
+		"dir": (to - from) / len})
+	return t + len
+
+
+func _add_arc(t: float, arc: Dictionary) -> float:
+	var len: float = arc["radius"] * arc["angle"]
+	pieces.append({"kind": ARC, "t0": t, "len": len, "a": arc["start"], "dir": arc["dir"],
+		"centre": arc["centre"], "axis": arc["axis"], "radius": arc["radius"],
+		"angle": arc["angle"]})
+	return t + len
 
 
 func is_empty() -> bool:
-	return points.size() < 2
+	return pieces.is_empty()
 
 
-## The closest point on the path, as `[along, centre, tangent]`.
-##
-## Every segment is tested rather than the nearest vertex found first: a long
-## straight next to a tight curve makes "nearest vertex" pick the wrong segment, and
-## the ship is then told it is off a road it is flying down the middle of.
-func closest(query: Vector3) -> Array:
-	if is_empty():
-		return [0.0, query, Vector3.FORWARD]
-	var best_distance := INF
-	var best_along := 0.0
-	var best_centre := points[0]
-	var best_tangent := Vector3.FORWARD
-	for i in range(1, points.size()):
-		var a := points[i - 1]
-		var b := points[i]
-		var run := b - a
-		var span := run.length()
-		if span <= 0.0001:
-			continue
-		var direction := run / span
-		var travelled := clampf((query - a).dot(direction), 0.0, span)
-		var on_line := a + direction * travelled
-		var distance := query.distance_squared_to(on_line)
-		if distance < best_distance:
-			best_distance = distance
-			best_along = _milestones[i - 1] + travelled
-			best_centre = on_line
-			best_tangent = direction
-	return [best_along, best_centre, best_tangent]
+## Wrap or clamp a distance along the path into range.
+func wrap_t(t: float) -> float:
+	if closed:
+		return fposmod(t, length)
+	return clampf(t, 0.0, length)
 
 
-func point_at(along: float) -> Vector3:
-	if is_empty():
-		return Vector3.ZERO
-	var wanted := clampf(along, 0.0, length())
-	for i in range(1, points.size()):
-		if wanted <= _milestones[i]:
-			var span := _milestones[i] - _milestones[i - 1]
-			if span <= 0.0001:
-				return points[i]
-			return points[i - 1].lerp(points[i],
-				(wanted - _milestones[i - 1]) / span)
-	return points[points.size() - 1]
+## Signed distance from `t_from` forward to `t_to` along the path, in `direction`
+## (+1 along increasing t, -1 against it). Closed paths wrap.
+func ahead(t_from: float, t_to: float, direction: int) -> float:
+	var d := (t_to - t_from) * direction
+	if closed:
+		d = fposmod(d, length)
+	return d
 
 
-func tangent_at(along: float) -> Vector3:
-	if is_empty():
-		return Vector3.FORWARD
-	var wanted := clampf(along, 0.0, length())
-	for i in range(1, points.size()):
-		if wanted <= _milestones[i]:
-			return (points[i] - points[i - 1]).normalized()
-	return (points[points.size() - 1] - points[points.size() - 2]).normalized()
+func _piece_at(t: float) -> Dictionary:
+	var last: Dictionary = pieces[pieces.size() - 1]
+	for p in pieces:
+		if t < p["t0"] + p["len"]:
+			return p
+	return last
+
+
+## Position and unit tangent at distance `t`.
+func sample(t: float) -> Dictionary:
+	t = wrap_t(t)
+	var p := _piece_at(t)
+	var s: float = t - p["t0"]
+	if p["kind"] == STRAIGHT:
+		return {"pos": p["a"] + p["dir"] * s, "tan": p["dir"]}
+	var phi: float = s / p["radius"]
+	var centre: Vector3 = p["centre"]
+	var axis: Vector3 = p["axis"]
+	return {"pos": centre + (p["a"] - centre).rotated(axis, phi),
+		"tan": (p["dir"] as Vector3).rotated(axis, phi)}
+
+
+func point_at(t: float) -> Vector3:
+	return sample(t)["pos"]
+
+
+func tangent_at(t: float) -> Vector3:
+	return sample(t)["tan"]
 
 
 func start() -> Vector3:
-	return Vector3.ZERO if points.is_empty() else points[0]
+	return point_at(0.0)
 
 
 func finish() -> Vector3:
-	return Vector3.ZERO if points.is_empty() else points[points.size() - 1]
+	return point_at(length)
 
 
-## The stretch of this path between two distances along it, as its own polyline.
-##
-## Used to stop a ramp's BUILDING where it enters the building of the road it serves
-## (ADR 0088). The lane is never cut — a deck has to run the whole way for the union to
-## hand over — so this cuts the shell and nothing else.
-##
-## The cut points are real vertices at the ends, so the trimmed line starts and ends
-## exactly where it was asked to rather than at the nearest tessellation step.
-func section(from: float, to: float) -> PackedVector3Array:
-	var span := length()
-	var head := clampf(minf(from, to), 0.0, span)
-	var tail := clampf(maxf(from, to), 0.0, span)
-	if is_empty() or tail - head <= 0.001:
-		return PackedVector3Array()
-	var line := PackedVector3Array([point_at(head)])
-	for i in points.size():
-		if _milestones[i] > head and _milestones[i] < tail:
-			line.append(points[i])
-	line.append(point_at(tail))
-	return line
+## A right-handed road frame for a tangent: forward, up (world up made perpendicular)
+## and right. Level, because nothing rolls (ADR 0045).
+static func frame_from_tangent(tangent: Vector3) -> Dictionary:
+	var up := UP - tangent * UP.dot(tangent)
+	if up.length_squared() < 1e-6:
+		up = Vector3.FORWARD
+	up = up.normalized()
+	return {"fwd": tangent, "up": up, "right": tangent.cross(up)}
 
 
-## A straight run between two points.
-static func straight(from: Vector3, to: Vector3) -> PackedVector3Array:
-	return PackedVector3Array([from, to])
+func frame(t: float) -> Dictionary:
+	var s := sample(t)
+	var f := frame_from_tangent(s["tan"])
+	f["pos"] = s["pos"]
+	f["t"] = wrap_t(t)
+	return f
 
 
-## A ramp: leaves `from` along `from_tangent` and **arrives at `to` along
-## `to_tangent`**.
-##
-## A cubic rather than the quadratic this started as, and the second tangent is the
-## whole reason. A quadratic can only be told where to *leave* from; where it
-## arrives is whatever falls out, and what fell out was a mouth pointing almost
-## square across the mainline — a ramp that dives sideways and down, which is the
-## "too steep" the human flew into. A cubic controls both ends, so a ramp leaves the
-## road along it, swings out and down, and **arrives at its portal pointing along the
-## road again**: the S-curve a freeway ramp actually is.
-##
-## `tightness` is how much of the along-road run each end spends committed to its own
-## tangent. Small holds the road's line longer and then turns harder in the middle;
-## large eases out sooner and bends harder at the ends. It is a feel value and lives
-## in `tuning.cfg`.
-static func ramp(from: Vector3, from_tangent: Vector3, to: Vector3,
-		to_tangent: Vector3, tightness: float, segments: int) -> PackedVector3Array:
-	var leave := from_tangent.normalized()
-	var land := to_tangent.normalized()
-	# Measured ALONG the road rather than straight-line, so a ramp that is mostly
-	# sideways does not get a control arm long enough to loop back on itself.
-	var run := absf((to - from).dot(leave))
-	var reach := maxf(run * clampf(tightness, 0.05, 0.95), 0.001)
-	var c1 := from + leave * reach
-	var c2 := to - land * reach
-	var line := PackedVector3Array()
-	for i in maxi(segments, 1) + 1:
-		var t := float(i) / float(maxi(segments, 1))
-		var u := 1.0 - t
-		line.append(from * (u * u * u)
-			+ c1 * (3.0 * u * u * t)
-			+ c2 * (3.0 * u * t * t)
-			+ to * (t * t * t))
-	return line
+## World position at (t, lateral u to the right, vertical v up).
+func at(t: float, u: float, v: float) -> Vector3:
+	var f := frame(t)
+	return f["pos"] + f["right"] * u + f["up"] * v
 
 
-## A ROAD-TO-ROAD TURN: leaves `from` along `from_tangent` and arrives at `to` along
-## `to_tangent`, the same as `ramp`, but sized for a curve whose point is the change
-## of heading rather than the change of place.
-##
-## The difference is one line and it matters. `ramp` measures its control arms along
-## the LEAVING direction, because a ramp to a planet is mostly along the road and
-## mostly sideways at the end, and measuring the straight-line chord there would give
-## an arm long enough to loop back on itself. An interchange is the other shape: half
-## of a fifty-five degree turn is across the leaving direction, so that projection
-## under-measures the curve badly, the arms come out short, and the whole turn is
-## crammed into the middle. Measured at 52 deg/s against a ship that turns at 34 —
-## from a curve whose honest requirement is under 3.
-##
-## So this one measures the chord. The tightness is clamped harder for the same reason
-## `ramp` avoids the chord: past a half the arms are long enough to overshoot.
-static func sweep(from: Vector3, from_tangent: Vector3, to: Vector3,
-		to_tangent: Vector3, tightness: float, segments: int) -> PackedVector3Array:
-	var reach := maxf((to - from).length() * clampf(tightness, 0.05, 0.5), 0.001)
-	var c1 := from + from_tangent.normalized() * reach
-	var c2 := to - to_tangent.normalized() * reach
-	var line := PackedVector3Array()
-	for i in maxi(segments, 1) + 1:
-		var t := float(i) / float(maxi(segments, 1))
-		var u := 1.0 - t
-		line.append(from * (u * u * u)
-			+ c1 * (3.0 * u * u * t)
-			+ c2 * (3.0 * u * t * t)
-			+ to * (t * t * t))
-	return line
-
-
-## A leg of the highway: a run of `length` along `forward` that **weaves and
-## undulates** instead of going straight.
-##
-## Success criterion 1 cannot be tested on a straight road — *"a generous clamp on a
-## straight road still feels like nothing"* — so the leg is the thing that has to
-## curve, not just the ramps. The shape is a sine weave across the bearing and a
-## second, slower one in elevation.
-##
-## Both are wrapped in a `sin(PI u)` envelope, which is what makes this usable as a
-## leg at all: value AND slope go to zero at both ends, so the leg leaves one
-## aperture and arrives at the next exactly on the bearing, with no kink at either
-## mouth. The systems therefore stay where a straight leg put them and the discs stay
-## on the combat plane — only the road between them moves.
-##
-## The amplitudes are derived from ANGLES rather than tuned as distances: a 22 deg
-## weave is 22 deg whether the leg is 2.6 km or 18 km, where a 400 m amplitude would
-## be a gentle curve on one and a hairpin on the other.
-static func weave(from: Vector3, forward: Vector3, length: float,
-		curve_deg: float, curve_period: float,
-		rise_deg: float, rise_period: float) -> PackedVector3Array:
-	var ahead := forward.normalized()
-	if length <= 0.001:
-		return PackedVector3Array([from, from + ahead])
-	var side := ahead.cross(Vector3.UP)
-	# A leg running straight up has no "side", and nothing in this map does — but a
-	# zero vector here would collapse the whole leg to a point rather than fail.
-	side = Vector3.RIGHT if side.length_squared() < 0.000001 else side.normalized()
-	var up := side.cross(ahead).normalized()
-
-	var lat_cycles := maxf(round(length / maxf(curve_period, 1.0)), 1.0)
-	var rise_cycles := maxf(round(length / maxf(rise_period, 1.0)), 1.0)
-	var lat_amp := tan(deg_to_rad(clampf(curve_deg, 0.0, 70.0))) \
-		* length / (TAU * lat_cycles)
-	var rise_amp := tan(deg_to_rad(clampf(rise_deg, 0.0, 70.0))) \
-		* length / (TAU * rise_cycles)
-
-	var steps := maxi(int(ceil(length / WEAVE_SEGMENT_METRES)), 8)
-	var line := PackedVector3Array()
-	for i in steps + 1:
-		var u := float(i) / float(steps)
-		var envelope := sin(PI * u)
-		line.append(from + ahead * (length * u)
-			+ side * (lat_amp * sin(TAU * lat_cycles * u) * envelope)
-			+ up * (rise_amp * sin(TAU * rise_cycles * u) * envelope))
-	return line
-
-
-## The tightest bend anywhere on this path, in degrees of heading change per metre.
-##
-## This is what "too steep" means in a number. Multiplied by the cruise speed it is
-## degrees per second the road demands, and the ship's nose is hard-clamped into a
-## cone around the road's axis — so a road that turns faster than
-## `cruise_turn_rate_deg_per_sec` yanks the nose rather than being flown. The gate
-## asserts against exactly that, which is why this lives here rather than in a test.
-func max_turn_deg_per_metre() -> float:
-	if points.size() < 3:
-		return 0.0
-	var worst := 0.0
-	for i in range(1, points.size() - 1):
-		var back := points[i] - points[i - 1]
-		var ahead := points[i + 1] - points[i]
-		var span := (back.length() + ahead.length()) * 0.5
-		if span <= 0.001 or back.length_squared() <= 0.000001 \
-				or ahead.length_squared() <= 0.000001:
+## Closest point on the path, allocation free: `Vector4(t, u, v, w)` where u and v are
+## the query point's lateral and vertical offsets in the road frame at t, and w is the
+## overshoot along the tangent — non-zero only beyond an open end.
+func closest_tuvw(point: Vector3) -> Vector4:
+	var best_t := 0.0
+	var best_d2 := INF
+	var best_pos := Vector3.ZERO
+	var best_tan := Vector3.FORWARD
+	var best_d := INF
+	for i in pieces.size():
+		var sphere := _spheres[i]
+		if point.distance_to(sphere["centre"]) - float(sphere["radius"]) > best_d:
 			continue
-		worst = maxf(worst,
-			rad_to_deg(back.normalized().angle_to(ahead.normalized())) / span)
+		var p := pieces[i]
+		var t_local: float
+		var pos: Vector3
+		var tng: Vector3
+		if p["kind"] == STRAIGHT:
+			var a: Vector3 = p["a"]
+			var dir: Vector3 = p["dir"]
+			t_local = clampf((point - a).dot(dir), 0.0, p["len"])
+			pos = a + dir * t_local
+			tng = dir
+		else:
+			var centre: Vector3 = p["centre"]
+			var axis: Vector3 = p["axis"]
+			var s0: Vector3 = p["a"] - centre
+			var q: Vector3 = point - centre
+			q -= axis * q.dot(axis)
+			var phi := atan2(s0.cross(q).dot(axis), s0.dot(q))
+			var ang: float = p["angle"]
+			if phi < 0.0 or phi > ang:
+				var mid := ang * 0.5 + PI
+				phi = 0.0 if fposmod(phi, TAU) > mid else ang
+			t_local = phi * p["radius"]
+			pos = centre + s0.rotated(axis, phi)
+			tng = (p["dir"] as Vector3).rotated(axis, phi)
+		var d2 := (point - pos).length_squared()
+		if d2 < best_d2:
+			best_d2 = d2
+			best_d = sqrt(d2)
+			best_t = p["t0"] + t_local
+			best_pos = pos
+			best_tan = tng
+	var up := UP - best_tan * best_tan.y
+	if up.length_squared() < 1e-6:
+		up = Vector3.FORWARD
+	up = up.normalized()
+	var right := best_tan.cross(up)
+	var delta := point - best_pos
+	# The tangential overshoot only means something past an open end. Elsewhere it is
+	# float noise from equidistant neighbouring pieces, so it is zeroed.
+	var w := 0.0
+	if not closed and (best_t <= 0.001 or best_t >= length - 0.001):
+		w = delta.dot(best_tan)
+	return Vector4(best_t, delta.dot(right), delta.dot(up), w)
+
+
+## Closest point with the full frame: `{t, u, v, w, dist, pos, frame}`.
+func closest(point: Vector3) -> Dictionary:
+	var q := closest_tuvw(point)
+	var f := frame(q.x)
+	var pos: Vector3 = f["pos"]
+	return {"t": q.x, "u": q.y, "v": q.z, "w": q.w, "dist": point.distance_to(pos),
+		"pos": pos, "frame": f}
+
+
+## Axis-aligned bounds of the centre-line, grown by `margin`.
+func aabb(margin: float) -> AABB:
+	var box := AABB(sample(0.0)["pos"], Vector3.ZERO)
+	var t := 0.0
+	while t < length:
+		box = box.expand(sample(t)["pos"])
+		t += 50.0
+	box = box.expand(sample(length)["pos"])
+	return box.grow(margin)
+
+
+func min_radius() -> float:
+	var r := INF
+	for p in pieces:
+		if p["kind"] == ARC:
+			r = minf(r, p["radius"])
+	return r
+
+
+## The centre-line sampled every `step` metres, for things that want a polyline (the
+## deep field's scatter, a debug line). Never for collision or the mesh.
+func points(step: float) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	var t := 0.0
+	while t < length:
+		out.append(point_at(t))
+		t += maxf(step, 1.0)
+	out.append(point_at(length))
+	return out
+
+
+## Corners whose arc cannot fit: the tangent length `R·tan(θ/2)` must not pass the
+## midpoint of either adjacent leg, or two arcs overlap and the path folds. One line
+## per bad corner, naming it, so the author can act on it.
+func problems() -> PackedStringArray:
+	var out := PackedStringArray()
+	var n := waypoints.size()
+	var first_c := 1 if not closed else 0
+	var last_c := n - 2 if not closed else n - 1
+	for i in range(first_c, last_c + 1):
+		var prev: Vector3 = waypoints[(i - 1 + n) % n]
+		var cur: Vector3 = waypoints[i]
+		var next: Vector3 = waypoints[(i + 1) % n]
+		var a := (cur - prev).normalized()
+		var b := (next - cur).normalized()
+		var ang := a.angle_to(b)
+		if ang < deg_to_rad(0.05):
+			continue
+		var r := 0.0
+		for c in corners:
+			if (c["pos"] as Vector3).is_equal_approx(cur):
+				r = c["radius"]
+		var d := r * tan(ang * 0.5)
+		var room := minf(prev.distance_to(cur), cur.distance_to(next)) * 0.5
+		if d > room + 0.01:
+			out.append("corner %d at %s turns %.0f deg with r=%.0f: needs %.0f m of leg each side, has %.0f" % [
+				i, cur, rad_to_deg(ang), r, d, room])
+	return out
+
+
+## The steepest pitch anywhere on the path, in degrees.
+func max_pitch_deg() -> float:
+	var worst := 0.0
+	var t := 0.0
+	while t <= length:
+		var tng := tangent_at(t)
+		worst = maxf(worst, rad_to_deg(asin(clampf(absf(tng.y), 0.0, 1.0))))
+		t += 25.0
 	return worst

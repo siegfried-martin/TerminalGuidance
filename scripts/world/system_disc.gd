@@ -113,6 +113,11 @@ func _rebuild_region() -> void:
 
 ## A compass bearing as a horizontal unit vector. 0 is -Z, counting clockwise, so
 ## the number in `tuning.cfg` reads the way a bearing reads.
+## The bearing a horizontal direction points along, in the same convention.
+static func direction_to_bearing(direction: Vector3) -> float:
+	return rad_to_deg(atan2(direction.x, -direction.z))
+
+
 static func bearing_to_direction(degrees: float) -> Vector3:
 	var radians := deg_to_rad(degrees)
 	return Vector3(sin(radians), 0.0, -cos(radians))

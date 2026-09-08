@@ -27,22 +27,24 @@ fly:  ## Play the exploration POC — systems, the corridor, the road, docking
 sandbox:  ## Open the asset harness with the debug fly-cam
 	@tools/play.sh $(GODOT) --scene res://scenes/sandbox.tscn
 
+roads:  ## Validate data/routes.json headless and list every problem (ROAD_REPORT_MESH=1 also times the full mesh)
+	@$(GODOT) --headless --scene res://tools/tests/road_report.tscn 2>&1 | grep -v "^Godot Engine\|^$$"
+
 check: import  ## Headless gate: compiles, Godot-3 API lint, tuning keys, assets, scene build
 	@# `timeout` is a watchdog, not a nicety: if the runner script itself fails to
 	@# parse, its scene root has no script, nothing calls quit(), and the engine
 	@# idles forever instead of failing. Depending on `import` keeps the global
 	@# class cache fresh so a newly added `class_name` resolves.
-	@timeout $${CHECK_TIMEOUT:-180} $(GODOT) --headless --scene res://tools/tests/test_runner.tscn; \
+	@timeout $${CHECK_TIMEOUT:-360} $(GODOT) --headless --scene res://tools/tests/test_runner.tscn; \
 		status=$$?; \
-		if [ $$status -eq 124 ]; then echo "  FAIL  check timed out after $${CHECK_TIMEOUT:-180}s"; fi; \
+		if [ $$status -eq 124 ]; then echo "  FAIL  check timed out after $${CHECK_TIMEOUT:-360}s"; fi; \
 		exit $$status
 
 import:  ## Re-import assets (run after adding or regenerating a file in assets/)
 	@$(GODOT) --headless --import >/dev/null && echo "assets imported"
 
 assets:  ## Regenerate the generated placeholder assets, then import them
-	@cd tools && python3 gen_probe_obj.py && python3 gen_carrier_obj.py \
-		&& python3 gen_road_modules.py
+	@cd tools && python3 gen_probe_obj.py && python3 gen_carrier_obj.py
 	@python3 tools/gen_textures.py
 	@$(MAKE) --no-print-directory import
 

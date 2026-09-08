@@ -3,6 +3,8 @@
 *Status: accepted · 2026-09-05 · from a play session · refines ADR 0091, narrows ADR
 0080's ring and ADR 0082's berth*
 
+**Decisions 1 to 3 are superseded by ADR 0096** — there are no hoops and no buildings inside buildings. Decision 4 (a ramp to a planet hands the berth back) and 5 (the tuning file is grouped) stand.
+
 ## Decision
 
 Five things, from five screenshots and one complaint about the tuning file.

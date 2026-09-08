@@ -2,6 +2,8 @@
 
 *Status: accepted · 2026-08-31 · from the human: "the same red barrier … should exist for any vehicle entering an off ramp"*
 
+**Still holds under ADR 0096**: the refusal is `Tube.passable`, read by the strip and the gate's sheen.
+
 ## Decision
 
 **Every exit carries a permission surface across its mouth**, blue if you may take it

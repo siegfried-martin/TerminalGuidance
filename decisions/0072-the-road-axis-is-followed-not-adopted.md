@@ -2,6 +2,8 @@
 
 *Status: accepted · 2026-08-30 · from the ship shaking violently at an interchange*
 
+**The handover half is superseded by ADR 0096.** There is no union of lanes: the ship is in whichever tube contains it, and it crosses from one to another through an open wall. The slewed road axis, the cone and the camera stand.
+
 ## Decision
 
 **The ship holds its nose against a road axis it follows, not against the lane's own
