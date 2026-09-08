@@ -152,10 +152,13 @@ func _side_of(road: Road, side: String) -> Tube:
 	return road.tubes[1] if side == "L" and road.tubes.size() == 2 else road.tubes[0]
 
 
-## The planet ramp rule. An EXIT leaves the carriageway before the system, runs out to
-## the right and down to a mouth beside the planet; an ENTRY starts at a mouth on the
-## far side and climbs back in from below. Both mouths sit beside the system's centre,
-## never over it, so neither is inside the planet's approach envelope.
+## The planet ramp rule: a STRAIGHT SHOT. The highway runs along the bottom of the
+## system and the mouths sit up beside the planet, so an EXIT peels off the
+## carriageway at the exit angle and then climbs in one straight leg at
+## `ramp_climb_deg` to its mouth, and an ENTRY drops from its mouth in one straight
+## leg at the same angle onto the merge approach. The climb angle sets the ramp's
+## length: steeper is shorter. Both mouths sit beside the system's centre, never over
+## it, outside the planet's approach envelope (the gate checks).
 func _planet_ramp(tube: Tube, system: String, centre: Vector3, kind: String) -> void:
 	var t_s: float = tube.local(centre)["t"]
 	var f := tube.travel_frame(t_s)
@@ -172,33 +175,39 @@ func _planet_ramp(tube: Tube, system: String, centre: Vector3, kind: String) -> 
 	# each other.
 	var mouth_y: float = centre.y + float(tube.road.get_meta("mouth_height",
 		Tuning.num("exploration/ramp_mouth_height")))
+	var climb := tan(deg_to_rad(clampf(Tuning.num("exploration/ramp_climb_deg"), 1.0, 80.0)))
 	var lead := Tuning.num("exploration/ramp_exit_lead")
 	var length := Tuning.num("exploration/ramp_exit_length")
-	var drop := Tuning.num("exploration/ramp_merge_drop")
-	var run := drop / tan(deg_to_rad(Tuning.num("exploration/ramp_merge_pitch_deg")))
+	var angle := deg_to_rad(Tuning.num("exploration/ramp_exit_angle_deg"))
 	var merge_lead := Tuning.num("exploration/ramp_merge_lead")
-	var swing := Tuning.num("exploration/ramp_swing_metres")
-	var reach := Tuning.num("exploration/ramp_reach_metres")
-	var bend := Tuning.num("exploration/ramp_bend_radius")
+	# The mouth's offset to the driver's right of THIS carriageway's centre-line: the
+	# side offset is from the system's centre, which the road's own centre-line passes
+	# through, and the carriageway sits u0 to one side of that.
+	var lateral := side - tube.u0 * tube.direction
 	var name := "%s %s %s" % [tube.name, system, "out" if kind == "exit" else "in"]
 	if kind == "exit":
 		var mouth := centre - fwd * along + right * side
 		mouth.y = mouth_y
-		var t0 := tube.path.wrap_t(t_s - tube.direction * (lead + length + swing + reach + along))
-		var f0 := tube.travel_frame(t0)
-		var p2: Vector3 = f0["pos"] + (f0["fwd"] as Vector3) * lead \
-			+ (f0["fwd"] as Vector3).rotated(f0["up"],
-				-deg_to_rad(Tuning.num("exploration/ramp_exit_angle_deg"))) * length
-		var mid := p2 + fwd * swing + right * (side * 0.28)
-		mid.y = road_y - (road_y - mouth_y) * 0.3
-		_ramp(name, tube, t0, null, 0.0, [mid, mouth], [bend, 0.0], system)
+		# The straight leg starts where the diverging leg ends, `length` at the exit
+		# angle past the lead, and reaches the mouth at the climb angle: its run over
+		# the ground is the height to climb over the tangent of the angle.
+		var rise := absf(mouth_y - road_y)
+		var ground := rise / climb
+		var across := lateral - length * sin(angle)
+		var ahead := sqrt(maxf(ground * ground - across * across, 0.0))
+		var t0 := tube.path.wrap_t(t_s - tube.direction * (along + ahead + lead + length * cos(angle)))
+		_ramp(name, tube, t0, null, 0.0, [mouth], [0.0], system)
 	else:
 		var mouth := centre + fwd * along + right * side
 		mouth.y = mouth_y
-		var t_m := tube.path.wrap_t(t_s + tube.direction * (along + reach + swing + run + merge_lead))
-		var mid := centre + fwd * (along + reach) + right * (side * 0.28)
-		mid.y = road_y - drop
-		_ramp(name, null, 0.0, tube, t_m, [mouth, mid], [0.0, bend], system)
+		# The straight leg drops from the mouth onto the start of the merge lead,
+		# `merge_lead` short of the merge point, coming in through the roof or the
+		# wall rather than up through the floor.
+		var rise := absf(mouth_y - road_y)
+		var ground := rise / climb
+		var ahead := sqrt(maxf(ground * ground - lateral * lateral, 0.0))
+		var t_m := tube.path.wrap_t(t_s + tube.direction * (along + ahead + merge_lead))
+		_ramp(name, null, 0.0, tube, t_m, [mouth], [0.0], system, true)
 
 
 func _authored_ramp(r: Dictionary, by_name: Dictionary, systems: Dictionary) -> Road:
@@ -283,7 +292,7 @@ func _t_of(tube: Tube, end: Dictionary, systems: Dictionary) -> float:
 ## waypoints between the standard exit head and the standard merge tail, each with a
 ## corner radius (0 at a mouth endpoint).
 func _ramp(name: String, from_tube: Tube, from_t: float, to_tube: Tube, to_t: float,
-		mids: Array, mid_radii: Array, mouth_of: String) -> Road:
+		mids: Array, mid_radii: Array, mouth_of: String, from_above := false) -> Road:
 	var pts: Array = []
 	var radii: Array = []
 	var lead := Tuning.num("exploration/ramp_exit_lead")
@@ -311,12 +320,20 @@ func _ramp(name: String, from_tube: Tube, from_t: float, to_tube: Tube, to_t: fl
 		var f := to_tube.travel_frame(to_t)
 		var e0: Vector3 = f["pos"]
 		var e1: Vector3 = e0 - (f["fwd"] as Vector3) * Tuning.num("exploration/ramp_merge_lead")
-		var drop := Tuning.num("exploration/ramp_merge_drop")
-		var run := drop / tan(deg_to_rad(Tuning.num("exploration/ramp_merge_pitch_deg")))
-		var e2: Vector3 = e1 - (f["fwd"] as Vector3) * run - (f["up"] as Vector3) * drop
 		var rm := Tuning.num("exploration/ramp_merge_radius")
-		pts += [e2, e1, e0]
-		radii += [rm, rm, 0.0]
+		if from_above:
+			# A planet entry drops straight onto the merge lead from its mouth up
+			# beside the planet: one bend, at the lead's start.
+			pts += [e1, e0]
+			radii += [rm, 0.0]
+		else:
+			# An interchange ramp comes up from below: `drop` under the carriageway,
+			# climbing at the merge pitch through the floor onto the lead.
+			var drop := Tuning.num("exploration/ramp_merge_drop")
+			var run := drop / tan(deg_to_rad(Tuning.num("exploration/ramp_merge_pitch_deg")))
+			var e2: Vector3 = e1 - (f["fwd"] as Vector3) * run - (f["up"] as Vector3) * drop
+			pts += [e2, e1, e0]
+			radii += [rm, rm, 0.0]
 	if pts.size() < 2:
 		problems.append("ramp %s has no shape" % name)
 		return null

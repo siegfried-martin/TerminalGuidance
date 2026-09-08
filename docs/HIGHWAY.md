@@ -118,17 +118,23 @@ Every ramp's two ends are built the same way, from the `exploration/ramp_*` keys
   then a bend of `ramp_exit_radius` onto a leg diverging right at `ramp_exit_angle_deg`
   for `ramp_exit_length`. The ramp's tube nests inside the carriageway for the lead
   (it is `RAMP_INSET` smaller) and leaves through the wall on the diverging leg.
-- **Merge tail**: `ramp_merge_drop` below the carriageway's centre, climbing at
-  `ramp_merge_pitch_deg` through the floor, then level inside it for
-  `ramp_merge_lead`, ending at `to`. Bends of `ramp_merge_radius`.
-- **Planet exits** add a swing (`ramp_swing_metres` further along, a little further
-  right, part way down) and the mouth: `ramp_mouth_along_offset` short of the system's
-  centre, `ramp_mouth_side_offset` to the right, `ramp_mouth_height` up. Entries are the
-  same in reverse, past the centre. Mouths are beside a planet, never over it.
+- **Merge tail** of an interchange ramp: `ramp_merge_drop` below the carriageway's
+  centre, climbing at `ramp_merge_pitch_deg` through the floor, then level inside it
+  for `ramp_merge_lead`, ending at `to`. Bends of `ramp_merge_radius`.
+- **Planet ramps are a straight shot** (ADR 0097: the highway runs along the bottom,
+  the mouths sit up beside the planet). An exit's diverging leg is followed by ONE
+  straight leg climbing at `ramp_climb_deg` to the mouth — `ramp_mouth_along_offset`
+  short of the system's centre, `ramp_mouth_side_offset` to the right,
+  `ramp_mouth_height` above the plane. An entry drops from its mouth (past the centre)
+  in one straight leg at the same angle onto the merge lead, through the roof or the
+  wall rather than up through the floor. The climb angle sets the ramp's length:
+  steeper is shorter. The bend where the climb meets the peel, or the drop meets the
+  lead, has to fit at the turn-rate floor, which is what sizes `ramp_exit_length` and
+  `ramp_merge_lead`; a mouth too low for its side offset makes that bend too sharp,
+  and `make roads` names it.
 
-Exits go out through a wall or the roof, never the floor; entries come up through the
-floor (ADR 0080). Where a ramp's tube overlaps its host's, the host's wall or floor is
-open — and only there.
+Where a ramp's tube overlaps its host's, the host's wall, roof or floor is open — and
+only there.
 
 ## Collision
 

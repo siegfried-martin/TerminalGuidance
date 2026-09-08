@@ -260,6 +260,26 @@ as values plus ADR 0097, which supersedes 0061:
   The floor went down to 1900 to give the mouths room; the star sits 600 under it.
 - **Hulls smaller, camera closer**: `hull_scale` 0.35, fighter 0.1, capital 0.6,
   `ship_follow_distance` 52 and height 13 (the boom already follows hull size).
+- **The highways are at the bottom and the planet ramps are a straight shot** —
+  2026-09-08, from the human: *"if the highway is at the bottom it should be at the
+  bottom of the playable area or close, and on/off ramps should just be a straight
+  shot angled up or down. this will also keep the ramps shorter."* A-377B runs at
+  −1650 and K-112 at −1250 over a floor at −1900. A planet exit peels off and climbs
+  in one straight leg at `ramp_climb_deg` (25) to its mouth beside the planet
+  (`ramp_mouth_side_offset` 1200, `ramp_mouth_height` 0; K-112's at −250 so its
+  ramps at B pass under A-377B's); an entry drops from its mouth straight onto the
+  merge lead, through the roof rather than up through the floor. Steeper is shorter;
+  the bends at each end have to fit at the turn-rate floor, which is why the peel is
+  1300 and the merge lead 1400 now, and why a mouth cannot sit too low for its side
+  offset. The swing and reach keys are gone. X1 re-authored to leave A-377B earlier
+  and join K-112 later, clear of B's climbing ramps. **They are not shorter yet**:
+  5.3–5.8 km against 4.0–4.3 before, because the mouths beside the planet are 1650 m
+  above the road and 25° over that rise is a 3.5 km run. The shorteners are
+  `ramp_climb_deg` (30° and 35° fail `make roads` on K-112's entry bends as the map
+  stands, because K-112's mouths have 400 m less rise) and `ramp_mouth_height` (lower
+  mouths, shorter ramps, until the bend at the mouth end gets too sharp for its side
+  offset). The next move is probably to put the highways ON the floor and the mouths
+  lower on the planet's flank, and to let a planet ramp bend tighter than a highway.
 - **Not done**: "some variance" in planet height per system. It is a seeded offset
   and a few lines, but the mouths, the envelope and the star all key off the planet's
   position, so it wants a look at what varies with it first.
