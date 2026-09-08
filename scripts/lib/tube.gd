@@ -29,8 +29,15 @@ var direction: int = 1
 ## Where ramps leave and arrive: `{t, kind ("exit" | "entry" | "from" | "merge"),
 ## label, ramp: Tube}`.
 var junctions: Array[Dictionary] = []
-## Tubes of OTHER roads whose volume overlaps this one — the ones a wall may open on to.
+## Tubes of OTHER roads whose volume overlaps this one — the ones a wall may open on to,
+## and whose volume clips this tube's structure.
 var neighbours: Array[Tube] = []
+## Neighbours no wall may open on to: a ramp and its host's other carriageway. The
+## ramp's head and tail run coincident with the host carriageway, so the ramp's wall
+## there IS the median, and the other carriageway is a quarter-metre through it. Still
+## neighbours — a ramp's rib collar that pokes into that carriageway is clipped by
+## it — but the one wall-open rule skips them.
+var sealed: Array[Tube] = []
 var bounds: AABB
 ## Whether this road may be taken at all. False is a red gate at its mouth: the tube
 ## stops being listed as an exit and the strip greys it (ADR 0084). It REFUSES rather

@@ -209,8 +209,11 @@ needs to be much smaller."* Done as numbers, not code, except the spawn:
 - **A hole in the median, found by the gate and closed.** A ramp's tail runs
   coincident with its host carriageway, so its wall there IS the median, and the one
   wall-open rule saw the other carriageway a quarter-metre through it. A ramp and its
-  host's other carriageway are no longer each other's neighbours (`_finish`). The
-  drunk probe on E's entry to K-112 L found it once the ramp was 100 m shorter.
+  host's other carriageway are now SEALED to each other (`Tube.sealed`): still
+  neighbours, so a ramp's rib collar that pokes into that carriageway is clipped by
+  it, but no surface opens between them, in the mesh (`_cut_by_any`) or the collider
+  (`_open_at`). The first version un-neighboured them instead, which left those
+  collars standing inside the carriageway; the smaller hull found one on 09-08.
 
 **The lights** — 2026-09-07, from the human, with a screenshot of the star throwing a
 hot spot down the roadway: *"the sun from a distance forms a very unrealistic cone of
@@ -240,6 +243,30 @@ of the design."*
   `headlight_spread_metres`, `headlight_lamp_glow`. The switches
   `headlight_enabled` and `track_lights_enabled` are for A/B from the F2 panel.
 
+**The layout pass** — 2026-09-08, from the human: *"what if the highway is at the very
+bottom, stars are below this in the out of bounds zone, and planets are just in the
+middle with some variance. So the player is actually flying around planets."* Also:
+*"I can also maybe just make the ships smaller and the camera a little closer."* Done
+as values plus ADR 0097, which supersedes 0061:
+
+- **The planet is mid-volume and bigger**: `planet_center_depth` 0 (on the combat
+  plane; the slider now goes negative), `planet_radius` 900, and the approach
+  envelope 1300 to keep a fighter's countdown outside the surface.
+- **The highways run along the bottom**: every height in `data/routes.json` came down
+  1500 m (A-377B at −1100, K-112 at −700), which keeps the interchange geometry
+  exactly as validated. The mouths stay 300 m below their highway (`ramp_mouth_height`
+  −1400, K-112's −1000): a version with the mouths above, climbing toward the planet,
+  put every planet ramp at B into the space the interchange ramps climb through.
+  The floor went down to 1900 to give the mouths room; the star sits 600 under it.
+- **Hulls smaller, camera closer**: `hull_scale` 0.35, fighter 0.1, capital 0.6,
+  `ship_follow_distance` 52 and height 13 (the boom already follows hull size).
+- **Not done**: "some variance" in planet height per system. It is a seeded offset
+  and a few lines, but the mouths, the envelope and the star all key off the planet's
+  position, so it wants a look at what varies with it first.
+- **Speed and distance** (a faster highway, longer legs, faster ships, mouths inside
+  the envelope for an automatic arrival) are deliberately after this pass: judge the
+  new size and layout first.
+
 **Flagged, not built (scope, per CLAUDE.md):** what a headlight costs and what a
 better one (a searchlight) is — today every hull has the one headlight for free — and
 what the dark costs off-road. Each is a design decision with a trade-off in it, and a
@@ -259,14 +286,16 @@ ship carries it too.
   for the planets. Saving either rebuilds the structure.
 - **The floor.** The POC drew a textured roadway; the human preferred this project's
   painted lane lines. The floor is plain metal with the five markings per carriageway.
-- **`exploration/planet_radius`** (500) and `planet_center_depth` (2000): the cap's
-  height through the floor is their difference (the human's revert; 500 is a bead). `approach_envelope_radius` must stay
+- **`exploration/planet_radius`** (900) and `planet_center_depth` (0): the planet is
+  mid-volume now (ADR 0097), the highway passes under it, and the envelope (1300)
+  must stay a fighter's countdown outside the surface. `approach_envelope_radius` must stay
   more than a fighter's countdown outside the surface; the gate checks.
 - **The structure's rib beat** (`structure_module_length`, 800) is continuous along
   a road and a ramp continues its host's phase; the old road's stations are gone.
-- **Mouth height.** A-377B's mouths sit 100 m above the plane, K-112's at 500 so its
-  ramps at B clear A-377B's (`mouth_height` in `data/routes.json`). Whether an exit
-  that climbs to its mouth reads right is a feel call.
+- **Mouth height.** A-377B's mouths sit at −1400, K-112's at −1000 (`mouth_height`
+  in `data/routes.json`), 300 m below their highways, which run along the bottom.
+  Whether an exit that dips to its mouth and a climb from there to the planet reads
+  right is a feel call.
 - **How dark, and how lit.** The star (`star_light_energy`, from below: undersides,
   walls, the cap) and the ambient (`exploration/ambient_energy`) set the system; the
   headlight and the track lights (`;;; Lights`) are what the roadway is lit by,

@@ -57,6 +57,8 @@ var _want_faces: bool = false
 var _min_clip: float = 3.0
 var _max_untested: float = 30.0
 var _active: Array[Tube] = []
+## The tubes no surface of this road may open on to (`Tube.sealed`, over all its tubes).
+var _sealed: Array[Tube] = []
 var _verts: Array[PackedVector3Array] = []
 var _norms: Array[PackedVector3Array] = []
 ## Per vertex, the centre of the ring it belongs to — only kept for the far version,
@@ -103,6 +105,10 @@ static func build_chunk(road: Road, foreign: Array[Tube], chunk: Dictionary,
 		floor_thickness: float, beam: float, want_faces: bool) -> Dictionary:
 	var b := RoadMesh.new()
 	b._road = road
+	for t in road.tubes:
+		for sealed in t.sealed:
+			if not b._sealed.has(sealed):
+				b._sealed.append(sealed)
 	b._floor_thickness = floor_thickness
 	b._beam = beam
 	b._want_faces = want_faces
@@ -137,6 +143,10 @@ static func build_far(road: Road, chunk: Dictionary, from_t: float, to_t: float,
 		floor_thickness: float, beam: float) -> Node3D:
 	var b := RoadMesh.new()
 	b._road = road
+	for t in road.tubes:
+		for sealed in t.sealed:
+			if not b._sealed.has(sealed):
+				b._sealed.append(sealed)
 	b._floor_thickness = floor_thickness
 	b._beam = beam
 	b._want_centres = true
@@ -545,9 +555,10 @@ func _clip(mat: int, a: Vector3, b: Vector3, c: Vector3, d: Vector3,
 	if reaching.is_empty():
 		_emit(mat, a, b, c, d)
 		return
+	var surface := mat != MAT_METAL
 	var n := 0
 	for p: Vector3 in [a, b, c, d, centre]:
-		if _inside_any(reaching, p):
+		if _cut_by_any(reaching, p, surface):
 			n += 1
 	if n == 5:
 		return
@@ -555,7 +566,7 @@ func _clip(mat: int, a: Vector3, b: Vector3, c: Vector3, d: Vector3,
 		_emit(mat, a, b, c, d)
 		return
 	if size <= _min_clip or depth >= 14:
-		if not _inside_any(reaching, centre):
+		if not _cut_by_any(reaching, centre, surface):
 			_emit(mat, a, b, c, d)
 		return
 	var ab := (a + b) * 0.5
@@ -583,6 +594,31 @@ static func _inside_any(near: Array[Tube], p: Vector3) -> bool:
 	for t in near:
 		if t.contains(p, EPS):
 			return true
+	return false
+
+
+## Whether a point of this road's geometry is cut away by a neighbour's volume. A
+## SURFACE (floor, glass) is opened by a neighbour's volume except where one of this
+## road's own tubes is SEALED to that neighbour and the point is at that tube: the
+## median between a ramp's tail and its host's other carriageway stays shut, from
+## both sides. STRUCTURE (metal: collars, beams, the slab's underside) is clipped by
+## every neighbour, sealed or not — a ramp's collar that pokes into that carriageway
+## goes. The collider's `_open_at` is the same rule for the wall a hull is against.
+func _cut_by_any(near: Array[Tube], p: Vector3, surface: bool) -> bool:
+	for t in near:
+		if not t.contains(p, EPS):
+			continue
+		if surface and _sealed.has(t):
+			var at_sealed := false
+			for own in _road.tubes:
+				# Grown by a metre: the point is ON the wall, and a coincident wall
+				# wanders a few centimetres either side of the other tube's face.
+				if own.sealed.has(t) and own.contains(p, -1.0):
+					at_sealed = true
+					break
+			if at_sealed:
+				continue
+		return true
 	return false
 
 

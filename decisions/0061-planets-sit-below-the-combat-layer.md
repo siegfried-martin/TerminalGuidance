@@ -2,6 +2,10 @@
 
 *Status: accepted · 2026-08-29 · from the human's proposal during exploration POC planning*
 
+**Superseded by ADR 0097** (2026-09-08): the planet moved to the middle of the volume
+and the highways to the bottom, because two spheres below the road could not be told
+apart.
+
 **Amended 2026-09-07, from the human:** *"I had envisioned only the top of the planet
 sticking out into usable space."* The planet sits mostly BELOW the disc's floor with
 its cap standing up through it; the floor cuts the planet rather than lying beneath

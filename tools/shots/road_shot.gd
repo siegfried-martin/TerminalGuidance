@@ -34,6 +34,18 @@ func _process(_delta: float) -> void:
 		_armed = true
 		print("[shot] spawn")
 		return
+	# "Planet": beside system A's planet on the combat plane, looking at it, with the
+	# highway passing under it — the arrangement ADR 0097 asks a frame to show.
+	if wanted.to_lower() == "planet":
+		var planet: Node3D = _scene.map().planets()[0]
+		var stand := planet.global_position + Vector3(-2000.0, 0.0, 1500.0)
+		_scene.ship().global_position = stand
+		_scene.ship().look_at(planet.global_position, Vector3.UP)
+		_scene.ship().reset_reticle()
+		_scene.camera().snap()
+		_armed = true
+		print("[shot] planet")
+		return
 	for spot in _scene.map().spots():
 		if String(spot["label"]).to_lower().begins_with(wanted.to_lower()):
 			_scene.map().drop_on_road(_scene.ship(), spot["tube"], float(spot["t"]))

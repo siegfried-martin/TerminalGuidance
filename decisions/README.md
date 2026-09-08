@@ -60,7 +60,7 @@ The reasoning, including what the alternative was and why it lost.
 | [0057](0057-the-highway-is-a-place.md) | The highway is a place, not a travel mode — supersedes 0009 |
 | [0059](0059-hull-class-is-the-table.md) | Every ship number is keyed by hull class, with a shared default |
 | [0060](0060-a-portal-opens-for-a-cruise-drive.md) | A portal opens for a cruise drive, and its colour says so |
-| [0061](0061-planets-sit-below-the-combat-layer.md) | Planets sit below the combat layer, because down is already a direction |
+| [0061](0061-planets-sit-below-the-combat-layer.md) | ~~Planets sit below the combat layer~~ — superseded by 0097 |
 
 ### Framing corrections
 | # | Decision |
@@ -123,6 +123,7 @@ The reasoning, including what the alternative was and why it lost.
 | [0082](0082-the-road-is-a-dock-host.md) | The road is a dock host, and a berth is left on purpose |
 | [0083](0083-a-sign-is-clicked-not-planned.md) | An exit is chosen where it can be seen, and taking it is a rail rebind — the *sign* is superseded by 0091 |
 | [0096](0096-the-road-is-a-tube-you-fly-and-what-you-see-is-what-you-hit.md) | The road is a tube you fly, and what you see is what you hit — replaces the old road's ADRs (see below) |
+| [0097](0097-the-planet-is-the-thing-you-fly-around.md) | The planet is the thing you fly around: mid-volume, the highways along the bottom, the star below the floor — supersedes 0061 |
 | [0084](0084-a-road-may-refuse-to-let-you-off-it.md) | A road may refuse to let you off it, and it refuses by not being a candidate |
 
 | [0086](0086-a-dry-tank-is-slow-not-stranded.md) | A dry tank is slow, never stranded, and the road spends fuel by the metre |

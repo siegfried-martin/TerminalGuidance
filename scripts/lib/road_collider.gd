@@ -111,6 +111,8 @@ var _opener: Tube = null
 
 func _open_at(p: Vector3) -> bool:
 	for n in tube.neighbours:
+		if tube.sealed.has(n):
+			continue
 		if n.contains(p, OPEN_EPS):
 			_opener = n
 			return true

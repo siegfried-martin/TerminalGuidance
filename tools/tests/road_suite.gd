@@ -369,9 +369,9 @@ func _step_checked(label: String, i: int) -> bool:
 	var after := _probe.position
 	var hit := _ray(before, after)
 	if not hit.is_empty():
-		_expect(false, label, "passed through a surface at %s (t=%.1fs, %s -> %s): %s" % [
-			hit["position"], i * DT, _name(tube_before), _name(_probe.tube()),
-			" | ".join(_probe.collider.log_lines)])
+		_expect(false, label, "passed through a surface at %s facing %s, moving %s -> %s (t=%.1fs, %s -> %s): %s" % [
+			hit["position"], hit["normal"], before, after, i * DT, _name(tube_before),
+			_name(_probe.tube()), " | ".join(_probe.collider.log_lines)])
 		return false
 	if i * DT > 6.0 and _probe.speed() < 15.0:
 		_expect(false, label, "stopped (%.1f m/s at t=%.1fs in %s)" % [

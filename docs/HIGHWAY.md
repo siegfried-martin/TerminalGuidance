@@ -136,7 +136,10 @@ open — and only there.
 has flown:
 
 - **Inside a tube**: the hull's oriented extents shrink the section; each axis is
-  clamped unless the point straight through that wall is inside a neighbour tube. A
+  clamped unless the point straight through that wall is inside a neighbour tube —
+  and not a SEALED one: a ramp and its host's other carriageway (`Tube.sealed`) clip
+  each other's structure but never open a surface between them, because the ramp's
+  tail wall is the median. A
   clamped axis reflects the velocity component through it by
   `structure_bounce_restitution` and reports how square the hit was, which the ship
   charges to the throttle once per contact (never below
@@ -170,8 +173,10 @@ within 2.5 km on all four sides while inside a tube. The whole mesh is built for
 (about 1.5 million triangles, half a minute).
 
 `make roads` is the fast loop while authoring. `make shot` with `ROAD_SHOT_SPOT=Exit`
-(or `Merge`, `Bend 1`, `Mouth`, `Spawn`) renders a frame from the seat at that spot,
-and `K` in the game drops the ship at the next spot.
+(or `Merge`, `Bend 1`, `Mouth`, `Spawn`, `Planet`) renders a frame from the seat at
+that spot, and `K` in the game drops the ship at the next spot. When the suite reports
+a pass-through, `tools/tests/repro_drunk.tscn` flies that one tube in a minute and
+names the road and triangle a step crossed (see its header).
 
 ## What is deliberately not here
 

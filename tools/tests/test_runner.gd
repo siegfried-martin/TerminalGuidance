@@ -3120,17 +3120,19 @@ func _test_disc_bounds() -> void:
 		"%.0f m of flare in a %.0f m leg" % [
 			Tuning.num("exploration/aperture_funnel_length") * 2.0, shortest_leg])
 
-	# ADR 0061, as the human meant it: the planet sits at the bottom of the disc with
-	# only its CAP standing up through the floor into usable space. The floor cuts the
-	# planet; the cap is what you descend onto, and it is below the combat plane.
-	var surface := Tuning.num("exploration/planet_radius") \
+	# ADR 0097: the planet is the thing you fly around. It sits inside the disc's
+	# volume — its top under the ceiling, its bottom above the floor — with room for
+	# the highways to pass beneath it.
+	var top := Tuning.num("exploration/planet_radius") \
 		- Tuning.num("exploration/planet_center_depth")
-	_expect(surface >= -Tuning.num("exploration/system_floor_depth"),
-		"the planet's cap reaches the floor of the disc or stands up through it (ADR 0061, amended)",
-		"cap at %.0f, floor at %.0f" % [surface, -Tuning.num("exploration/system_floor_depth")])
-	_expect(surface < 0.0,
-		"…and the planet's surface is below the combat plane, not in it (ADR 0061)",
-		"surface at %+.0f" % surface)
+	var bottom := -Tuning.num("exploration/planet_radius") \
+		- Tuning.num("exploration/planet_center_depth")
+	_expect(top < Tuning.num("exploration/system_ceiling_height"),
+		"the planet's top is under the disc's ceiling (ADR 0097)",
+		"top at %+.0f, ceiling at %+.0f" % [top, Tuning.num("exploration/system_ceiling_height")])
+	_expect(bottom > -Tuning.num("exploration/system_floor_depth"),
+		"…and its bottom is above the disc's floor, so the road can pass under it (ADR 0097)",
+		"bottom at %+.0f, floor at %+.0f" % [bottom, -Tuning.num("exploration/system_floor_depth")])
 
 
 func _step_exploration(scene: ExplorationScene, delta: float) -> void:

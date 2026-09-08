@@ -443,7 +443,9 @@ func _finish() -> void:
 	# carriageway, so the ramp's wall there IS the median. It must not open into the
 	# host's other carriageway, nor that carriageway into it: the one wall-open rule
 	# (a point through the wall is inside a neighbour) would see the other carriageway
-	# a quarter-metre through the median and open a hole across the road.
+	# a quarter-metre through the median and open a hole across the road. SEALED, not
+	# un-neighboured: the ramp's rib collars poke into that carriageway and it has to
+	# go on clipping them (`Tube.sealed`).
 	for ramp in ramps:
 		var road: Road = ramp["road"]
 		for host: Tube in [ramp["from_tube"], ramp["to_tube"]]:
@@ -453,8 +455,10 @@ func _finish() -> void:
 				if other == host:
 					continue
 				for t in road.tubes:
-					t.neighbours.erase(other)
-					other.neighbours.erase(t)
+					if not t.sealed.has(other):
+						t.sealed.append(other)
+					if not other.sealed.has(t):
+						other.sealed.append(t)
 	for road in roads:
 		if road.kind != "highway":
 			continue
@@ -676,6 +680,7 @@ func _release() -> void:
 	for t in tubes:
 		t.road = null
 		t.neighbours.clear()
+		t.sealed.clear()
 		t.junctions.clear()
 	for r in roads:
 		r.tubes.clear()
